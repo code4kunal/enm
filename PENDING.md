@@ -4,9 +4,9 @@ State after the site-management, snag-import and inspection-schedule work.
 
 ## Verified at this commit
 
-- Backend: `pytest` — 183 passing. `ruff check` clean. `alembic upgrade head`
+- Backend: `pytest` — 201 passing. `ruff check` clean. `alembic upgrade head`
   runs 0001 → 0009.
-- App: `flutter analyze` clean, `flutter test` — 196 passing.
+- App: `flutter analyze` clean, `flutter test` — 202 passing.
 - Driven in Chrome against the live API on `:8123`: sign in as the seeded super
   admin, site picker, home, Schedule → Calendar and Alerts, all reading the
   real database.
@@ -20,7 +20,8 @@ State after the site-management, snag-import and inspection-schedule work.
 grid, CSV export, nightly freeze at 22:05), the off-road / held-up list,
 breakdown investigations, the Annexure-IV control charts (six grids, CSV
 export, colour marks carried per cell), the Unit Failure Statement (CSV export)
-and the bus history card.
+and the bus history card. Every one of them downloads as a PDF, rendered
+server-side and delivered through the platform share sheet.
 
 Two of the six charts are still empty for a reason rather than a bug. Tyre
 pressure and bus washing read from a checklist line the depot nominates with
