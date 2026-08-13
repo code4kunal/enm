@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 import 'support/seed.dart';
 import 'package:transvolt_em/state/session.dart';
+import 'package:transvolt_em/data/auth/ms_sso.dart';
+import 'package:transvolt_em/state/providers.dart';
 
 ProviderContainer makeContainer() {
   final container = fakeContainer();
@@ -76,14 +78,33 @@ void main() {
   });
 
   group('Microsoft SSO', () {
-    test('resolves to an account with a mail ID', () async {
+    test('the redirect back resolves to an account with a mail ID', () async {
+      // Sign-in is two page loads: `signInWithMicrosoft` hands the browser to
+      // Entra and never returns, and the app finishes the job on the way back.
       final container = makeContainer();
-      await container.read(sessionProvider.notifier).signInWithMicrosoft();
+      final config = await container.read(authRepositoryProvider).ssoConfig();
+
+      await container
+          .read(sessionProvider.notifier)
+          .resumeMicrosoftSignIn(config);
 
       final s = container.read(sessionProvider);
       expect(s.stage, AuthStage.choosingSite);
       expect(s.user?.canUseSso, isTrue);
       expect(s.signingIn, isFalse);
+    });
+
+    test('an ordinary load is not a redirect and changes nothing', () async {
+      final container = makeContainer();
+
+      await container
+          .read(sessionProvider.notifier)
+          .resumeMicrosoftSignIn(SsoConfig.off);
+
+      final s = container.read(sessionProvider);
+      expect(s.stage, AuthStage.signedOut);
+      expect(s.signingIn, isFalse);
+      expect(s.error, isNull);
     });
   });
 

@@ -4,6 +4,7 @@ import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'fake_store.dart';
 import 'seed.dart';
+import 'package:transvolt_em/data/auth/ms_sso.dart';
 
 const Duration _latency = Duration(milliseconds: 220);
 
@@ -257,7 +258,17 @@ class FakeAuthRepository implements AuthRepository {
   final FakeStore _store;
 
   @override
-  Future<AppUser> signInWithMicrosoft() async {
+  Future<SsoConfig> ssoConfig() async => const SsoConfig(
+        enabled: true,
+        clientId: 'fake-client',
+        authority: 'https://login.microsoftonline.com/fake-tenant',
+      );
+
+  @override
+  Future<void> beginMicrosoftSignIn(SsoConfig config) async {}
+
+  @override
+  Future<AppUser?> completeMicrosoftSignIn(SsoConfig config) async {
     // Matches the 1.4s SSO handshake the prototype simulates.
     await Future<void>.delayed(const Duration(milliseconds: 1400));
     final user = _store.users

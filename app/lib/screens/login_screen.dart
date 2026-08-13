@@ -9,6 +9,7 @@ import '../widgets/chevron_backdrop.dart';
 import '../widgets/chips.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../data/auth/ms_sso.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -145,23 +146,28 @@ class _SsoStage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(sessionProvider.notifier);
+    final sso = ref.watch(ssoConfigProvider).valueOrNull ?? SsoConfig.off;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const SizedBox(height: 32),
-        _MicrosoftButton(
-          signing: session.signingIn,
-          onTap: controller.signInWithMicrosoft,
-        ),
-        const SizedBox(height: 22),
+        // Only offered where the server says it is configured — otherwise the
+        // card is just the User ID form, with no dead button on it.
+        if (sso.usable) ...<Widget>[
+          _MicrosoftButton(
+            signing: session.signingIn,
+            onTap: () => controller.signInWithMicrosoft(sso),
+          ),
+          const SizedBox(height: 22),
+        ],
         Row(
           children: <Widget>[
             const Expanded(child: Divider(color: T.border)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
-                'OR SIGN IN WITH USER ID',
+                sso.usable ? 'OR SIGN IN WITH USER ID' : 'SIGN IN WITH USER ID',
                 style: AppText.sans(
                   size: 12,
                   weight: FontWeight.w600,

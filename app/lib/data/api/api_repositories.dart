@@ -12,6 +12,7 @@ import '../../models/site_import.dart';
 import '../repositories.dart';
 import 'api_client.dart';
 import 'field_map.dart';
+import '../auth/ms_sso.dart';
 
 /// Register id translation. The app uses the short ids from `registers.dart`;
 /// the API uses the `Register` enum values.
@@ -578,17 +579,33 @@ class ApiUserRepository implements UserRepository {
 // ─── Auth ─────────────────────────────────────────────────────────────────
 
 class ApiAuthRepository implements AuthRepository {
-  ApiAuthRepository(this._api);
+  ApiAuthRepository(this._api, {MicrosoftSignIn? sso})
+      : _sso = sso ?? MicrosoftSignIn(_api);
 
   final ApiClient _api;
+  final MicrosoftSignIn _sso;
 
   @override
-  Future<AppUser> signInWithMicrosoft() async {
-    // The Entra ID token comes from MSAL on device; until that is wired the
-    // endpoint has nothing to validate.
-    throw const ApiException(
-      'Microsoft sign-in needs the MSAL client. Use your User ID and password.',
+  Future<SsoConfig> ssoConfig() => _sso.config();
+
+  @override
+  Future<void> beginMicrosoftSignIn(SsoConfig config) => _sso.begin(config);
+
+  @override
+  Future<AppUser?> completeMicrosoftSignIn(SsoConfig config) async {
+    final idToken = await _sso.complete(config);
+    if (idToken == null) return null;
+    final json = await _api.post(
+      '/auth/sso',
+      body: <String, dynamic>{'ms_id_token': idToken},
+    ) as Map<String, dynamic>;
+
+    await _api.setTokens(
+      json['access_token'] as String?,
+      json['refresh_token'] as String?,
     );
+    return ApiUserRepository(_api)
+        ._userFromWire(json['user'] as Map<String, dynamic>);
   }
 
   @override

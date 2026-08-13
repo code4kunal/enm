@@ -9,7 +9,13 @@ from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.errors import InactiveUser, NotFound, Unauthorized, ValidationError
 from app.models.user import RefreshToken, User
-from app.schemas.auth import LoginIn, RefreshIn, SSOLoginIn, TokenOut
+from app.schemas.auth import (
+    LoginIn,
+    RefreshIn,
+    SSOConfigOut,
+    SSOLoginIn,
+    TokenOut,
+)
 from app.schemas.user import ChangePasswordIn, UserOut
 from app.security import (
     create_access_token,
@@ -69,6 +75,28 @@ async def login(payload: LoginIn, request: Request, session: SessionDep) -> Toke
     if not user.is_active:
         raise InactiveUser("Account deactivated, contact site manager")
     return await issue_tokens(session, user, request.headers.get("User-Agent"))
+
+
+@router.get("/sso/config", response_model=SSOConfigOut)
+async def sso_config() -> SSOConfigOut:
+    """Whether this deployment offers Microsoft sign-in, and against what.
+
+    Public: it carries only the tenant and client identifiers that appear in
+    every authorize URL anyway, and the sign-in screen has to know this before
+    anyone could possibly have a token.
+
+    Served rather than compiled into the client so one build works against a
+    site that has SSO and one that does not, and so the button can hide itself
+    instead of failing when somebody taps it.
+    """
+    if not settings.sso_enabled:
+        return SSOConfigOut(enabled=False)
+    return SSOConfigOut(
+        enabled=True,
+        tenant_id=settings.ms_tenant_id,
+        client_id=settings.ms_client_id,
+        authority=f"https://login.microsoftonline.com/{settings.ms_tenant_id}",
+    )
 
 
 @router.post("/sso", response_model=TokenOut)

@@ -5,6 +5,7 @@ import '../data/repositories.dart';
 import '../models/app_user.dart';
 import '../models/site.dart';
 import 'providers.dart';
+import '../data/auth/ms_sso.dart';
 
 /// Where the user is in the sign-in flow.
 ///
@@ -85,11 +86,36 @@ class SessionController extends Notifier<SessionState> {
     if (state.error != null) state = state.copyWith(clearError: true);
   }
 
-  Future<void> signInWithMicrosoft() async {
+  /// Hands the browser to Microsoft. The page is replaced, so nothing after
+  /// this runs on success — [resumeMicrosoftSignIn] picks it up on the way
+  /// back.
+  Future<void> signInWithMicrosoft(SsoConfig config) async {
     if (state.signingIn) return;
     state = state.copyWith(signingIn: true, clearError: true);
     try {
-      await _onAuthenticated(await _auth.signInWithMicrosoft());
+      await _auth.beginMicrosoftSignIn(config);
+    } on ApiException catch (e) {
+      state = state.copyWith(signingIn: false, error: e.message);
+    }
+  }
+
+  /// Finishes a sign-in that a redirect started. A no-op on an ordinary load.
+  ///
+  /// Runs before the first frame so a returning user never sees the sign-in
+  /// card flash past on their way in.
+  Future<void> resumeMicrosoftSignIn(SsoConfig config) async {
+    // Whether this load is actually a redirect is the repository's to know —
+    // it returns null when it is not. Checking only that the deployment has
+    // SSO at all keeps that judgement in one place.
+    if (!config.enabled) return;
+    state = state.copyWith(signingIn: true, clearError: true);
+    try {
+      final user = await _auth.completeMicrosoftSignIn(config);
+      if (user == null) {
+        state = state.copyWith(signingIn: false);
+        return;
+      }
+      await _onAuthenticated(user);
     } on ApiException catch (e) {
       state = state.copyWith(signingIn: false, error: e.message);
     }
@@ -199,3 +225,13 @@ class SessionController extends Notifier<SessionState> {
 
 final sessionProvider =
     NotifierProvider<SessionController, SessionState>(SessionController.new);
+
+
+/// Whether this deployment offers Microsoft sign-in, asked once per launch.
+///
+/// The sign-in card waits on this rather than always showing the button: a
+/// button that fails when tapped is worse than no button, and this is the only
+/// way one build can serve a site with SSO and a site without.
+final ssoConfigProvider = FutureProvider<SsoConfig>((ref) {
+  return ref.watch(authRepositoryProvider).ssoConfig();
+});

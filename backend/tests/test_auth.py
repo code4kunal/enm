@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import PASSWORD, auth_headers
@@ -90,4 +91,113 @@ async def test_deactivated_user_is_403_and_tokens_revoked(client: AsyncClient) -
 
 async def test_sso_without_config_is_rejected(client: AsyncClient) -> None:
     r = await client.post("/auth/sso", json={"ms_id_token": "x" * 40})
+    assert r.status_code in (400, 401)
+
+
+# --- refusing to start with an unsafe configuration --------------------------
+
+
+def test_development_boots_with_the_shipped_defaults() -> None:
+    """Otherwise nobody can run the thing locally."""
+    from app.config import Settings
+
+    assert Settings(environment="development").problems() == []
+
+
+def test_production_refuses_the_placeholder_secret() -> None:
+    """The one that matters: a forged token is indistinguishable from a real
+    one, so a placeholder secret is a silent total compromise."""
+    from app.config import ConfigurationError, Settings
+
+    settings = Settings(
+        environment="production", cors_origins=["https://em.transvolt.in"]
+    )
+    problems = " ".join(settings.problems())
+    assert "JWT_SECRET" in problems
+
+    with pytest.raises(ConfigurationError) as caught:
+        settings.assert_production_ready()
+    assert "Refusing to start" in str(caught.value)
+
+
+def test_production_refuses_a_short_secret() -> None:
+    from app.config import Settings
+
+    settings = Settings(environment="production", jwt_secret="tooshort")
+    assert any("shorter than" in p for p in settings.problems())
+
+
+def test_production_refuses_wildcard_cors_and_debug_and_http() -> None:
+    from app.config import Settings
+
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 48,
+        cors_origins=["*"],
+        debug=True,
+        public_base_url="http://em.transvolt.in",
+    )
+    problems = settings.problems()
+    assert any("CORS_ORIGINS" in p for p in problems)
+    assert any("DEBUG" in p for p in problems)
+    assert any("https" in p for p in problems)
+
+
+def test_a_fully_configured_production_starts() -> None:
+    from app.config import Settings
+
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 48,
+        cors_origins=["https://em.transvolt.in"],
+        public_base_url="https://em.transvolt.in",
+    )
+    assert settings.problems() == []
+    settings.assert_production_ready()
+
+
+def test_staging_is_held_to_the_same_bar() -> None:
+    """Staging holds real data and real credentials."""
+    from app.config import Settings
+
+    assert Settings(environment="staging").problems()
+
+
+# --- Microsoft sign-in -------------------------------------------------------
+
+
+async def test_sso_config_says_off_when_not_configured(
+    client: AsyncClient,
+) -> None:
+    """So the sign-in card can drop the button rather than offer one that
+    fails when tapped."""
+    r = await client.get("/auth/sso/config")
+    assert r.status_code == 200, r.text
+    assert r.json()["enabled"] is False
+
+
+async def test_sso_config_needs_no_token(client: AsyncClient) -> None:
+    """It is read by the sign-in screen, before anyone could have one."""
+    r = await client.get("/auth/sso/config")
+    assert r.status_code == 200
+
+
+async def test_sso_config_reports_the_tenant_when_configured(
+    client: AsyncClient, monkeypatch
+) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "ms_tenant_id", "tenant-123", raising=False)
+    monkeypatch.setattr(settings, "ms_client_id", "client-456", raising=False)
+
+    body = (await client.get("/auth/sso/config")).json()
+    assert body["enabled"] is True
+    assert body["tenant_id"] == "tenant-123"
+    assert body["client_id"] == "client-456"
+    assert body["authority"] == "https://login.microsoftonline.com/tenant-123"
+    assert "openid" in body["scopes"]
+
+
+async def test_an_unverifiable_sso_token_is_refused(client: AsyncClient) -> None:
+    r = await client.post("/auth/sso", json={"ms_id_token": "not.a.token"})
     assert r.status_code in (400, 401)

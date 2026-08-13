@@ -28,6 +28,10 @@ logger = logging.getLogger("enm")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Before anything binds a port or opens a pool: a placeholder secret or a
+    # wildcard CORS policy is a compromise, not a warning.
+    settings.assert_production_ready()
+
     scheduler: AsyncIOScheduler | None = None
     jobs = settings.notifications_enabled and settings.breakdown_sla_enabled
     if jobs or settings.odometer_sync_enabled or settings.schedule_generator_enabled:

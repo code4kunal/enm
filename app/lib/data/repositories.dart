@@ -1,5 +1,10 @@
 import 'package:flutter/foundation.dart';
 
+export 'api_exception.dart';
+
+import 'api_exception.dart';
+import 'auth/ms_sso.dart';
+
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
@@ -13,23 +18,7 @@ import '../models/site_import.dart';
 /// a stub; swapping in HTTP clients is a change to `state/providers.dart` and
 /// nothing above it.
 
-/// Raised for anything the user should see as an inline message rather than a
-/// crash: bad credentials, a deactivated account, a duplicate code, a rejected
-/// import. The message is safe to render verbatim.
-class ApiException implements Exception {
-  const ApiException(this.message, {this.fields = const <String, String>{}});
 
-  final String message;
-
-  /// Field-level errors keyed by form field, when the server supplies them.
-  final Map<String, String> fields;
-
-  @override
-  String toString() => message;
-}
-
-/// Kept for call sites that read as authentication failures.
-typedef AuthException = ApiException;
 
 // ─── Sites ────────────────────────────────────────────────────────────────
 
@@ -580,7 +569,17 @@ abstract interface class UserRepository {
 /// Microsoft Entra ID (MSAL) for staff with a Transvolt mail ID, plus a
 /// credential path for ground staff who have none.
 abstract interface class AuthRepository {
-  Future<AppUser> signInWithMicrosoft();
+  /// Whether this deployment offers Microsoft sign-in. Never throws — a
+  /// sign-in screen that cannot reach the server still offers the password
+  /// form.
+  Future<SsoConfig> ssoConfig();
+
+  /// Sends the browser to Microsoft. Does not return on success: the page is
+  /// replaced, and the app finishes the job on the next load.
+  Future<void> beginMicrosoftSignIn(SsoConfig config);
+
+  /// Finishes a redirect from Microsoft. Null when this load is not one.
+  Future<AppUser?> completeMicrosoftSignIn(SsoConfig config);
 
   Future<AppUser> signInWithCredentials({
     required String userId,

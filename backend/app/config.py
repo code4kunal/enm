@@ -6,6 +6,20 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+#: The default in `.env.example`. Present so the app runs out of the box for
+#: development, and refused at startup anywhere else.
+INSECURE_JWT_SECRET = "change-me-in-production"
+
+#: Environments that must be fully configured before the app will serve.
+PRODUCTION_ENVIRONMENTS = frozenset({"production", "prod", "staging"})
+
+#: The shortest secret worth having for HS256.
+MIN_JWT_SECRET_LENGTH = 32
+
+
+class ConfigurationError(RuntimeError):
+    """The app is not safe to start with the configuration it was given."""
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -27,7 +41,11 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
 
     # --- auth ---
-    jwt_secret: str = "change-me-in-production"
+    #: Never ship this value. `assert_production_ready` refuses to start with
+    #: it outside development — a forged token is indistinguishable from a real
+    #: one, so a placeholder secret is a silent total compromise rather than a
+    #: visible failure.
+    jwt_secret: str = INSECURE_JWT_SECRET
     jwt_algorithm: str = "HS256"
     # Ground staff sessions: 24h access token, 30d refresh.
     access_token_ttl_seconds: int = 86_400
@@ -98,6 +116,63 @@ class Settings(BaseSettings):
         if not self.ms_tenant_id:
             return None
         return f"https://login.microsoftonline.com/{self.ms_tenant_id}/discovery/v2.0/keys"
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() in PRODUCTION_ENVIRONMENTS
+
+    @property
+    def sso_enabled(self) -> bool:
+        return bool(self.ms_tenant_id and self.ms_client_id)
+
+    def problems(self) -> list[str]:
+        """Everything that makes this configuration unsafe to serve.
+
+        Returned rather than raised so the caller can report all of them at
+        once — finding these one redeploy at a time is how a rollout stalls.
+        """
+        found: list[str] = []
+        if not self.is_production:
+            return found
+
+        if self.jwt_secret == INSECURE_JWT_SECRET:
+            found.append(
+                "JWT_SECRET is still the development placeholder. Anyone who "
+                "has read the repository can mint valid tokens for any user."
+            )
+        elif len(self.jwt_secret) < MIN_JWT_SECRET_LENGTH:
+            found.append(
+                f"JWT_SECRET is shorter than {MIN_JWT_SECRET_LENGTH} characters."
+            )
+
+        if "*" in self.cors_origins:
+            found.append(
+                "CORS_ORIGINS is '*'. Name the origins that may call this API."
+            )
+
+        if self.debug:
+            found.append("DEBUG is on, which leaks stack traces to clients.")
+
+        if not self.public_base_url.startswith("https://"):
+            found.append(
+                f"PUBLIC_BASE_URL is {self.public_base_url!r} — not https, so "
+                "passwords and tokens cross the wire in clear."
+            )
+        return found
+
+    def assert_production_ready(self) -> None:
+        """Refuse to start rather than serve with a known-bad configuration.
+
+        A misspelled environment variable would otherwise boot a perfectly
+        healthy-looking API that anyone can forge a token for. Failing loudly
+        at startup is the only version of this that gets noticed.
+        """
+        problems = self.problems()
+        if problems:
+            raise ConfigurationError(
+                f"Refusing to start in environment {self.environment!r}:\n  - "
+                + "\n  - ".join(problems)
+            )
 
 
 @lru_cache
