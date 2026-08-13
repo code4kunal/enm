@@ -6,44 +6,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../repositories.dart';
 
-/// Where the API lives, and whether to use it at all.
+/// Where the API lives.
 ///
-/// Both come from `--dart-define` so a build can be pointed at a real backend
+/// From `--dart-define` so a build can be pointed at a different backend
 /// without a code change:
 ///
 /// ```sh
 /// flutter run -d chrome \
-///   --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
-///   --dart-define=USE_API=true
+///   --dart-define=API_BASE_URL=http://localhost:8123/api/v1
 /// ```
+///
+/// There is no offline mode. Every screen reads from the database through this
+/// client; nothing is served from fixtures.
 abstract final class ApiConfig {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:8123/api/v1',
   );
-
-  /// Off by default so the app runs standalone against the in-memory fakes.
-  static const bool useApi = bool.fromEnvironment('USE_API');
 }
 
-/// What the connected backend can actually do.
-///
-/// The client speaks the site vocabulary throughout. A backend that still
-/// speaks `depot` and has no site/config/import endpoints is detected once at
-/// sign-in, and the features it lacks fail with a message that says so rather
-/// than a raw 404.
-class ApiCapabilities {
-  ApiCapabilities({this.siteManagement = false});
-
-  /// True once `/sites` answers — i.e. the site rename and the config/import
-  /// endpoints have landed.
-  bool siteManagement;
-
-  /// Query parameter naming the tenant. Flips to `site` with the rename.
-  String get scopeParam => siteManagement ? 'site' : 'depot';
-}
-
-/// Thrown when the connected backend predates a feature.
+/// Thrown when a whole route family 404s — the API is older than this client.
 class UnsupportedByBackend extends ApiException {
   const UnsupportedByBackend(super.message);
 }
@@ -56,8 +38,6 @@ class ApiClient {
 
   final String baseUrl;
   final http.Client _http;
-
-  final ApiCapabilities capabilities = ApiCapabilities();
 
   String? _accessToken;
   String? _refreshToken;
@@ -106,19 +86,6 @@ class ApiClient {
   }
 
   Future<void> clearTokens() => setTokens(null, null);
-
-  /// Probes for the site-era endpoints. Safe to call more than once.
-  Future<void> detectCapabilities() async {
-    try {
-      await get('/sites');
-      capabilities.siteManagement = true;
-    } on UnsupportedByBackend {
-      capabilities.siteManagement = false;
-    } on ApiException {
-      // Auth or transport trouble — leave the previous verdict alone rather
-      // than downgrading a capable backend on a transient failure.
-    }
-  }
 
   // ─── Verbs ──────────────────────────────────────────────────────────────
 
@@ -273,11 +240,11 @@ class ApiClient {
       }
     }
 
-    // A 404 on a whole route family means the backend predates the feature.
+    // A 404 on a whole route family means the API is older than this client.
     if (status == 404 && message == 'Not Found') {
       throw const UnsupportedByBackend(
-        'This backend does not support that yet — run the site-management '
-        'migration on the API.',
+        'This backend does not have that endpoint — it is older than this '
+        'build of the app.',
       );
     }
     if (status == 401) throw ApiException(message, fields: fields);

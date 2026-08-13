@@ -12,11 +12,19 @@ class UserOut(BaseModel):
     user_id: str
     email: str | None
     role: Role
-    depot_access: list[str]
+    #: empty and ignored for a super admin, who reaches every site
+    site_access: list[str]
     is_active: bool
     must_reset_password: bool = False
     created_at: ISTDateTime | None = None
     last_login_at: ISTDateTime | None = None
+
+
+class UserCreatedOut(UserOut):
+    """Create/reset echo the generated password exactly once — the admin reads
+    it aloud to a mechanic and it is never retrievable again."""
+
+    temp_password: str | None = None
 
 
 class UserBrief(BaseModel):
@@ -32,7 +40,8 @@ class UserCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     email: EmailStr | None = None
     role: Role
-    depot_access: list[str] = Field(min_length=1)
+    #: a super admin needs none; every other role needs at least one
+    site_access: list[str] = Field(default_factory=list)
     temp_password: str | None = Field(default=None, min_length=6, max_length=128)
 
     @field_validator("user_id")
@@ -45,9 +54,9 @@ class UserCreate(BaseModel):
     def _strip_name(cls, v: str) -> str:
         return v.strip()
 
-    @field_validator("depot_access")
+    @field_validator("site_access")
     @classmethod
-    def _normalize_depots(cls, v: list[str]) -> list[str]:
+    def _normalize_sites(cls, v: list[str]) -> list[str]:
         seen: list[str] = []
         for code in v:
             code = code.strip().upper()
@@ -61,16 +70,16 @@ class UserUpdate(BaseModel):
     user_id: str | None = Field(default=None, min_length=1, max_length=64)
     email: EmailStr | None = None
     role: Role | None = None
-    depot_access: list[str] | None = Field(default=None, min_length=1)
+    site_access: list[str] | None = None
 
     @field_validator("user_id")
     @classmethod
     def _normalize_user_id(cls, v: str | None) -> str | None:
         return v.strip().upper() if v else v
 
-    @field_validator("depot_access")
+    @field_validator("site_access")
     @classmethod
-    def _normalize_depots(cls, v: list[str] | None) -> list[str] | None:
+    def _normalize_sites(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return None
         seen: list[str] = []
@@ -82,7 +91,12 @@ class UserUpdate(BaseModel):
 
 
 class ResetPasswordIn(BaseModel):
-    temp_password: str = Field(min_length=6, max_length=128)
+    #: omitted means the server generates one and returns it once
+    temp_password: str | None = Field(default=None, min_length=6, max_length=128)
+
+
+class TempPasswordOut(BaseModel):
+    temp_password: str
 
 
 class ChangePasswordIn(BaseModel):

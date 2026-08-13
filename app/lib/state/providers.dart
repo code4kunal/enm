@@ -2,9 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/api/api_client.dart';
 import '../data/api/api_repositories.dart';
-import '../data/fake/fake_repositories.dart';
-import '../data/fake/fake_site_repositories.dart';
-import '../data/fake/fake_store.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
@@ -12,69 +9,54 @@ import 'session.dart';
 
 /// Single wiring point for the data layer.
 ///
-/// `--dart-define=USE_API=true` swaps every repository from the in-memory fakes
-/// to the HTTP implementations in `data/api/`. Nothing above this file changes.
+/// Every repository resolves to its HTTP implementation in `data/api/`. There
+/// are no in-memory fakes and no demo seed: what the screens show is what is in
+/// the database. Point a build at a different API with
+/// `--dart-define=API_BASE_URL=...`.
 
-/// Whether this build talks to a real backend. Overridable in tests.
-final useApiProvider = Provider<bool>((ref) => ApiConfig.useApi);
-
-/// The shared in-memory database behind every fake. One instance so an import
-/// changes the fleet the entry form offers, and signing in scopes what is
-/// visible.
-final fakeStoreProvider = Provider<FakeStore>((ref) => FakeStore());
-
-/// HTTP transport, created once so the access token and the capability probe
-/// are shared by every repository.
+/// HTTP transport, created once so the access token is shared by every
+/// repository.
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient();
   ref.onDispose(client.close);
   return client;
 });
 
-/// Picks the live or fake implementation of one repository.
-T _pick<T>(Ref ref, T Function(ApiClient) live, T Function(FakeStore) fake) =>
-    ref.watch(useApiProvider)
-        ? live(ref.watch(apiClientProvider))
-        : fake(ref.watch(fakeStoreProvider));
-
 final masterDataRepositoryProvider = Provider<MasterDataRepository>(
-  (ref) => _pick(ref, ApiMasterDataRepository.new, FakeMasterDataRepository.new),
+  (ref) => ApiMasterDataRepository(ref.watch(apiClientProvider)),
 );
 
 final entryRepositoryProvider = Provider<EntryRepository>(
-  (ref) => _pick(ref, ApiEntryRepository.new, FakeEntryRepository.new),
+  (ref) => ApiEntryRepository(ref.watch(apiClientProvider)),
 );
 
 final userRepositoryProvider = Provider<UserRepository>(
-  (ref) => _pick(ref, ApiUserRepository.new, FakeUserRepository.new),
+  (ref) => ApiUserRepository(ref.watch(apiClientProvider)),
 );
 
 final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => _pick(ref, ApiAuthRepository.new, FakeAuthRepository.new),
+  (ref) => ApiAuthRepository(ref.watch(apiClientProvider)),
 );
 
 final siteRepositoryProvider = Provider<SiteRepository>(
-  (ref) => _pick(ref, ApiSiteRepository.new, FakeSiteRepository.new),
+  (ref) => ApiSiteRepository(ref.watch(apiClientProvider)),
 );
 
 final vehicleRepositoryProvider = Provider<VehicleRepository>(
-  (ref) => _pick(ref, ApiVehicleRepository.new, FakeVehicleRepository.new),
+  (ref) => ApiVehicleRepository(ref.watch(apiClientProvider)),
 );
 
 final siteConfigRepositoryProvider = Provider<SiteConfigRepository>(
-  (ref) => _pick(ref, ApiSiteConfigRepository.new, FakeSiteConfigRepository.new),
+  (ref) => ApiSiteConfigRepository(ref.watch(apiClientProvider)),
 );
 
 final importRepositoryProvider = Provider<ImportRepository>(
-  (ref) => _pick(ref, ApiImportRepository.new, FakeImportRepository.new),
+  (ref) => ApiImportRepository(ref.watch(apiClientProvider)),
 );
 
-/// What the connected backend supports. Meaningless in fake mode, where every
-/// feature is present.
-final backendCapabilitiesProvider = Provider<ApiCapabilities>((ref) {
-  if (!ref.watch(useApiProvider)) return ApiCapabilities(siteManagement: true);
-  return ref.watch(apiClientProvider).capabilities;
-});
+final inspectionRepositoryProvider = Provider<InspectionRepository>(
+  (ref) => ApiInspectionRepository(ref.watch(apiClientProvider)),
+);
 
 // ─── Derived reference data ───────────────────────────────────────────────
 
@@ -113,6 +95,7 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     repo.vehicleNumbers(siteCode: site),
     repo.defectSources(),
     repo.defectTypes(),
+    repo.staff(siteCode: site),
   ]);
 
   return MasterData(
@@ -120,6 +103,7 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     vehicles: results[1],
     defectSources: results[2],
     defectTypes: results[3],
+    staff: results[4],
   );
 });
 
@@ -133,7 +117,7 @@ final siteVehiclesProvider = FutureProvider<List<Vehicle>>((ref) {
       .fetchVehicles(siteCode: site, includeInactive: true);
 });
 
-/// Docking and charging parameters for the active site.
+/// The preventive-maintenance configuration for the active site.
 final siteConfigProvider = FutureProvider<SiteConfig>((ref) {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   if (site.isEmpty) {

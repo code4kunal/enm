@@ -3,8 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:transvolt_em/data/fake/csv_source.dart';
-import 'package:transvolt_em/data/fake/seed.dart';
+import 'support/csv_source.dart';
+import 'support/harness.dart';
+import 'support/seed.dart';
 import 'package:transvolt_em/data/import_targets.dart';
 import 'package:transvolt_em/models/site_import.dart';
 import 'package:transvolt_em/state/imports.dart';
@@ -15,7 +16,7 @@ import 'package:transvolt_em/state/sites.dart';
 Uint8List csv(String text) => Uint8List.fromList(utf8.encode(text));
 
 Future<ProviderContainer> signedIn([String userId = 'TV4021']) async {
-  final container = ProviderContainer();
+  final container = fakeContainer();
   addTearDown(container.dispose);
   await container
       .read(sessionProvider.notifier)

@@ -1,1 +1,1 @@
-{"items":["Driver report","Daily inspection","PM schedule","Breakdown","Depot supervisor","Other"]}
+{"items":[{"id":1,"name":"Driver report","is_active":true,"sort_order":0},{"id":2,"name":"Daily inspection","is_active":true,"sort_order":1},{"id":3,"name":"PM schedule","is_active":true,"sort_order":2},{"id":4,"name":"Breakdown","is_active":true,"sort_order":3},{"id":5,"name":"Site supervisor","is_active":true,"sort_order":4},{"id":6,"name":"Telematics alert","is_active":true,"sort_order":5},{"id":7,"name":"Other","is_active":true,"sort_order":6}]}

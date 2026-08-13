@@ -37,6 +37,7 @@ class WorkDoneData(_DataBase):
     attended_details: OptText = None
     spare_parts_used: OptText = None
     employee: OptText = None
+    supervisor: OptText = None
 
 
 class CoolantData(_DataBase):
@@ -44,6 +45,7 @@ class CoolantData(_DataBase):
     bcs_litres: Decimal | None = Field(default=None, ge=0, le=999999)
     tcs_litres: Decimal | None = Field(default=None, ge=0, le=999999)
     topped_by: OptText = None
+    supervisor: OptText = None
 
 
 class DriverComplaintData(_DataBase):
@@ -52,6 +54,7 @@ class DriverComplaintData(_DataBase):
     complaint: Req = Field(min_length=1)
     rectification_action: OptText = None
     mechanic: OptText = None
+    supervisor: OptText = None
 
 
 class BreakdownData(_DataBase):
@@ -65,6 +68,7 @@ class BreakdownData(_DataBase):
     loss_km: Decimal | None = Field(default=None, ge=0, le=999999)
     attended_details: OptText = None
     remarks: OptText = None
+    supervisor: OptText = None
 
 
 class PMScheduleData(_DataBase):
@@ -75,6 +79,7 @@ class PMScheduleData(_DataBase):
     balance_job_reason: OptText = None
     spare_parts_used: OptText = None
     employees: OptText = None
+    supervisor: OptText = None
 
 
 REGISTER_DATA_SCHEMAS: dict[Register, type[_DataBase]] = {
@@ -91,12 +96,12 @@ REGISTER_DATA_SCHEMAS: dict[Register, type[_DataBase]] = {
 
 class EntryCreate(BaseModel):
     register: Register
-    depot: str = Field(min_length=1, max_length=16)
+    site: str = Field(min_length=1, max_length=16)
     date: date_t
     entry_time: HHMM | None = None
     data: dict[str, Any]
 
-    @field_validator("depot")
+    @field_validator("site")
     @classmethod
     def _upper(cls, v: str) -> str:
         return v.strip().upper()
@@ -111,9 +116,11 @@ class EntryUpdate(BaseModel):
 class EntryOut(BaseModel):
     id: str
     register: Register
-    depot: str
+    site: str
     date: date_t
     entry_time: HHMM | None
+    #: Who did the work, per the register. Falls back to `created_by.name`.
+    entered_by: str = ""
     created_by: UserBrief
     created_at: ISTDateTime
     updated_at: ISTDateTime | None
@@ -128,7 +135,7 @@ class PhotoOut(BaseModel):
 
 class SummaryOut(BaseModel):
     date: date_t
-    depot: str
+    site: str
     total_today: int
     by_register: dict[str, int]
     open_breakdowns: int

@@ -402,15 +402,36 @@ class _SiteStage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(sessionProvider.notifier);
     final sites = session.availableSites;
+    final user = session.user;
+    // Nothing to pick on a fresh install; a super admin goes straight in to
+    // onboard the first site.
+    final onboarding = sites.isEmpty && (user?.governsAllSites ?? false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const SizedBox(height: 28),
         Text(
-          'Welcome, ${session.user?.name ?? ''} — select your site',
+          onboarding
+              ? 'Welcome, ${user?.name ?? ''} — no sites yet'
+              : 'Welcome, ${user?.name ?? ''} — select your site',
           style: AppText.sans(size: 14, weight: FontWeight.w600),
         ),
+        if (onboarding) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            'Onboard the first one from Admin → Sites.',
+            style: AppText.sans(size: 13, color: T.muted, height: 1.4),
+          ),
+        ],
+        if (sites.isEmpty && !onboarding) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            'No site has been assigned to you yet — ask a super admin for '
+            'access.',
+            style: AppText.sans(size: 13, color: T.muted, height: 1.4),
+          ),
+        ],
         const SizedBox(height: 14),
         // Two-column grid of the sites this user has access to.
         LayoutBuilder(
@@ -440,8 +461,10 @@ class _SiteStage extends ConsumerWidget {
         ),
         const SizedBox(height: 20),
         FilledActionButton(
-          label: 'Continue to ${session.site}',
-          onPressed: session.site.isEmpty ? null : controller.enterApp,
+          label: onboarding ? 'Continue' : 'Continue to ${session.site}',
+          onPressed: (session.site.isEmpty && !onboarding)
+              ? null
+              : controller.enterApp,
           expand: true,
         ),
       ],

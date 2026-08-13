@@ -1,11 +1,24 @@
 from fastapi import APIRouter
 
-from app.api import admin, auth, entries, health, master, notifications
+from app.api import (
+    admin,
+    auth,
+    entries,
+    health,
+    imports,
+    inspections,
+    master,
+    notifications,
+    sites,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(sites.router)
 api_router.include_router(master.router)
+api_router.include_router(imports.router)
+api_router.include_router(inspections.router)
 api_router.include_router(entries.router)
 api_router.include_router(admin.router)
 api_router.include_router(notifications.router)

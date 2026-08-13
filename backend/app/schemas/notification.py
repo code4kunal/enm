@@ -12,7 +12,7 @@ class NotificationOut(BaseModel):
     title: str
     body: str
     entry_id: str | None
-    depot: str | None = Field(default=None, alias="depot_code")
+    site: str | None = Field(default=None, alias="site_code")
     is_read: bool
     created_at: ISTDateTime
 

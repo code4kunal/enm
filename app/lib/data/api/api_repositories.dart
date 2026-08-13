@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../../models/app_user.dart';
 import '../../models/entry.dart';
+import '../../models/inspection.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
@@ -32,29 +33,19 @@ class ApiMasterDataRepository implements MasterDataRepository {
   final ApiClient _api;
 
   @override
-  Future<List<String>> siteCodes() async {
-    final path = _api.capabilities.siteManagement ? '/sites' : '/master/depots';
-    return itemsOf(await _api.get(path))
-        .where((j) => j['is_active'] as bool? ?? true)
-        .map((j) => j['code'] as String)
-        .toList();
-  }
+  Future<List<String>> siteCodes() async =>
+      itemsOf(await _api.get('/sites'))
+          .where((j) => j['is_active'] as bool? ?? true)
+          .map((j) => j['code'] as String)
+          .toList();
 
   @override
   Future<List<String>> vehicleNumbers({required String siteCode}) async {
-    if (_api.capabilities.siteManagement) {
-      final json = await _api.get('/sites/$siteCode/vehicles',
-          query: const <String, String>{'active': 'true'});
-      return itemsOf(json).map((j) => j['registration_no'] as String).toList();
-    }
-    final json = await _api.get(
-      '/master/buses',
-      query: <String, String>{_api.capabilities.scopeParam: siteCode},
-    );
-    return itemsOf(json)
-        .where((j) => j['is_active'] as bool? ?? true)
-        .map((j) => j['bus_no'] as String)
-        .toList();
+    // Only active vehicles: a retired one stays on past entries but must not
+    // be offered on a new one.
+    final json = await _api.get('/sites/$siteCode/vehicles',
+        query: const <String, String>{'active': 'true'});
+    return itemsOf(json).map((j) => j['registration_no'] as String).toList();
   }
 
   @override
@@ -66,23 +57,19 @@ class ApiMasterDataRepository implements MasterDataRepository {
       _names(await _api.get('/master/defect-types'));
 
   @override
+  Future<List<String>> staff({required String siteCode}) async {
+    final json = await _api.get(
+      '/master/staff',
+      query: <String, String>{'site': siteCode},
+    );
+    return itemsOf(json).map((j) => j['name'] as String).toList();
+  }
+
+  @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {
     final json = await _api.get(_masterPath(kind),
         query: const <String, String>{'include_inactive': 'true'});
-    final raw = _rawItems(json);
-    return <MasterListItem>[
-      for (var i = 0; i < raw.length; i++)
-        if (raw[i] is Map<String, dynamic>)
-          MasterListItem.fromJson(raw[i] as Map<String, dynamic>)
-        else
-          // A legacy backend returns bare strings with no id or flags.
-          MasterListItem(
-            id: raw[i].toString(),
-            name: raw[i].toString(),
-            isActive: true,
-            sortOrder: i,
-          ),
-    ];
+    return itemsOf(json).map(MasterListItem.fromJson).toList();
   }
 
   @override
@@ -115,32 +102,12 @@ class ApiMasterDataRepository implements MasterDataRepository {
           ? '/master/defect-sources'
           : '/master/defect-types';
 
-  /// The master lists come back as bare strings on the current API and as
-  /// objects once they become editable; accept both.
-  ///
-  /// Written as a loop rather than a collection-if: nesting an `if` inside a
-  /// collection-`if` makes the `else` bind to the inner one.
-  static List<String> _names(dynamic json) {
-    final out = <String>[];
-    for (final item in _rawItems(json)) {
-      if (item is Map<String, dynamic>) {
-        if (item['is_active'] as bool? ?? true) {
-          out.add(item['name'] as String);
-        }
-      } else {
-        out.add(item.toString());
-      }
-    }
-    return out;
-  }
-
-  static List<dynamic> _rawItems(dynamic json) {
-    if (json is List) return json;
-    if (json is Map<String, dynamic> && json['items'] is List) {
-      return json['items'] as List<dynamic>;
-    }
-    return const <dynamic>[];
-  }
+  /// Names for a dropdown. The server already filters inactive rows here; the
+  /// flag is re-checked so a stale response cannot reintroduce a hidden value.
+  static List<String> _names(dynamic json) => itemsOf(json)
+      .where((j) => j['is_active'] as bool? ?? true)
+      .map((j) => j['name'] as String)
+      .toList();
 }
 
 // ─── Sites ────────────────────────────────────────────────────────────────
@@ -151,21 +118,8 @@ class ApiSiteRepository implements SiteRepository {
   final ApiClient _api;
 
   @override
-  Future<List<Site>> fetchSites() async {
-    if (_api.capabilities.siteManagement) {
-      return itemsOf(await _api.get('/sites')).map(Site.fromJson).toList();
-    }
-    // Legacy backend: depots are read-only labels with no lifecycle.
-    return itemsOf(await _api.get('/master/depots'))
-        .map(
-          (j) => Site(
-            code: j['code'] as String,
-            name: j['name'] as String? ?? j['code'] as String,
-            isActive: true,
-          ),
-        )
-        .toList();
-  }
+  Future<List<Site>> fetchSites() async =>
+      itemsOf(await _api.get('/sites')).map(Site.fromJson).toList();
 
   @override
   Future<Site> createSite({
@@ -175,7 +129,6 @@ class ApiSiteRepository implements SiteRepository {
     String address = '',
     String? commissionedOn,
   }) async {
-    _requireSiteManagement();
     final json = await _api.post('/sites', body: <String, dynamic>{
       'code': code,
       'name': name,
@@ -188,14 +141,12 @@ class ApiSiteRepository implements SiteRepository {
 
   @override
   Future<Site> updateSite(Site site) async {
-    _requireSiteManagement();
     final json = await _api.put('/sites/${site.code}', body: site.toJson());
     return Site.fromJson(json as Map<String, dynamic>);
   }
 
   @override
   Future<Site> setActive(String code, bool active) async {
-    _requireSiteManagement();
     final json = await _api.post(
       '/sites/$code/${active ? 'activate' : 'deactivate'}',
     );
@@ -209,14 +160,6 @@ class ApiSiteRepository implements SiteRepository {
     return sites.any((s) => s.code.toUpperCase() == needle);
   }
 
-  void _requireSiteManagement() {
-    if (!_api.capabilities.siteManagement) {
-      throw const UnsupportedByBackend(
-        'This API version has fixed depots. Site onboarding needs the '
-        'site-management release.',
-      );
-    }
-  }
 }
 
 // ─── Vehicles ─────────────────────────────────────────────────────────────
@@ -231,29 +174,11 @@ class ApiVehicleRepository implements VehicleRepository {
     required String siteCode,
     bool includeInactive = false,
   }) async {
-    if (_api.capabilities.siteManagement) {
-      final json = await _api.get(
-        '/sites/$siteCode/vehicles',
-        query: <String, String>{'include_inactive': '$includeInactive'},
-      );
-      return itemsOf(json).map(Vehicle.fromJson).toList();
-    }
-    // Legacy: the bus master is read-only and carries no id or specs.
     final json = await _api.get(
-      '/master/buses',
-      query: <String, String>{_api.capabilities.scopeParam: siteCode},
+      '/sites/$siteCode/vehicles',
+      query: <String, String>{'include_inactive': '$includeInactive'},
     );
-    return itemsOf(json)
-        .where((j) => includeInactive || (j['is_active'] as bool? ?? true))
-        .map(
-          (j) => Vehicle(
-            id: j['bus_no'] as String,
-            registrationNo: j['bus_no'] as String,
-            siteCode: siteCode,
-            isActive: j['is_active'] as bool? ?? true,
-          ),
-        )
-        .toList();
+    return itemsOf(json).map(Vehicle.fromJson).toList();
   }
 
   @override
@@ -264,7 +189,6 @@ class ApiVehicleRepository implements VehicleRepository {
     String model = '',
     double? batteryCapacityKwh,
   }) async {
-    _requireSiteManagement();
     final json = await _api.post(
       '/sites/$siteCode/vehicles',
       body: <String, dynamic>{
@@ -279,7 +203,6 @@ class ApiVehicleRepository implements VehicleRepository {
 
   @override
   Future<Vehicle> updateVehicle(Vehicle vehicle) async {
-    _requireSiteManagement();
     final json = await _api.put(
       '/sites/${vehicle.siteCode}/vehicles/${vehicle.id}',
       body: vehicle.toJson(),
@@ -289,7 +212,6 @@ class ApiVehicleRepository implements VehicleRepository {
 
   @override
   Future<Vehicle> setActive(String id, bool active) async {
-    _requireSiteManagement();
     final json = await _api.post(
       '/vehicles/$id/${active ? 'activate' : 'deactivate'}',
     );
@@ -298,7 +220,6 @@ class ApiVehicleRepository implements VehicleRepository {
 
   @override
   Future<OdometerSyncResult> syncOdometers({required String siteCode}) async {
-    _requireSiteManagement();
     final json = await _api.post('/sites/$siteCode/vehicles/odometer/sync');
     return OdometerSyncResult.fromJson(json as Map<String, dynamic>);
   }
@@ -308,7 +229,6 @@ class ApiVehicleRepository implements VehicleRepository {
     required String vehicleId,
     required int odometerKm,
   }) async {
-    _requireSiteManagement();
     final json = await _api.put(
       '/vehicles/$vehicleId/odometer',
       body: <String, dynamic>{'odometer_km': odometerKm},
@@ -323,7 +243,6 @@ class ApiVehicleRepository implements VehicleRepository {
     required int odometerKm,
     required String servicedOn,
   }) async {
-    _requireSiteManagement();
     final json = await _api.post(
       '/vehicles/$vehicleId/services',
       body: <String, dynamic>{
@@ -335,14 +254,6 @@ class ApiVehicleRepository implements VehicleRepository {
     return Vehicle.fromJson(json as Map<String, dynamic>);
   }
 
-  void _requireSiteManagement() {
-    if (!_api.capabilities.siteManagement) {
-      throw const UnsupportedByBackend(
-        'This API version has a read-only bus master. Fleet editing needs the '
-        'site-management release.',
-      );
-    }
-  }
 }
 
 // ─── Site config ──────────────────────────────────────────────────────────
@@ -354,14 +265,12 @@ class ApiSiteConfigRepository implements SiteConfigRepository {
 
   @override
   Future<SiteConfig> fetchConfig(String siteCode) async {
-    _require();
     final json = await _api.get('/sites/$siteCode/config');
     return SiteConfig.fromJson(json as Map<String, dynamic>);
   }
 
   @override
   Future<SiteConfig> saveConfig(SiteConfig config) async {
-    _require();
     final json = await _api.put(
       '/sites/${config.siteCode}/config',
       body: config.toJson(),
@@ -369,13 +278,6 @@ class ApiSiteConfigRepository implements SiteConfigRepository {
     return SiteConfig.fromJson(json as Map<String, dynamic>);
   }
 
-  void _require() {
-    if (!_api.capabilities.siteManagement) {
-      throw const UnsupportedByBackend(
-        'Docking configuration needs the site-management release.',
-      );
-    }
-  }
 }
 
 // ─── Imports ──────────────────────────────────────────────────────────────
@@ -387,7 +289,6 @@ class ApiImportRepository implements ImportRepository {
 
   @override
   Future<List<ImportProfile>> fetchProfiles(String siteCode) async {
-    _require();
     return itemsOf(await _api.get('/sites/$siteCode/import-profiles'))
         .map(ImportProfile.fromJson)
         .toList();
@@ -395,7 +296,6 @@ class ApiImportRepository implements ImportRepository {
 
   @override
   Future<ImportProfile> saveProfile(ImportProfile profile) async {
-    _require();
     final base = '/sites/${profile.siteCode}/import-profiles';
     // A draft id is client-minted; the server assigns the real one on create.
     final json = profile.id.startsWith('draft-')
@@ -406,7 +306,6 @@ class ApiImportRepository implements ImportRepository {
 
   @override
   Future<void> deleteProfile(String profileId) async {
-    _require();
     await _api.delete('/import-profiles/$profileId');
   }
 
@@ -418,7 +317,6 @@ class ApiImportRepository implements ImportRepository {
     String? sheetName,
     int headerRow = 1,
   }) async {
-    _require();
     final json = await _api.upload(
       '/sites/$siteCode/imports/inspect',
       field: 'file',
@@ -438,7 +336,6 @@ class ApiImportRepository implements ImportRepository {
     required String fileName,
     required Uint8List bytes,
   }) async {
-    _require();
     final json = await _api.upload(
       '/sites/${profile.siteCode}/imports/preview',
       field: 'file',
@@ -461,7 +358,6 @@ class ApiImportRepository implements ImportRepository {
     required String siteCode,
     required String token,
   }) async {
-    _require();
     final json = await _api.post(
       '/sites/$siteCode/imports/commit',
       body: <String, dynamic>{'token': token},
@@ -471,7 +367,6 @@ class ApiImportRepository implements ImportRepository {
 
   @override
   Future<List<ImportRun>> fetchRuns(String siteCode) async {
-    _require();
     return itemsOf(await _api.get('/sites/$siteCode/imports'))
         .map(ImportRun.fromJson)
         .toList();
@@ -483,13 +378,6 @@ class ApiImportRepository implements ImportRepository {
         profile.mappings.where((m) => m.isBound).map((m) => m.toJson()).toList(),
       );
 
-  void _require() {
-    if (!_api.capabilities.siteManagement) {
-      throw const UnsupportedByBackend(
-        'Data import needs the site-management release.',
-      );
-    }
-  }
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────
@@ -504,7 +392,7 @@ class ApiEntryRepository implements EntryRepository {
     final json = await _api.get(
       '/entries',
       query: <String, String>{
-        _api.capabilities.scopeParam: site,
+        'site': site,
         'page_size': '200',
       },
     );
@@ -515,7 +403,7 @@ class ApiEntryRepository implements EntryRepository {
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     final json = await _api.post('/entries', body: <String, dynamic>{
       'register': _registerToWire[entry.registerId],
-      _api.capabilities.scopeParam: entry.site,
+      'site': entry.site,
       'date': entry.date,
       'entry_time': entry.time,
       'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
@@ -562,10 +450,14 @@ class ApiEntryRepository implements EntryRepository {
       registerId: registerId,
       date: json['date'] as String,
       time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
-      site: (json['site'] ?? json['depot']) as String,
-      enteredBy: createdBy is Map<String, dynamic>
-          ? (createdBy['name'] as String? ?? '')
-          : (createdBy?.toString() ?? ''),
+      site: json['site'] as String,
+      // Who did the work, per the register — not the account that typed it.
+      // The server resolves it and falls back to the author itself.
+      enteredBy: (json['entered_by'] as String?)?.trim().isNotEmpty ?? false
+          ? json['entered_by'] as String
+          : (createdBy is Map<String, dynamic>
+              ? (createdBy['name'] as String? ?? '')
+              : (createdBy?.toString() ?? '')),
       data: data,
       // The API distinguishes done from resolved; the tracker only cares
       // whether a breakdown is still open.
@@ -582,9 +474,6 @@ class ApiUserRepository implements UserRepository {
   ApiUserRepository(this._api);
 
   final ApiClient _api;
-
-  String get _accessKey =>
-      _api.capabilities.siteManagement ? 'site_access' : 'depot_access';
 
   @override
   Future<List<AppUser>> fetchUsers() async {
@@ -609,7 +498,7 @@ class ApiUserRepository implements UserRepository {
       'user_id': userId,
       'email': email.isEmpty ? null : email,
       'role': role.wireName,
-      _accessKey: sites,
+      'site_access': sites,
       if (password != null && password.isNotEmpty) 'temp_password': password,
     }) as Map<String, dynamic>;
 
@@ -630,7 +519,7 @@ class ApiUserRepository implements UserRepository {
         'user_id': user.userId,
         'email': user.email.isEmpty ? null : user.email,
         'role': user.role.wireName,
-        if (!user.governsAllSites) _accessKey: user.sites,
+        if (!user.governsAllSites) 'site_access': user.sites,
       },
     );
     return _userFromWire(json as Map<String, dynamic>);
@@ -677,8 +566,7 @@ class ApiUserRepository implements UserRepository {
         email: json['email'] as String? ?? '',
         role: UserRole.fromWire(json['role'] as String?),
         sites: List<String>.from(
-          (json['site_access'] ?? json['depot_access']) as List<dynamic>? ??
-              <dynamic>[],
+          json['site_access'] as List<dynamic>? ?? <dynamic>[],
         ),
         active: json['is_active'] as bool? ?? true,
         mustResetPassword: json['must_reset_password'] as bool? ?? false,
@@ -715,9 +603,6 @@ class ApiAuthRepository implements AuthRepository {
       json['access_token'] as String?,
       json['refresh_token'] as String?,
     );
-    // Which features exist depends on the backend release; ask once per session.
-    await _api.detectCapabilities();
-
     return ApiUserRepository(_api)
         ._userFromWire(json['user'] as Map<String, dynamic>);
   }
@@ -741,5 +626,110 @@ class ApiAuthRepository implements AuthRepository {
       // A dead session is still a successful sign-out from the user's side.
     }
     await _api.clearTokens();
+  }
+}
+
+// ─── Inspection schedule ──────────────────────────────────────────────────
+
+class ApiInspectionRepository implements InspectionRepository {
+  ApiInspectionRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<InspectionCalendar> fetchCalendar({
+    required String siteCode,
+    required String from,
+    required String to,
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/inspections/calendar',
+      query: <String, String>{'from': from, 'to': to},
+    );
+    return InspectionCalendar.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<GenerationResult> generate(String siteCode) async {
+    final json = await _api.post('/sites/$siteCode/inspections/generate');
+    return GenerationResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InspectionSlot> createSlot({
+    required String siteCode,
+    required String vehicleId,
+    required int workTypeId,
+    required String scheduledOn,
+    String notes = '',
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/inspections/slots',
+      body: <String, dynamic>{
+        'vehicle_id': vehicleId,
+        'work_type_id': workTypeId,
+        'scheduled_on': scheduledOn,
+        'notes': notes,
+      },
+    );
+    return InspectionSlot.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InspectionSlot> updateSlot(
+    InspectionSlot slot, {
+    String? scheduledOn,
+    SlotStatus? status,
+    String? notes,
+  }) async {
+    final json = await _api.put(
+      '/inspection-slots/${slot.id}',
+      body: <String, dynamic>{
+        if (scheduledOn != null) 'scheduled_on': scheduledOn,
+        if (status != null) 'status': status.name,
+        if (notes != null) 'notes': notes,
+      },
+    );
+    return InspectionSlot.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> deleteSlot(String slotId) =>
+      _api.delete('/inspection-slots/$slotId');
+
+  @override
+  Future<List<InspectionPlan>> fetchPlans(String siteCode) async =>
+      itemsOf(await _api.get('/sites/$siteCode/inspections/plans'))
+          .map(InspectionPlan.fromJson)
+          .toList();
+
+  @override
+  Future<List<InspectionPlan>> savePlans(
+    String siteCode,
+    List<InspectionPlan> plans,
+  ) async {
+    final json = await _api.put(
+      '/sites/$siteCode/inspections/plans',
+      body: <String, dynamic>{
+        'items': plans.map((p) => p.toJson()).toList(),
+      },
+    );
+    return itemsOf(json).map(InspectionPlan.fromJson).toList();
+  }
+
+  @override
+  Future<List<SiteAlert>> fetchAlerts(
+    String siteCode, {
+    String status = 'open',
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/alerts',
+        query: <String, String>{'status': status},
+      )).map(SiteAlert.fromJson).toList();
+
+  @override
+  Future<SiteAlert> acknowledgeAlert(String alertId) async {
+    final json = await _api.post('/alerts/$alertId/acknowledge');
+    return SiteAlert.fromJson(json as Map<String, dynamic>);
   }
 }

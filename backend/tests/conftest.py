@@ -22,11 +22,13 @@ from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.models.enums import Role  # noqa: E402
-from app.models.master import Bus, DefectSource, DefectType, Depot  # noqa: E402
-from app.models.user import User, UserDepotAccess  # noqa: E402
+from app.models.master import DefectSource, DefectType, Site, Vehicle  # noqa: E402
+from app.models.user import User, UserSiteAccess  # noqa: E402
 from app.security import hash_password  # noqa: E402
 
 PASSWORD = "Test@1234"
+#: The seeded super admin, which reaches every site without a grant.
+SUPER_ADMIN = "TV1001"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -58,8 +60,11 @@ async def _clean() -> AsyncIterator[None]:
                 "TRUNCATE audit_logs, notifications, device_tokens, refresh_tokens, "
                 "work_done_entries, coolant_entries, driver_complaint_entries, "
                 "breakdown_entries, pm_schedule_entries, entries, "
-                "user_depot_access, users, buses, defect_sources, defect_types, depots "
-                "RESTART IDENTITY CASCADE"
+                "alerts, inspection_slots, inspection_plans, work_types, "
+                "site_import_runs, site_import_mappings, site_import_profiles, "
+                "service_plans, shift_windows, site_configs, odometer_readings, "
+                "user_site_access, users, vehicles, defect_sources, defect_types, "
+                "sites RESTART IDENTITY CASCADE"
             )
         )
     await _seed()
@@ -70,18 +75,20 @@ async def _seed() -> None:
     async with SessionLocal() as session:
         session.add_all(
             [
-                Depot(code="MBMT", name="Mira Bhayandar"),
-                Depot(code="UMT", name="Ulhasnagar"),
-                Depot(code="TDC", name="Thane Depot"),
+                Site(code="MBMT", name="Mira Bhayandar"),
+                Site(code="UMT", name="Ulhasnagar"),
+                Site(code="TDC", name="Thane Site"),
             ]
         )
         await session.flush()
         session.add_all(
             [
-                Bus(bus_no="MH40LY1894", depot_code="MBMT"),
-                Bus(bus_no="MH40LY1895", depot_code="MBMT"),
-                Bus(bus_no="MH40LY9999", depot_code="MBMT", is_active=False),
-                Bus(bus_no="MH05GX4410", depot_code="UMT"),
+                Vehicle(registration_no="MH40LY1894", site_code="MBMT"),
+                Vehicle(registration_no="MH40LY1895", site_code="MBMT"),
+                Vehicle(
+                    registration_no="MH40LY9999", site_code="MBMT", is_active=False
+                ),
+                Vehicle(registration_no="MH05GX4410", site_code="UMT"),
             ]
         )
         session.add_all(
@@ -99,14 +106,22 @@ async def _seed() -> None:
         session.add_all(
             [
                 User(
+                    name="Kunal Saxena",
+                    user_id="TV1001",
+                    role=Role.super_admin,
+                    password_hash=hash_password(PASSWORD),
+                    # A super admin's site_access is empty and ignored.
+                    site_links=[],
+                ),
+                User(
                     name="Rahul Sharma",
                     user_id="TV4021",
                     email="rahul.sharma@transvolt.in",
                     role=Role.manager,
                     password_hash=hash_password(PASSWORD),
-                    depot_links=[
-                        UserDepotAccess(depot_code="MBMT"),
-                        UserDepotAccess(depot_code="UMT"),
+                    site_links=[
+                        UserSiteAccess(site_code="MBMT"),
+                        UserSiteAccess(site_code="UMT"),
                     ],
                 ),
                 User(
@@ -114,14 +129,14 @@ async def _seed() -> None:
                     user_id="TV4102",
                     role=Role.supervisor,
                     password_hash=hash_password(PASSWORD),
-                    depot_links=[UserDepotAccess(depot_code="MBMT")],
+                    site_links=[UserSiteAccess(site_code="MBMT")],
                 ),
                 User(
                     name="Sunil Patil",
                     user_id="TV4105",
                     role=Role.executive,
                     password_hash=hash_password(PASSWORD),
-                    depot_links=[UserDepotAccess(depot_code="MBMT")],
+                    site_links=[UserSiteAccess(site_code="MBMT")],
                 ),
             ]
         )

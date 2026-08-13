@@ -12,7 +12,7 @@ TODAY = date.today().isoformat()
 def work_done(bus: str = "mh40 ly1894") -> dict:
     return {
         "register": "work_done",
-        "depot": "MBMT",
+        "site": "MBMT",
         "date": TODAY,
         "data": {
             "shift": "A",
@@ -30,7 +30,7 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
 def breakdown() -> dict:
     return {
         "register": "breakdown",
-        "depot": "MBMT",
+        "site": "MBMT",
         "date": TODAY,
         "data": {
             "bus_no": "MH40LY1895",
@@ -66,7 +66,7 @@ async def test_missing_required_field_returns_field_map(client: AsyncClient) -> 
     assert err["fields"]["reported_defects"] == "required"
 
 
-async def test_unknown_bus_for_depot_rejected(client: AsyncClient) -> None:
+async def test_unknown_bus_for_site_rejected(client: AsyncClient) -> None:
     h = await auth_headers(client)
     payload = work_done(bus="MH05GX4410")  # belongs to UMT
     r = await client.post("/entries", json=payload, headers=h)
@@ -80,15 +80,15 @@ async def test_inactive_bus_rejected(client: AsyncClient) -> None:
     assert r.status_code == 400
 
 
-async def test_depot_outside_access_is_403(client: AsyncClient) -> None:
+async def test_site_outside_access_is_403(client: AsyncClient) -> None:
     h = await auth_headers(client)
     payload = work_done()
-    payload["depot"] = "TDC"
+    payload["site"] = "TDC"
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "FORBIDDEN"
 
-    listed = await client.get("/entries", params={"depot": "TDC"}, headers=h)
+    listed = await client.get("/entries", params={"site": "TDC"}, headers=h)
     assert listed.status_code == 403
 
 
@@ -129,17 +129,17 @@ async def test_list_filters_by_register_and_status(client: AsyncClient) -> None:
     await client.post("/entries", json=work_done(), headers=h)
     await client.post("/entries", json=breakdown(), headers=h)
 
-    all_entries = await client.get("/entries", params={"depot": "MBMT"}, headers=h)
+    all_entries = await client.get("/entries", params={"site": "MBMT"}, headers=h)
     assert all_entries.json()["total"] == 2
 
     only_bd = await client.get(
-        "/entries", params={"depot": "MBMT", "register": "breakdown"}, headers=h
+        "/entries", params={"site": "MBMT", "register": "breakdown"}, headers=h
     )
     assert only_bd.json()["total"] == 1
 
     open_bd = await client.get(
         "/entries",
-        params={"depot": "MBMT", "register": "breakdown", "status": "open"},
+        params={"site": "MBMT", "register": "breakdown", "status": "open"},
         headers=h,
     )
     assert open_bd.json()["total"] == 1
@@ -151,17 +151,17 @@ async def test_free_text_search(client: AsyncClient) -> None:
     await client.post("/entries", json=breakdown(), headers=h)
 
     hit = await client.get(
-        "/entries", params={"depot": "MBMT", "q": "contactor"}, headers=h
+        "/entries", params={"site": "MBMT", "q": "contactor"}, headers=h
     )
     assert hit.json()["total"] == 1
 
     by_creator = await client.get(
-        "/entries", params={"depot": "MBMT", "q": "rahul"}, headers=h
+        "/entries", params={"site": "MBMT", "q": "rahul"}, headers=h
     )
     assert by_creator.json()["total"] == 2
 
     miss = await client.get(
-        "/entries", params={"depot": "MBMT", "q": "zzzznothing"}, headers=h
+        "/entries", params={"site": "MBMT", "q": "zzzznothing"}, headers=h
     )
     assert miss.json()["total"] == 0
 
@@ -174,12 +174,12 @@ async def test_period_today(client: AsyncClient) -> None:
     await client.post("/entries", json=old, headers=h)
 
     today = await client.get(
-        "/entries", params={"depot": "MBMT", "period": "today"}, headers=h
+        "/entries", params={"site": "MBMT", "period": "today"}, headers=h
     )
     assert today.json()["total"] == 1
 
     everything = await client.get(
-        "/entries", params={"depot": "MBMT", "period": "all"}, headers=h
+        "/entries", params={"site": "MBMT", "period": "all"}, headers=h
     )
     assert everything.json()["total"] == 2
 
@@ -189,7 +189,7 @@ async def test_summary_counts(client: AsyncClient) -> None:
     await client.post("/entries", json=work_done(), headers=h)
     await client.post("/entries", json=breakdown(), headers=h)
 
-    r = await client.get("/entries/summary", params={"depot": "MBMT"}, headers=h)
+    r = await client.get("/entries/summary", params={"site": "MBMT"}, headers=h)
     assert r.status_code == 200
     body = r.json()
     assert body["total_today"] == 2
@@ -281,12 +281,12 @@ async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)
 
-    r = await client.get("/entries/export", params={"depot": "MBMT"}, headers=h)
+    r = await client.get("/entries/export", params={"site": "MBMT"}, headers=h)
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     assert "transvolt-em-register-MBMT-" in r.headers["content-disposition"]
     lines = r.text.strip().splitlines()
-    assert lines[0] == "Register,Date,Depot,Bus No,Details,Entered By"
+    assert lines[0] == "Register,Date,Site,Bus No,Details,Entered By"
     assert "MH40LY1894" in lines[1]
     assert "Rahul Sharma (TV4021)" in lines[1]
 
@@ -297,7 +297,7 @@ async def test_coolant_and_pm_registers(client: AsyncClient) -> None:
         "/entries",
         json={
             "register": "coolant",
-            "depot": "MBMT",
+            "site": "MBMT",
             "date": TODAY,
             "data": {
                 "bus_no": "MH40LY1894",
@@ -315,7 +315,7 @@ async def test_coolant_and_pm_registers(client: AsyncClient) -> None:
         "/entries",
         json={
             "register": "pm_schedule",
-            "depot": "MBMT",
+            "site": "MBMT",
             "date": TODAY,
             "data": {
                 "bus_no": "MH40LY1894",
@@ -346,7 +346,7 @@ async def test_pagination(client: AsyncClient) -> None:
         await client.post("/entries", json=work_done(), headers=h)
 
     r = await client.get(
-        "/entries", params={"depot": "MBMT", "page": 2, "page_size": 2}, headers=h
+        "/entries", params={"site": "MBMT", "page": 2, "page_size": 2}, headers=h
     )
     body = r.json()
     assert body["total"] == 5
@@ -354,6 +354,6 @@ async def test_pagination(client: AsyncClient) -> None:
     assert len(body["items"]) == 2
 
     too_big = await client.get(
-        "/entries", params={"depot": "MBMT", "page_size": 500}, headers=h
+        "/entries", params={"site": "MBMT", "page_size": 500}, headers=h
     )
     assert too_big.status_code == 400

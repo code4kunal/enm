@@ -7,6 +7,8 @@ abstract final class Dates {
   static final _iso = DateFormat('yyyy-MM-dd');
   static final _clock = DateFormat('HH:mm');
   static final _long = DateFormat('EEE, d MMM yyyy', 'en_IN');
+  static final _month = DateFormat('MMM yyyy', 'en_IN');
+  static final _day = DateFormat('EEE d MMM', 'en_IN');
 
   /// `yyyy-MM-dd`, offset by [dayOffset] days from today.
   static String today([int dayOffset = 0]) =>
@@ -18,6 +20,53 @@ abstract final class Dates {
 
   /// "Mon, 13 Aug 2026" — the date line on Home.
   static String longToday() => _long.format(DateTime.now());
+
+  /// `yyyy-MM-dd` shifted by [days]. Calendar paging is built on this, so it
+  /// works in whole days and never carries a time component.
+  static String addDays(String isoDate, int days) {
+    final d = parse(isoDate);
+    if (d == null) return isoDate;
+    return _iso.format(DateTime(d.year, d.month, d.day + days));
+  }
+
+  /// Whole days from [from] to [to]; negative when [to] is earlier.
+  static int daysBetween(String from, String to) {
+    final a = parse(from);
+    final b = parse(to);
+    if (a == null || b == null) return 0;
+    return DateTime(b.year, b.month, b.day)
+        .difference(DateTime(a.year, a.month, a.day))
+        .inDays;
+  }
+
+  /// Monday=1 … Sunday=7, for laying out a calendar grid.
+  static int weekday(String isoDate) => parse(isoDate)?.weekday ?? 1;
+
+  /// "13" — the day number in its cell.
+  static String dayOfMonth(String isoDate) => isoDate.substring(8);
+
+  /// "Aug 2026" — the calendar's month heading.
+  static String monthLabel(String isoDate) {
+    final d = parse(isoDate);
+    return d == null ? isoDate : _month.format(d);
+  }
+
+  /// "Thu 13 Aug" — a day heading in the agenda.
+  static String dayLabel(String isoDate) {
+    final d = parse(isoDate);
+    return d == null ? isoDate : _day.format(d);
+  }
+
+  /// How a date reads relative to today, for the heading a supervisor scans.
+  static String relativeLabel(String isoDate) {
+    final delta = daysBetween(today(), isoDate);
+    return switch (delta) {
+      0 => 'Today',
+      1 => 'Tomorrow',
+      -1 => 'Yesterday',
+      _ => dayLabel(isoDate),
+    };
+  }
 
   static DateTime? parse(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return null;

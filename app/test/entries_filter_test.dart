@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:transvolt_em/data/fake/seed.dart';
+import 'support/harness.dart';
+import 'support/seed.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/state/entries.dart';
@@ -10,7 +11,7 @@ import 'package:transvolt_em/utils/dates.dart';
 /// Signs in against the fake auth repository and lands on MBMT, which is where
 /// the seed entries live.
 Future<ProviderContainer> signedInContainer() async {
-  final container = ProviderContainer();
+  final container = fakeContainer();
   addTearDown(container.dispose);
 
   await container
@@ -94,7 +95,7 @@ void main() {
         data: <String, String>{
           'bus': 'MH40LY1894',
           'date': Dates.today(),
-          'employee': 'S. Pawar / 4102',
+          'employee': 'Sanjay Pawar',
         },
       );
       final byMechanic = await notifier.create(
@@ -102,7 +103,7 @@ void main() {
         data: <String, String>{
           'bus': 'MH40LY1894',
           'date': Dates.today(),
-          'mechanic': 'A. Khan / 3987',
+          'mechanic': 'Arif Khan',
         },
       );
       final unattributed = await notifier.create(
@@ -110,8 +111,8 @@ void main() {
         data: <String, String>{'bus': 'MH40LY1894', 'date': Dates.today()},
       );
 
-      expect(byEmployee.enteredBy, 'S. Pawar / 4102');
-      expect(byMechanic.enteredBy, 'A. Khan / 3987');
+      expect(byEmployee.enteredBy, 'Sanjay Pawar');
+      expect(byMechanic.enteredBy, 'Arif Khan');
       // Falls back to the signed-in user.
       expect(unattributed.enteredBy, 'Rahul Sharma');
     });

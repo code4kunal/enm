@@ -11,7 +11,7 @@ async def test_health_needs_no_token(client: AsyncClient) -> None:
     assert r.json()["status"] == "ok"
 
 
-async def test_login_returns_user_and_depots(client: AsyncClient) -> None:
+async def test_login_returns_user_and_sites(client: AsyncClient) -> None:
     r = await client.post(
         "/auth/login", json={"user_id": "tv4021", "password": PASSWORD}
     )
@@ -19,7 +19,7 @@ async def test_login_returns_user_and_depots(client: AsyncClient) -> None:
     body = r.json()
     assert body["expires_in"] == 86400
     assert body["user"]["role"] == "manager"
-    assert body["user"]["depot_access"] == ["MBMT", "UMT"]
+    assert body["user"]["site_access"] == ["MBMT", "UMT"]
 
 
 async def test_login_bad_password_is_401(client: AsyncClient) -> None:

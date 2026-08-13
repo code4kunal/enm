@@ -144,7 +144,12 @@ class SessionController extends Notifier<SessionState> {
   void selectSite(String site) => state = state.copyWith(site: site);
 
   void enterApp() {
-    if (state.user == null || state.site.isEmpty) return;
+    final user = state.user;
+    if (user == null) return;
+    // A super admin may enter with no site: on a fresh install there are none
+    // yet, and Admin → Sites is where the first one gets onboarded. Everyone
+    // else works inside a site and needs one picked.
+    if (state.site.isEmpty && !user.governsAllSites) return;
     state = state.copyWith(stage: AuthStage.signedIn);
   }
 

@@ -1,10 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:transvolt_em/data/fake/seed.dart';
+import 'support/harness.dart';
+import 'support/seed.dart';
 import 'package:transvolt_em/state/session.dart';
 
 ProviderContainer makeContainer() {
-  final container = ProviderContainer();
+  final container = fakeContainer();
   addTearDown(container.dispose);
   return container;
 }

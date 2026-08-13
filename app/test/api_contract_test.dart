@@ -61,7 +61,7 @@ void main() {
         expect(e.registerId, 'coolant');
         expect(e.site, 'MBMT');
         expect(e.time, '09:29');
-        expect(e.enteredBy, 'Rahul Sharma');
+        expect(e.enteredBy, 'Kunal Saxena');
         expect(e.status, EntryStatus.done);
 
         // The server says bus_no / bcs_litres / topped_by; the form wants
@@ -124,7 +124,7 @@ void main() {
       );
 
       expect(sent['register'], 'coolant');
-      expect(sent['depot'], 'MBMT');
+      expect(sent['site'], 'MBMT');
       final data = sent['data'] as Map<String, dynamic>;
       expect(data['bus_no'], 'MH40LY1894');
       // Numbers go over as numbers, not strings.
@@ -209,16 +209,21 @@ void main() {
       });
       final users = await ApiUserRepository(client).fetchUsers();
 
-      expect(users, hasLength(1));
-      final u = users.single;
-      expect(u.name, 'Rahul Sharma');
-      expect(u.userId, 'TV4021');
-      expect(u.role, UserRole.manager);
-      expect(u.sites, <String>['MBMT', 'UMT']);
-      expect(u.active, isTrue);
+      final supervisor = users.firstWhere((u) => u.userId == 'TV4102');
+      expect(supervisor.name, 'Sanjay Pawar');
+      expect(supervisor.role, UserRole.supervisor);
+      expect(supervisor.sites, <String>['MBMT']);
+      expect(supervisor.active, isTrue);
       // A null email means "no mail ID", not the string "null".
-      expect(u.email, '');
-      expect(u.canUseSso, isFalse);
+      expect(supervisor.email, '');
+      expect(supervisor.canUseSso, isFalse);
+
+      // The super admin carries no grants and still reaches everything.
+      final admin = users.firstWhere((u) => u.userId == 'KUNAL');
+      expect(admin.role, UserRole.superAdmin);
+      expect(admin.sites, isEmpty);
+      expect(admin.canAccess('MBMT'), isTrue);
+      expect(admin.siteLabel, 'All sites');
     });
 
     test('role wire names round-trip', () {
@@ -232,66 +237,75 @@ void main() {
   });
 
   group('master data parsing', () {
-    test('depots, buses and defect lists parse', () async {
+    test('sites, vehicles and defect lists parse', () async {
       final client = clientServing(<String, ({int status, String body})>{
-        '/master/depots': ok('depots'),
-        '/master/buses': ok('buses'),
+        '/sites': ok('sites'),
+        '/sites/MBMT/vehicles': ok('vehicles'),
         '/master/defect-sources': ok('defect_sources'),
         '/master/defect-types': ok('defect_types'),
       });
       final master = ApiMasterDataRepository(client);
 
-      expect(await master.siteCodes(), <String>['MBMT', 'UMT']);
-      expect(await master.vehicleNumbers(siteCode: 'MBMT'), isNotEmpty);
-      expect(await master.defectSources(), isNotEmpty);
-      expect(await master.defectTypes(), isNotEmpty);
+      expect(await master.siteCodes(), <String>['MBMT']);
+      expect(
+        await master.vehicleNumbers(siteCode: 'MBMT'),
+        contains('MH40LY1894'),
+      );
+      expect(await master.defectSources(), contains('Driver report'));
+      expect(await master.defectTypes(), contains('Electrical / HV'));
+    });
+
+    test('the master lists come back as editable objects', () async {
+      final client = clientServing(<String, ({int status, String body})>{
+        '/master/defect-sources': ok('defect_sources'),
+      });
+      final items = await ApiMasterDataRepository(client)
+          .masterList(MasterListKind.defectSources);
+
+      // Ids and flags are what the master-data editor needs; a bare string
+      // list could not be edited or hidden.
+      expect(items.first.id, isNotEmpty);
+      expect(items.first.name, 'Driver report');
+      expect(items.first.isActive, isTrue);
     });
   });
 
-  group('capabilities', () {
-    test('a backend without /sites is detected as legacy', () async {
+  group('site management', () {
+    test('a site row carries its rollups', () async {
       final client = clientServing(<String, ({int status, String body})>{
-        '/master/depots': ok('depots'),
-      });
-      await client.detectCapabilities();
-
-      expect(client.capabilities.siteManagement, isFalse);
-      expect(client.capabilities.scopeParam, 'depot');
-    });
-
-    test('a backend with /sites unlocks site management', () async {
-      final client = clientServing(<String, ({int status, String body})>{
-        '/sites': (
-          status: 200,
-          body: jsonEncode(<String, dynamic>{
-            'items': <Map<String, dynamic>>[
-              <String, dynamic>{'code': 'MBMT', 'name': 'Mira', 'is_active': true},
-            ],
-          }),
-        ),
-      });
-      await client.detectCapabilities();
-
-      expect(client.capabilities.siteManagement, isTrue);
-      expect(client.capabilities.scopeParam, 'site');
-    });
-
-    test('legacy site fetch falls back to the depot master', () async {
-      final client = clientServing(<String, ({int status, String body})>{
-        '/master/depots': ok('depots'),
+        '/sites': ok('sites'),
       });
       final sites = await ApiSiteRepository(client).fetchSites();
-      expect(sites.map((s) => s.code), <String>['MBMT', 'UMT']);
+
+      final site = sites.single;
+      expect(site.code, 'MBMT');
+      expect(site.isActive, isTrue);
+      expect(site.vehicleCount, greaterThan(0));
     });
 
-    test('onboarding refuses clearly on a legacy backend', () async {
+    test('a vehicle with no reading reports unknown, not 0 km', () async {
       final client = clientServing(<String, ({int status, String body})>{
-        '/master/depots': ok('depots'),
+        '/sites/MBMT/vehicles': ok('vehicles'),
       });
-      await expectLater(
-        ApiSiteRepository(client).createSite(code: 'X', name: 'Y'),
-        throwsA(isA<UnsupportedByBackend>()),
-      );
+      final fleet =
+          await ApiVehicleRepository(client).fetchVehicles(siteCode: 'MBMT');
+
+      final never = fleet.firstWhere((v) => v.odometerUpdatedAt == null);
+      expect(never.hasOdometer, isFalse);
+    });
+
+    test('the docking config parses its plans and shifts', () async {
+      final client = clientServing(<String, ({int status, String body})>{
+        '/sites/MBMT/config': ok('site_config'),
+      });
+      final config = await ApiSiteConfigRepository(client).fetchConfig('MBMT');
+
+      expect(config.siteCode, 'MBMT');
+      expect(config.servicePlans.map((p) => p.code), containsAll(<String>['S1', 'S2']));
+      // The C shift wraps midnight, which the model has to survive.
+      final c = config.shifts.firstWhere((s) => s.shift == 'C');
+      expect(c.wrapsMidnight, isTrue);
+      expect(config.isValid, isTrue);
     });
   });
 
@@ -303,7 +317,7 @@ void main() {
 
       await expectLater(
         ApiAuthRepository(client)
-            .signInWithCredentials(userId: 'TV4021', password: 'nope'),
+            .signInWithCredentials(userId: 'KUNAL', password: 'nope'),
         throwsA(
           isA<ApiException>().having(
             (e) => e.message,
@@ -341,19 +355,21 @@ void main() {
   });
 
   group('auth', () {
-    test('login stores the tokens and probes capabilities', () async {
+    test('login stores the tokens', () async {
       final client = clientServing(<String, ({int status, String body})>{
         '/auth/login': ok('login'),
-        '/master/depots': ok('depots'),
       });
 
       final user = await ApiAuthRepository(client)
-          .signInWithCredentials(userId: 'tv4021', password: 'x');
+          .signInWithCredentials(userId: 'kunal', password: 'x');
 
-      expect(user.userId, 'TV4021');
+      expect(user.userId, 'KUNAL');
+      expect(user.role, UserRole.superAdmin);
+      // A super admin's site_access is empty and must stay empty — it reaches
+      // every site without a stored grant.
+      expect(user.sites, isEmpty);
+      expect(user.canAccess('ANY-SITE'), isTrue);
       expect(client.isAuthenticated, isTrue);
-      // /sites 404s in this fixture set, so it settles on legacy.
-      expect(client.capabilities.siteManagement, isFalse);
     });
 
     test('the login body upper-cases the User ID', () async {
@@ -366,8 +382,8 @@ void main() {
           ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
 
       await ApiAuthRepository(client)
-          .signInWithCredentials(userId: ' tv4021 ', password: 'x');
-      expect(sent['user_id'], 'TV4021');
+          .signInWithCredentials(userId: ' kunal ', password: 'x');
+      expect(sent['user_id'], 'KUNAL');
     });
   });
 }

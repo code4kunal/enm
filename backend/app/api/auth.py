@@ -30,7 +30,7 @@ def _user_out(user: User) -> UserOut:
         user_id=user.user_id,
         email=user.email,
         role=user.role,
-        depot_access=user.depot_access,
+        site_access=user.site_access,
         is_active=user.is_active,
         must_reset_password=user.must_reset_password,
         created_at=user.created_at,
@@ -67,7 +67,7 @@ async def login(payload: LoginIn, request: Request, session: SessionDep) -> Toke
     if user is None or not verify_password(payload.password, user.password_hash):
         raise Unauthorized("Invalid User ID or password")
     if not user.is_active:
-        raise InactiveUser("Account deactivated, contact depot manager")
+        raise InactiveUser("Account deactivated, contact site manager")
     return await issue_tokens(session, user, request.headers.get("User-Agent"))
 
 
@@ -81,7 +81,7 @@ async def sso_login(
     if user is None:
         raise NotFound(f"No E&M user record found for {email}")
     if not user.is_active:
-        raise InactiveUser("Account deactivated, contact depot manager")
+        raise InactiveUser("Account deactivated, contact site manager")
     return await issue_tokens(session, user, request.headers.get("User-Agent"))
 
 
@@ -101,7 +101,7 @@ async def refresh(
     if user is None:
         raise Unauthorized("Refresh token is invalid or expired")
     if not user.is_active:
-        raise InactiveUser("Account deactivated, contact depot manager")
+        raise InactiveUser("Account deactivated, contact site manager")
 
     # rotate: the presented token is burned, a fresh one is issued
     row.revoked_at = now

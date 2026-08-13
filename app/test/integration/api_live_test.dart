@@ -89,21 +89,15 @@ void main() {
     );
   });
 
-  test('capability probe decides which features are available', () async {
+  test('the site roster answers', () async {
     if (!online) return;
-    // Whatever the answer, it must be decided rather than left to a 404 later.
-    expect(client.capabilities.siteManagement, isA<bool>());
-    expect(
-      client.capabilities.scopeParam,
-      client.capabilities.siteManagement ? 'site' : 'depot',
-    );
-  });
-
-  test('sites resolve, legacy or not', () async {
-    if (!online) return;
+    // A fresh install has no sites at all, and that is a valid answer — the
+    // roster is built from the UI, not from a seed.
     final sites = await ApiSiteRepository(client).fetchSites();
-    expect(sites, isNotEmpty);
-    expect(sites.first.code, isNotEmpty);
+    for (final site in sites) {
+      expect(site.code, isNotEmpty);
+      expect(site.timezone, isNotEmpty);
+    }
   });
 
   test('master data resolves for the first site', () async {

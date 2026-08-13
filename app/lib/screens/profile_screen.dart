@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../data/repositories.dart';
 import '../router.dart';
-import '../state/providers.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -93,7 +92,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final user = session.user;
-    final live = ref.watch(useApiProvider);
 
     if (user == null) return const SizedBox.shrink();
 
@@ -278,9 +276,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           Text('Session', style: AppText.sectionTitle),
                           const SizedBox(height: 3),
                           Text(
-                            live
-                                ? 'Signed in against the live API.'
-                                : 'Offline demo — data lives in memory only.',
+                            'Signed in against the live API.',
                             style:
                                 AppText.sans(size: 13.5, color: T.secondary),
                           ),

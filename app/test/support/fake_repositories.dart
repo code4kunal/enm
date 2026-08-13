@@ -1,7 +1,7 @@
-import '../../models/app_user.dart';
-import '../../models/entry.dart';
-import '../../models/site.dart';
-import '../repositories.dart';
+import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/data/repositories.dart';
 import 'fake_store.dart';
 import 'seed.dart';
 
@@ -37,6 +37,13 @@ class FakeMasterDataRepository implements MasterDataRepository {
     await Future<void>.delayed(_latency);
     return _activeNames(_store.defectTypes);
   }
+
+  @override
+  Future<List<String>> staff({required String siteCode}) async =>
+      _store.users
+          .where((u) => u.active && u.canAccess(siteCode))
+          .map((u) => u.name)
+          .toList();
 
   @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {

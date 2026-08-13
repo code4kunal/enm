@@ -2,14 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
-import 'package:transvolt_em/data/fake/seed.dart';
+import 'support/harness.dart';
+import 'support/seed.dart';
 import 'package:transvolt_em/state/session.dart';
 import 'package:transvolt_em/state/users.dart';
 
 /// User lists are caller-scoped, so a test has to be signed in to see anyone.
 /// TV1001 is the seeded super admin and sees the whole estate.
 Future<ProviderContainer> makeContainer() async {
-  final container = ProviderContainer();
+  final container = fakeContainer();
   addTearDown(container.dispose);
   await container
       .read(sessionProvider.notifier)

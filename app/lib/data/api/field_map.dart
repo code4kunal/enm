@@ -20,12 +20,14 @@ abstract final class RegisterFieldMap {
       'attended': 'attended_details',
       'spares': 'spare_parts_used',
       'employee': 'employee',
+      'supervisor': 'supervisor',
     },
     'coolant': <String, String>{
       'bus': 'bus_no',
       'bcs': 'bcs_litres',
       'tcs': 'tcs_litres',
       'employee': 'topped_by',
+      'supervisor': 'supervisor',
     },
     'complaint': <String, String>{
       'bus': 'bus_no',
@@ -33,6 +35,7 @@ abstract final class RegisterFieldMap {
       'complaint': 'complaint',
       'action': 'rectification_action',
       'mechanic': 'mechanic',
+      'supervisor': 'supervisor',
     },
     'breakdown': <String, String>{
       'bus': 'bus_no',
@@ -45,6 +48,7 @@ abstract final class RegisterFieldMap {
       'loss': 'loss_km',
       'attended': 'attended_details',
       'remarks': 'remarks',
+      'supervisor': 'supervisor',
     },
     'pm': <String, String>{
       'bus': 'bus_no',
@@ -54,6 +58,7 @@ abstract final class RegisterFieldMap {
       'balance': 'balance_job_reason',
       'spares': 'spare_parts_used',
       'employee': 'employees',
+      'supervisor': 'supervisor',
     },
   };
 

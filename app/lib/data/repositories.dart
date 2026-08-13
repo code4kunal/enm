@@ -4,6 +4,7 @@ import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
+import '../models/inspection.dart';
 import '../models/site_import.dart';
 
 /// Contracts the UI is written against. Every implementation in `data/fake/` is
@@ -177,6 +178,9 @@ abstract interface class MasterDataRepository {
 
   Future<List<String>> defectTypes();
 
+  /// Active staff at a site, for the "attended by" and "supervisor" pickers.
+  Future<List<String>> staff({required String siteCode});
+
   /// Full rows, including inactive, for the master-data editor.
   Future<List<MasterListItem>> masterList(MasterListKind kind);
 
@@ -196,6 +200,7 @@ class MasterData {
     required this.vehicles,
     required this.defectSources,
     required this.defectTypes,
+    this.staff = const <String>[],
   });
 
   final List<String> sites;
@@ -205,11 +210,15 @@ class MasterData {
   final List<String> defectSources;
   final List<String> defectTypes;
 
+  /// The site's people, for the "attended by" and "supervisor" dropdowns.
+  final List<String> staff;
+
   static const empty = MasterData(
     sites: <String>[],
     vehicles: <String>[],
     defectSources: <String>[],
     defectTypes: <String>[],
+    staff: <String>[],
   );
 }
 
@@ -263,6 +272,54 @@ abstract interface class ImportRepository {
   });
 
   Future<List<ImportRun>> fetchRuns(String siteCode);
+}
+
+// ─── Inspection schedule ──────────────────────────────────────────────────
+
+/// The reactive inspection calendar and the alert log.
+///
+/// The server owns the planning: it reads what the registers say actually
+/// happened and lays out the rotation. The client shows the calendar, lets a
+/// manager adjust it, and can ask for a run rather than waiting for 22:00.
+abstract interface class InspectionRepository {
+  /// Bookings in a date range, grouped by day, empty days included.
+  Future<InspectionCalendar> fetchCalendar({
+    required String siteCode,
+    required String from,
+    required String to,
+  });
+
+  /// Runs the generator now. Safe to call repeatedly.
+  Future<GenerationResult> generate(String siteCode);
+
+  Future<InspectionSlot> createSlot({
+    required String siteCode,
+    required String vehicleId,
+    required int workTypeId,
+    required String scheduledOn,
+    String notes,
+  });
+
+  /// Any hand edit pins the slot so the generator stops moving it.
+  Future<InspectionSlot> updateSlot(
+    InspectionSlot slot, {
+    String? scheduledOn,
+    SlotStatus? status,
+    String? notes,
+  });
+
+  Future<void> deleteSlot(String slotId);
+
+  Future<List<InspectionPlan>> fetchPlans(String siteCode);
+
+  Future<List<InspectionPlan>> savePlans(
+    String siteCode,
+    List<InspectionPlan> plans,
+  );
+
+  Future<List<SiteAlert>> fetchAlerts(String siteCode, {String status});
+
+  Future<SiteAlert> acknowledgeAlert(String alertId);
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────

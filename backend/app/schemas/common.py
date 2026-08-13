@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time
+from decimal import Decimal
 from typing import Annotated, Generic, TypeVar
 from zoneinfo import ZoneInfo
 
@@ -39,6 +40,20 @@ HHMM = Annotated[
 ]
 #: Optional free-text field where "" from a mobile form means "not provided"
 OptText = Annotated[str | None, BeforeValidator(_blank_to_none)]
+
+
+def _decimal_out(value: Decimal | None) -> float | None:
+    return None if value is None else float(value)
+
+
+#: A decimal stored exactly and sent as a JSON number.
+#:
+#: Pydantic renders Decimal as a *string* by default, and the Dart client casts
+#: these to `num` — so "250.00" would blow up at the seam. Storage keeps the
+#: Decimal; only the wire form is a number.
+DecimalOut = Annotated[
+    Decimal | None, PlainSerializer(_decimal_out, return_type=float | None)
+]
 
 
 class Page(BaseModel, Generic[T]):

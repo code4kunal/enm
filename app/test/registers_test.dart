@@ -35,7 +35,8 @@ void main() {
         'Type of Defect',
         'Attended Details',
         'Spare Parts Used',
-        'Name & No. of Employee',
+        'Attended By',
+        'Supervisor (Floor)',
       ],
     );
   });

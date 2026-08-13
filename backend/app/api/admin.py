@@ -7,13 +7,20 @@ from fastapi import APIRouter, Query, status
 from sqlalchemy import func, or_, select, update
 
 from app.deps import ManagerUser, PageDep, SessionDep
-from app.errors import Conflict, NotFound, ValidationError
-from app.models.enums import AuditAction
-from app.models.master import Depot
-from app.models.user import RefreshToken, User, UserDepotAccess
+from app.errors import Conflict, Forbidden, NotFound, ValidationError
+from app.models.enums import AuditAction, Role
+from app.models.master import Site
+from app.models.user import RefreshToken, User, UserSiteAccess
 from app.schemas.common import Page
-from app.schemas.user import ResetPasswordIn, UserCreate, UserOut, UserUpdate
-from app.security import hash_password
+from app.schemas.user import (
+    ResetPasswordIn,
+    TempPasswordOut,
+    UserCreate,
+    UserCreatedOut,
+    UserOut,
+    UserUpdate,
+)
+from app.security import generate_temp_password, hash_password
 from app.services import audit, notifications
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
@@ -28,7 +35,7 @@ def _out(user: User) -> UserOut:
         user_id=user.user_id,
         email=user.email,
         role=user.role,
-        depot_access=user.depot_access,
+        site_access=user.site_access,
         is_active=user.is_active,
         must_reset_password=user.must_reset_password,
         created_at=user.created_at,
@@ -36,15 +43,61 @@ def _out(user: User) -> UserOut:
     )
 
 
-async def _assert_depots_exist(session: SessionDep, codes: list[str]) -> None:
+def _created_out(user: User, temp_password: str | None) -> UserCreatedOut:
+    return UserCreatedOut(**_out(user).model_dump(), temp_password=temp_password)
+
+
+async def _assert_sites_exist(session: SessionDep, codes: list[str]) -> None:
+    if not codes:
+        return
     found = set(
-        (await session.scalars(select(Depot.code).where(Depot.code.in_(codes)))).all()
+        (await session.scalars(select(Site.code).where(Site.code.in_(codes)))).all()
     )
     missing = [c for c in codes if c not in found]
     if missing:
         raise ValidationError(
-            f"Unknown depot(s): {', '.join(missing)}",
-            {"depot_access": "unknown depot code"},
+            f"Unknown site(s): {', '.join(missing)}",
+            {"site_access": "unknown site code"},
+        )
+
+
+def _assert_can_grant(actor: User, role: Role) -> None:
+    if not actor.can_grant(role):
+        raise Forbidden(
+            f"A {actor.role.value} cannot create a {role.value}",
+            {"role": "not grantable by your role"},
+        )
+
+
+def _assert_sites_within_reach(actor: User, codes: list[str]) -> None:
+    """A manager staffs its own sites only; a super admin reaches every site."""
+    if actor.is_super_admin:
+        return
+    outside = [c for c in codes if c not in actor.site_access]
+    if outside:
+        raise Forbidden(
+            f"You have no access to {', '.join(outside)}",
+            {"site_access": "outside your sites"},
+        )
+
+
+async def _assert_not_last_super_admin(session: SessionDep, user: User) -> None:
+    """The last active super admin may not be deactivated or demoted."""
+    if user.role is not Role.super_admin or not user.is_active:
+        return
+    remaining = await session.scalar(
+        select(func.count())
+        .select_from(User)
+        .where(
+            User.role == Role.super_admin,
+            User.is_active.is_(True),
+            User.id != user.id,
+        )
+    )
+    if not remaining:
+        raise Conflict(
+            "This is the last active super admin — promote another one first",
+            {"role": "last super admin"},
         )
 
 
@@ -86,13 +139,19 @@ async def _revoke_sessions(session: SessionDep, user_id: str) -> None:
 
 @router.get("", response_model=Page[UserOut])
 async def list_users(
-    _: ManagerUser,
+    actor: ManagerUser,
     session: SessionDep,
     page: PageDep,
     status_filter: Annotated[StatusQ, Query(alias="status")] = "all",
     q: Annotated[str | None, Query(max_length=120)] = None,
 ) -> Page[UserOut]:
+    """Every user for a super admin; users on the caller's sites otherwise."""
     stmt = select(User)
+    if not actor.is_super_admin:
+        reachable = select(UserSiteAccess.user_id).where(
+            UserSiteAccess.site_code.in_(actor.site_access or [""])
+        )
+        stmt = stmt.where(or_(User.id.in_(reachable), User.id == actor.id))
     if status_filter == "active":
         stmt = stmt.where(User.is_active.is_(True))
     elif status_filter == "inactive":
@@ -128,29 +187,36 @@ async def list_users(
     )
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserCreatedOut, status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreate, actor: ManagerUser, session: SessionDep
-) -> UserOut:
-    email = payload.email.lower() if payload.email else None
-    if email is None and not payload.temp_password:
+) -> UserCreatedOut:
+    _assert_can_grant(actor, payload.role)
+
+    # A super admin's site_access is empty and ignored — it reaches every site.
+    site_access = [] if payload.role is Role.super_admin else payload.site_access
+    if payload.role is not Role.super_admin and not site_access:
         raise ValidationError(
-            "A temporary password is required for User-ID accounts",
-            {"temp_password": "required"},
+            "Give the user at least one site", {"site_access": "required"}
         )
+    _assert_sites_within_reach(actor, site_access)
+    await _assert_sites_exist(session, site_access)
+
+    email = payload.email.lower() if payload.email else None
     await _assert_unique(session, user_id=payload.user_id, email=email)
-    await _assert_depots_exist(session, payload.depot_access)
+
+    # The password is echoed exactly once; the admin reads it aloud and it is
+    # never retrievable again.
+    temp_password = payload.temp_password or generate_temp_password()
 
     user = User(
         name=payload.name,
         user_id=payload.user_id,
         email=email,
         role=payload.role,
-        password_hash=(
-            hash_password(payload.temp_password) if payload.temp_password else None
-        ),
-        must_reset_password=bool(payload.temp_password),
-        depot_links=[UserDepotAccess(depot_code=c) for c in payload.depot_access],
+        password_hash=hash_password(temp_password),
+        must_reset_password=True,
+        site_links=[UserSiteAccess(site_code=c) for c in site_access],
     )
     session.add(user)
     await session.flush()
@@ -164,7 +230,7 @@ async def create_user(
     )
     await session.commit()
     await session.refresh(user)
-    return _out(user)
+    return _created_out(user, temp_password)
 
 
 @router.put("/{user_id}", response_model=UserOut)
@@ -177,12 +243,19 @@ async def update_user(
         "user_id": user.user_id,
         "email": user.email,
         "role": user.role.value,
-        "depot_access": user.depot_access,
+        "site_access": user.site_access,
     }
+    _assert_sites_within_reach(actor, user.site_access)
+
     email = payload.email.lower() if payload.email else None
     await _assert_unique(
         session, user_id=payload.user_id, email=email, exclude_id=user.id
     )
+
+    if payload.role is not None and payload.role is not user.role:
+        _assert_can_grant(actor, payload.role)
+        await _assert_not_last_super_admin(session, user)
+        user.role = payload.role
 
     if payload.name is not None:
         user.name = payload.name
@@ -190,14 +263,17 @@ async def update_user(
         user.user_id = payload.user_id
     if "email" in payload.model_fields_set:
         user.email = email
-    if payload.role is not None:
-        user.role = payload.role
-    if payload.depot_access is not None:
-        await _assert_depots_exist(session, payload.depot_access)
-        user.depot_links.clear()
+
+    if user.role is Role.super_admin:
+        # Its list is meaningless; keeping stale codes around would only mislead.
+        user.site_links.clear()
+    elif payload.site_access is not None:
+        _assert_sites_within_reach(actor, payload.site_access)
+        await _assert_sites_exist(session, payload.site_access)
+        user.site_links.clear()
         await session.flush()
-        user.depot_links = [
-            UserDepotAccess(depot_code=c) for c in payload.depot_access
+        user.site_links = [
+            UserSiteAccess(site_code=c) for c in payload.site_access
         ]
     user.updated_at = datetime.now(UTC)
 
@@ -213,7 +289,7 @@ async def update_user(
             "user_id": user.user_id,
             "email": user.email,
             "role": user.role.value,
-            "depot_access": payload.depot_access or before["depot_access"],
+            "site_access": user.site_access,
         },
     )
     await session.commit()
@@ -228,8 +304,10 @@ async def deactivate_user(
     user = await _load(session, user_id)
     if user.id == actor.id:
         raise Conflict("You cannot deactivate your own account")
+    _assert_sites_within_reach(actor, user.site_access)
     if not user.is_active:
         return _out(user)
+    await _assert_not_last_super_admin(session, user)
 
     user.is_active = False
     user.updated_at = datetime.now(UTC)
@@ -251,6 +329,7 @@ async def activate_user(
     user_id: str, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
+    _assert_sites_within_reach(actor, user.site_access)
     user.is_active = True
     user.updated_at = datetime.now(UTC)
     await audit.record(
@@ -271,12 +350,21 @@ async def activate_user(
     return _out(user)
 
 
-@router.post("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.post("/{user_id}/reset-password", response_model=TempPasswordOut)
 async def reset_password(
-    user_id: str, payload: ResetPasswordIn, actor: ManagerUser, session: SessionDep
-) -> None:
+    user_id: str,
+    actor: ManagerUser,
+    session: SessionDep,
+    payload: ResetPasswordIn | None = None,
+) -> TempPasswordOut:
+    """Returns the new password once — it is never retrievable again."""
     user = await _load(session, user_id)
-    user.password_hash = hash_password(payload.temp_password)
+    _assert_sites_within_reach(actor, user.site_access)
+
+    temp_password = (payload.temp_password if payload else None) or (
+        generate_temp_password()
+    )
+    user.password_hash = hash_password(temp_password)
     user.must_reset_password = True
     user.updated_at = datetime.now(UTC)
     await _revoke_sessions(session, user.id)
@@ -288,3 +376,4 @@ async def reset_password(
         object_id=user.id,
     )
     await session.commit()
+    return TempPasswordOut(temp_password=temp_password)

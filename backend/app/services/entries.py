@@ -22,16 +22,20 @@ from app.models.entry import (
     WorkDoneEntry,
 )
 from app.models.enums import EntryStatus, Register
-from app.models.master import Bus
+from app.models.master import Vehicle
 from app.models.user import User
 from app.schemas.entry import REGISTER_DATA_SCHEMAS
-from app.services.masters import resolve_bus, resolve_defect_source, resolve_defect_type
+from app.services.masters import (
+    resolve_defect_source,
+    resolve_defect_type,
+    resolve_vehicle,
+)
 
 IST = ZoneInfo(settings.timezone)
 
 
 def _now_ist() -> datetime:
-    """Entry times are depot wall-clock, not UTC."""
+    """Entry times are site wall-clock, not UTC."""
     return datetime.now(IST)
 
 
@@ -60,8 +64,15 @@ def validate_data(register: Register, raw: dict[str, Any]) -> Any:
 # --- search haystack -------------------------------------------------------
 
 
-def _search_text(entry: Entry, bus: Bus, creator: User, parts: list[Any]) -> str:
-    chunks = [bus.bus_no, entry.register.value, creator.name, creator.user_id]
+def _search_text(
+    entry: Entry, vehicle: Vehicle, creator: User, parts: list[Any]
+) -> str:
+    chunks = [
+        vehicle.registration_no,
+        entry.register.value,
+        creator.name,
+        creator.user_id,
+    ]
     chunks += [str(p) for p in parts if p not in (None, "")]
     return " ".join(chunks).lower()
 
@@ -84,6 +95,7 @@ async def _build_detail(
             attended_details=data.attended_details,
             spare_parts_used=data.spare_parts_used,
             employee=data.employee,
+            supervisor=data.supervisor,
         )
         return row, [
             data.reported_defects,
@@ -100,8 +112,9 @@ async def _build_detail(
             bcs_litres=data.bcs_litres,
             tcs_litres=data.tcs_litres,
             topped_by=data.topped_by,
+            supervisor=data.supervisor,
         )
-        return row, [data.topped_by]
+        return row, [data.topped_by, data.supervisor]
 
     if register is Register.driver_complaint:
         typ = await resolve_defect_type(session, data.defect_type)
@@ -110,6 +123,7 @@ async def _build_detail(
             complaint=data.complaint,
             rectification_action=data.rectification_action,
             mechanic=data.mechanic,
+            supervisor=data.supervisor,
         )
         return row, [
             data.complaint,
@@ -129,6 +143,7 @@ async def _build_detail(
             loss_km=data.loss_km,
             attended_details=data.attended_details,
             remarks=data.remarks,
+            supervisor=data.supervisor,
         )
         return row, [
             data.complaint,
@@ -146,6 +161,7 @@ async def _build_detail(
         balance_job_reason=data.balance_job_reason,
         spare_parts_used=data.spare_parts_used,
         employees=data.employees,
+        supervisor=data.supervisor,
     )
     return row, [
         data.defects_noticed,
@@ -161,29 +177,35 @@ async def create_entry(
     session: AsyncSession,
     *,
     register: Register,
-    depot_code: str,
+    site_code: str,
     entry_date: date_t,
     entry_time: time_t | None,
     raw_data: dict[str, Any],
     creator: User,
+    work_type_id: int | None = None,
 ) -> Entry:
     data = validate_data(register, raw_data)
-    bus = await resolve_bus(session, bus_no=data.bus_no, depot_code=depot_code)
+    vehicle = await resolve_vehicle(
+        session, registration_no=data.bus_no, site_code=site_code
+    )
 
     entry = Entry(
         register=register,
-        depot_code=depot_code,
-        bus=bus,
+        site_code=site_code,
+        vehicle=vehicle,
         entry_date=entry_date,
         entry_time=entry_time or _now_ist().time().replace(microsecond=0),
         status=(
             EntryStatus.open if register is Register.breakdown else EntryStatus.done
         ),
         created_by=creator,
+        # What kind of job this was. The scheduler reads it to see that a
+        # booked inspection actually happened.
+        work_type_id=work_type_id,
     )
     detail, searchable = await _build_detail(session, register, data)
     setattr(entry, register.value, detail)
-    entry.search_text = _search_text(entry, bus, creator, searchable)
+    entry.search_text = _search_text(entry, vehicle, creator, searchable)
 
     session.add(entry)
     await session.flush()
@@ -200,15 +222,15 @@ async def update_entry(
 ) -> Entry:
     """Replace the register payload wholesale (the UI submits the full form)."""
     data = validate_data(entry.register, raw_data)
-    bus = await resolve_bus(
-        session, bus_no=data.bus_no, depot_code=entry.depot_code
+    vehicle = await resolve_vehicle(
+        session, registration_no=data.bus_no, site_code=entry.site_code
     )
 
     if entry_date is not None:
         entry.entry_date = entry_date
     if entry_time is not None:
         entry.entry_time = entry_time
-    entry.bus = bus
+    entry.vehicle = vehicle
 
     old_detail = entry.detail
     if old_detail is not None:
@@ -218,7 +240,7 @@ async def update_entry(
 
     detail, searchable = await _build_detail(session, entry.register, data)
     setattr(entry, entry.register.value, detail)
-    entry.search_text = _search_text(entry, bus, entry.created_by, searchable)
+    entry.search_text = _search_text(entry, vehicle, entry.created_by, searchable)
     entry.updated_at = datetime.now(UTC)
 
     await session.flush()
@@ -238,7 +260,7 @@ def _hhmm(value: time_t | None) -> str | None:
 
 def serialize_data(entry: Entry) -> dict[str, Any]:
     """Rebuild the register-specific `data` object the UI posted."""
-    bus_no = entry.bus.bus_no
+    bus_no = entry.vehicle.registration_no
     d = entry.detail
     if d is None:  # defensive: orphaned header
         return {"bus_no": bus_no}
@@ -253,6 +275,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "attended_details": d.attended_details,
             "spare_parts_used": d.spare_parts_used,
             "employee": d.employee,
+            "supervisor": d.supervisor,
         }
     if entry.register is Register.coolant:
         return {
@@ -260,6 +283,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "bcs_litres": _num(d.bcs_litres),
             "tcs_litres": _num(d.tcs_litres),
             "topped_by": d.topped_by,
+            "supervisor": d.supervisor,
         }
     if entry.register is Register.driver_complaint:
         return {
@@ -268,6 +292,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "complaint": d.complaint,
             "rectification_action": d.rectification_action,
             "mechanic": d.mechanic,
+            "supervisor": d.supervisor,
         }
     if entry.register is Register.breakdown:
         return {
@@ -281,6 +306,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "loss_km": _num(d.loss_km),
             "attended_details": d.attended_details,
             "remarks": d.remarks,
+            "supervisor": d.supervisor,
             "resolved_at": (
                 d.resolved_at.isoformat() if d.resolved_at else None
             ),
@@ -293,14 +319,44 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
         "balance_job_reason": d.balance_job_reason,
         "spare_parts_used": d.spare_parts_used,
         "employees": d.employees,
+        "supervisor": d.supervisor,
     }
+
+
+#: The person each register names as having done the work. The register is a
+#: record of what a mechanic did, so that name — not the account that typed it
+#: in — is who the entry belongs to.
+REPORTER_COLUMN = {
+    Register.work_done: "employee",
+    Register.coolant: "topped_by",
+    Register.driver_complaint: "mechanic",
+    Register.breakdown: "attended_details",
+    Register.pm_schedule: "employees",
+}
+
+
+def reporter_name(entry: Entry) -> str:
+    """Who the entry is attributed to.
+
+    Falls back to the account that recorded it, which is the honest answer when
+    the register itself names nobody.
+    """
+    detail = entry.detail
+    if detail is not None:
+        column = REPORTER_COLUMN.get(entry.register)
+        if column and entry.register is not Register.breakdown:
+            value = (getattr(detail, column, None) or "").strip()
+            if value:
+                return value
+    return entry.created_by.name
 
 
 def serialize_entry(entry: Entry) -> dict[str, Any]:
     return {
         "id": entry.id,
+        "entered_by": reporter_name(entry),
         "register": entry.register,
-        "depot": entry.depot_code,
+        "site": entry.site_code,
         "date": entry.entry_date,
         "entry_time": entry.entry_time,
         "created_by": {
@@ -355,14 +411,14 @@ def resolve_period(
 def apply_filters(
     stmt: Select,
     *,
-    depot_code: str,
+    site_code: str,
     register: Register | None,
     date_from: date_t | None,
     date_to: date_t | None,
     q: str | None,
     status: EntryStatus | None,
 ) -> Select:
-    stmt = stmt.where(Entry.depot_code == depot_code)
+    stmt = stmt.where(Entry.site_code == site_code)
     if register is not None:
         stmt = stmt.where(Entry.register == register)
     if date_from is not None:

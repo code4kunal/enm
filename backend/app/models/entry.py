@@ -27,7 +27,7 @@ from app.models.enums import (
     Register,
     Shift,
 )
-from app.models.master import Bus, DefectSource, DefectType
+from app.models.master import DefectSource, DefectType, Vehicle, WorkType
 from app.models.user import User
 
 
@@ -39,10 +39,11 @@ def _entry_fk() -> Mapped[str]:
     )
 
 
-def _bus_fk(nullable: bool = False) -> Mapped[str]:
+def _vehicle_fk(nullable: bool = False) -> Mapped[str]:
+    """Column stays `bus_id` — the paper register says "Bus No"."""
     return mapped_column(
         String(32),
-        ForeignKey("buses.id", ondelete="RESTRICT"),
+        ForeignKey("vehicles.id", ondelete="RESTRICT"),
         nullable=nullable,
     )
 
@@ -52,15 +53,16 @@ class Entry(Base):
 
     Register-specific columns live in the five child tables below (strict
     relational modelling, no JSON blobs). `bus_id` and `search_text` are
-    deliberately denormalized onto the header: every register requires a bus,
+    deliberately denormalized onto the header: every register requires a vehicle,
     and free-text search must not fan out across five LEFT JOINs.
     """
 
     __tablename__ = "entries"
     __table_args__ = (
-        Index("ix_entries_depot_code_entry_date", "depot_code", "entry_date"),
+        Index("ix_entries_site_code_entry_date", "site_code", "entry_date"),
         Index("ix_entries_register_status", "register", "status"),
         Index("ix_entries_bus_id", "bus_id"),
+        Index("ix_entries_work_type_id_entry_date", "work_type_id", "entry_date"),
         Index("ix_entries_created_by_id", "created_by_id"),
         Index("ix_entries_entry_date_created_at", "entry_date", "created_at"),
         # backs the `q` free-text filter without fanning out over five joins
@@ -81,10 +83,16 @@ class Entry(Base):
         ),
         nullable=False,
     )
-    depot_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("depots.code", ondelete="RESTRICT"), nullable=False
+    site_code: Mapped[str] = mapped_column(
+        String(16), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
     )
-    bus_id: Mapped[str] = _bus_fk()
+    bus_id: Mapped[str] = _vehicle_fk()
+    # Which TYPE OF WORK this was. Null for entries typed straight into a
+    # register; set by the snag import and by completing a scheduled slot, and
+    # it is what lets the scheduler see an inspection actually happened.
+    work_type_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("work_types.id", ondelete="SET NULL"), nullable=True
+    )
     entry_date: Mapped[date_t] = mapped_column(Date, nullable=False)
     entry_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     status: Mapped[EntryStatus] = mapped_column(
@@ -107,7 +115,8 @@ class Entry(Base):
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
-    bus: Mapped[Bus] = relationship(lazy="joined")
+    vehicle: Mapped[Vehicle] = relationship(lazy="joined")
+    work_type: Mapped[WorkType | None] = relationship(lazy="joined")
     created_by: Mapped[User] = relationship(lazy="joined", foreign_keys=[created_by_id])
 
     work_done: Mapped[WorkDoneEntry | None] = relationship(
@@ -156,6 +165,9 @@ class WorkDoneEntry(Base):
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     spare_parts_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     employee: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Floor supervisor who signed the job off. A name, not an FK: the
+    # supervisor of a 2024 entry must still read correctly after they leave.
+    supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="work_done")
     defect_source: Mapped[DefectSource | None] = relationship(lazy="joined")
@@ -169,6 +181,9 @@ class CoolantEntry(Base):
     bcs_litres: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     tcs_litres: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     topped_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Floor supervisor who signed the job off. A name, not an FK: the
+    # supervisor of a 2024 entry must still read correctly after they leave.
+    supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="coolant")
 
@@ -183,6 +198,9 @@ class DriverComplaintEntry(Base):
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
     rectification_action: Mapped[str | None] = mapped_column(Text, nullable=True)
     mechanic: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Floor supervisor who signed the job off. A name, not an FK: the
+    # supervisor of a 2024 entry must still read correctly after they leave.
+    supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="driver_complaint")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
@@ -201,6 +219,9 @@ class BreakdownEntry(Base):
     loss_km: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Floor supervisor who signed the job off. A name, not an FK: the
+    # supervisor of a 2024 entry must still read correctly after they leave.
+    supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     resolved_by_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -226,6 +247,9 @@ class PMScheduleEntry(Base):
     balance_job_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     spare_parts_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     employees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Floor supervisor who signed the job off. A name, not an FK: the
+    # supervisor of a 2024 entry must still read correctly after they leave.
+    supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="pm_schedule")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")

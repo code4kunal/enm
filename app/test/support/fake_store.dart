@@ -1,13 +1,14 @@
 import 'dart:math';
 
-import '../../models/app_user.dart';
-import '../../models/entry.dart';
-import '../../models/site.dart';
-import '../../models/site_config.dart';
-import '../../models/site_import.dart';
-import '../../utils/dates.dart';
-import '../registers.dart';
-import '../repositories.dart';
+import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/site_config.dart';
+import 'package:transvolt_em/models/site_import.dart';
+import 'package:transvolt_em/utils/dates.dart';
+import 'package:transvolt_em/data/registers.dart';
+import 'package:transvolt_em/models/register.dart';
+import 'package:transvolt_em/data/repositories.dart';
 import 'seed.dart';
 
 /// One in-memory database shared by every fake repository.
@@ -250,7 +251,17 @@ void assertMasterValue(FakeStore store, RegisterEntry entry) {
     final value = entry.data[field.key];
     if (value == null || value.isEmpty) continue;
     if (field.optionsFrom == null) continue;
-    final list = field.optionsFrom!.name == 'defectSources'
+    if (field.optionsFrom == MasterList.staff) {
+      // Staff come from the site's roster, not an editable dropdown list.
+      final known = store.users.any(
+        (u) => u.active && u.name == value && u.canAccess(entry.site),
+      );
+      if (!known) {
+        throw ApiException('"$value" is not on the ${field.label} master list');
+      }
+      continue;
+    }
+    final list = field.optionsFrom == MasterList.defectSources
         ? store.defectSources
         : store.defectTypes;
     if (store.findMasterItem(list, value) == null) {

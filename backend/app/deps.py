@@ -31,7 +31,7 @@ async def current_user(request: Request, session: SessionDep) -> User:
     if user is None:
         raise Unauthorized("Invalid authentication token")
     if not user.is_active:
-        raise InactiveUser("Account deactivated, contact depot manager")
+        raise InactiveUser("Account deactivated, contact site manager")
     return user
 
 
@@ -39,7 +39,8 @@ CurrentUser = Annotated[User, Depends(current_user)]
 
 
 async def require_manager(user: CurrentUser) -> User:
-    if user.role is not Role.manager:
+    """Site administration: a manager over its own sites, or a super admin."""
+    if user.role not in (Role.super_admin, Role.manager):
         raise Forbidden("Manager role required")
     return user
 
@@ -47,22 +48,42 @@ async def require_manager(user: CurrentUser) -> User:
 ManagerUser = Annotated[User, Depends(require_manager)]
 
 
-def assert_depot_access(user: User, depot_code: str) -> str:
-    code = depot_code.strip().upper()
+async def require_super_admin(user: CurrentUser) -> User:
+    if not user.is_super_admin:
+        raise Forbidden("Super admin role required")
+    return user
+
+
+SuperAdminUser = Annotated[User, Depends(require_super_admin)]
+
+
+def assert_site_access(user: User, site_code: str) -> str:
+    """The only correct way to ask. Never read `site_access` directly — a super
+    admin has none and still reaches every site."""
+    code = site_code.strip().upper()
     if not user.can_access(code):
-        raise Forbidden(f"No access to depot {code}")
+        raise Forbidden(f"No access to site {code}")
     return code
 
 
-async def depot_param(
+def assert_site_admin(user: User, site_code: str) -> str:
+    """Maintaining a site's fleet, config and import profiles: super admin
+    anywhere, manager on its own sites."""
+    code = assert_site_access(user, site_code)
+    if user.role not in (Role.super_admin, Role.manager):
+        raise Forbidden("Manager role required")
+    return code
+
+
+async def site_param(
     user: CurrentUser,
-    depot: Annotated[str, Query(min_length=1, max_length=16)],
+    site: Annotated[str, Query(min_length=1, max_length=16)],
 ) -> str:
-    """Every scoped endpoint takes `?depot=` and validates it against depot_access."""
-    return assert_depot_access(user, depot)
+    """Every scoped endpoint takes `?site=` and validates it against site_access."""
+    return assert_site_access(user, site)
 
 
-DepotDep = Annotated[str, Depends(depot_param)]
+SiteDep = Annotated[str, Depends(site_param)]
 
 
 @dataclass(slots=True)

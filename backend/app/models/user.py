@@ -45,32 +45,45 @@ class User(Base):
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
-    depot_links: Mapped[list[UserDepotAccess]] = relationship(
+    site_links: Mapped[list[UserSiteAccess]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin",
-        order_by="UserDepotAccess.depot_code",
+        order_by="UserSiteAccess.site_code",
     )
 
     @property
-    def depot_access(self) -> list[str]:
-        return [link.depot_code for link in self.depot_links]
+    def is_super_admin(self) -> bool:
+        return self.role is Role.super_admin
 
-    def can_access(self, depot_code: str) -> bool:
-        return depot_code in self.depot_access
+    @property
+    def site_access(self) -> list[str]:
+        """Explicit grants. Empty and ignored for a super admin — always ask
+        `can_access` rather than reading this."""
+        return [link.site_code for link in self.site_links]
+
+    def can_access(self, site_code: str) -> bool:
+        """A super admin reaches every site without a stored grant.
+
+        Storing every code would go stale the moment a site is onboarded.
+        """
+        return self.is_super_admin or site_code in self.site_access
+
+    def can_grant(self, role: Role) -> bool:
+        return role in self.role.grantable_roles
 
 
-class UserDepotAccess(Base):
-    __tablename__ = "user_depot_access"
+class UserSiteAccess(Base):
+    __tablename__ = "user_site_access"
 
     user_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    depot_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("depots.code", ondelete="CASCADE"), primary_key=True
+    site_code: Mapped[str] = mapped_column(
+        String(16), ForeignKey("sites.code", ondelete="CASCADE"), primary_key=True
     )
 
-    user: Mapped[User] = relationship(back_populates="depot_links")
+    user: Mapped[User] = relationship(back_populates="site_links")
 
 
 class RefreshToken(Base):

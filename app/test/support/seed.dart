@@ -1,8 +1,8 @@
-import '../../models/app_user.dart';
-import '../../models/entry.dart';
-import '../../models/site.dart';
-import '../../models/site_config.dart';
-import '../../utils/dates.dart';
+import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/site_config.dart';
+import 'package:transvolt_em/utils/dates.dart';
 
 /// Fixture data standing in for the master-data service and the entries, users
 /// and sites APIs. All of it disappears once real repositories are wired in.

@@ -11,7 +11,7 @@ from app.db import SessionLocal
 from app.models.entry import Entry
 from app.models.enums import NotificationType, Role
 from app.models.notification import Notification
-from app.models.user import DeviceToken, User, UserDepotAccess
+from app.models.user import DeviceToken, User, UserSiteAccess
 from app.services import fcm
 
 logger = logging.getLogger("enm.notifications")
@@ -19,17 +19,17 @@ logger = logging.getLogger("enm.notifications")
 SUPERVISORY_ROLES = (Role.manager, Role.supervisor)
 
 
-async def _recipients_for_depot(
+async def _recipients_for_site(
     session: AsyncSession,
-    depot_code: str,
+    site_code: str,
     roles: tuple[Role, ...],
     exclude_user_id: str | None = None,
 ) -> list[User]:
     stmt = (
         select(User)
-        .join(UserDepotAccess, UserDepotAccess.user_id == User.id)
+        .join(UserSiteAccess, UserSiteAccess.user_id == User.id)
         .where(
-            UserDepotAccess.depot_code == depot_code,
+            UserSiteAccess.site_code == site_code,
             User.is_active.is_(True),
             User.role.in_(roles),
         )
@@ -68,7 +68,7 @@ async def fan_out(
     title: str,
     body: str,
     entry_id: str | None,
-    depot_code: str | None,
+    site_code: str | None,
 ) -> None:
     """Persist an in-app notification per user, then push in one multicast."""
     if not settings.notifications_enabled or not users:
@@ -82,7 +82,7 @@ async def fan_out(
                 title=title,
                 body=body,
                 entry_id=entry_id,
-                depot_code=depot_code,
+                site_code=site_code,
             )
         )
     await session.flush()
@@ -95,7 +95,7 @@ async def fan_out(
         data={
             "type": type_.value,
             "entry_id": entry_id or "",
-            "depot": depot_code or "",
+            "site": site_code or "",
         },
     )
     await _prune_dead_tokens(session, dead)
@@ -105,27 +105,27 @@ async def fan_out(
 
 
 async def notify_breakdown_opened(session: AsyncSession, entry: Entry) -> None:
-    users = await _recipients_for_depot(
-        session, entry.depot_code, SUPERVISORY_ROLES, exclude_user_id=entry.created_by_id
+    users = await _recipients_for_site(
+        session, entry.site_code, SUPERVISORY_ROLES, exclude_user_id=entry.created_by_id
     )
-    bus_no = entry.bus.bus_no
+    bus_no = entry.vehicle.registration_no
     complaint = entry.breakdown.complaint if entry.breakdown else ""
     await fan_out(
         session,
         users=users,
         type_=NotificationType.breakdown_opened,
         title=f"Breakdown · {bus_no}",
-        body=f"{complaint[:120]} — reported by {entry.created_by.name} at {entry.depot_code}",
+        body=f"{complaint[:120]} — reported by {entry.created_by.name} at {entry.site_code}",
         entry_id=entry.id,
-        depot_code=entry.depot_code,
+        site_code=entry.site_code,
     )
 
 
 async def notify_breakdown_resolved(
     session: AsyncSession, entry: Entry, resolver: User
 ) -> None:
-    managers = await _recipients_for_depot(
-        session, entry.depot_code, (Role.manager,), exclude_user_id=resolver.id
+    managers = await _recipients_for_site(
+        session, entry.site_code, (Role.manager,), exclude_user_id=resolver.id
     )
     recipients = {u.id: u for u in managers}
     if entry.created_by_id != resolver.id:
@@ -135,10 +135,10 @@ async def notify_breakdown_resolved(
         session,
         users=list(recipients.values()),
         type_=NotificationType.breakdown_resolved,
-        title=f"Breakdown resolved · {entry.bus.bus_no}",
-        body=f"Marked resolved by {resolver.name} at {entry.depot_code}",
+        title=f"Breakdown resolved · {entry.vehicle.registration_no}",
+        body=f"Marked resolved by {resolver.name} at {entry.site_code}",
         entry_id=entry.id,
-        depot_code=entry.depot_code,
+        site_code=entry.site_code,
     )
 
 
@@ -152,7 +152,7 @@ async def notify_account_event(
         title=title,
         body=body,
         entry_id=None,
-        depot_code=None,
+        site_code=None,
     )
 
 
@@ -187,20 +187,20 @@ async def scan_breakdown_sla() -> int:
         ).unique().all()
 
         for entry in stale:
-            users = await _recipients_for_depot(
-                session, entry.depot_code, (Role.manager,)
+            users = await _recipients_for_site(
+                session, entry.site_code, (Role.manager,)
             )
             await fan_out(
                 session,
                 users=users,
                 type_=NotificationType.breakdown_sla_breach,
-                title=f"Still open · {entry.bus.bus_no}",
+                title=f"Still open · {entry.vehicle.registration_no}",
                 body=(
-                    f"Breakdown at {entry.depot_code} has been open for over "
+                    f"Breakdown at {entry.site_code} has been open for over "
                     f"{settings.breakdown_sla_hours}h"
                 ),
                 entry_id=entry.id,
-                depot_code=entry.depot_code,
+                site_code=entry.site_code,
             )
             entry.breakdown.sla_notified_at = datetime.now(UTC)
             sent += 1
@@ -210,3 +210,59 @@ async def scan_breakdown_sla() -> int:
     if sent:
         logger.info("Breakdown SLA nudge sent for %d entries", sent)
     return sent
+
+
+async def notify_schedule_alerts(session: AsyncSession, site_code: str) -> int:
+    """Push the night's open alerts to the people who can act on them.
+
+    One notification summarising the site, not one per alert: a supervisor who
+    wakes to forty separate pushes reads none of them. Only alerts raised today
+    count, so a problem that has been open for a week does not re-notify every
+    night — it is already on the alert list.
+    """
+    from app.models.enums import AlertStatus, AlertType
+    from app.models.inspection import Alert
+    from app.services.common import today_ist
+
+    today = today_ist()
+    rows = list(
+        (
+            await session.scalars(
+                select(Alert).where(
+                    Alert.site_code == site_code,
+                    Alert.status == AlertStatus.open,
+                    Alert.raised_on == today,
+                )
+            )
+        ).all()
+    )
+    if not rows:
+        return 0
+
+    counts: dict[AlertType, int] = {}
+    for alert in rows:
+        counts[alert.type] = counts.get(alert.type, 0) + 1
+
+    labels = {
+        AlertType.missed_inspection: "missed inspection",
+        AlertType.breakdown_open: "open breakdown",
+        AlertType.service_overdue: "overdue service",
+    }
+    parts = [
+        f"{n} {labels[t]}{'s' if n != 1 else ''}"
+        for t, n in sorted(counts.items(), key=lambda kv: kv[0].value)
+    ]
+
+    users = await _recipients_for_site(session, site_code, SUPERVISORY_ROLES)
+    if not users:
+        return 0
+
+    await fan_out(
+        session,
+        users=users,
+        type_=NotificationType.schedule_alert,
+        title=f"{site_code} · {len(rows)} to look at",
+        body=", ".join(parts) + ". Open Alerts for the list.",
+        site_code=site_code,
+    )
+    return len(rows)

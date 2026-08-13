@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:transvolt_em/data/fake/seed.dart';
+import 'support/fake_store.dart';
+import 'support/harness.dart';
+import 'support/seed.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/site.dart';
@@ -9,7 +11,7 @@ import 'package:transvolt_em/state/session.dart';
 import 'package:transvolt_em/state/sites.dart';
 
 Future<ProviderContainer> signedIn(String userId) async {
-  final container = ProviderContainer();
+  final container = fakeContainer();
   addTearDown(container.dispose);
   await container
       .read(sessionProvider.notifier)
@@ -223,6 +225,34 @@ void main() {
         pending.copyWith(commissionedOn: '2026-01-01').isCommissioned,
         isTrue,
       );
+    });
+  });
+
+  group('first run', () {
+    test('a super admin with no sites can still enter and onboard one',
+        () async {
+      // A fresh install has users but an empty site roster; Admin → Sites is
+      // where the first one is created, so the picker must not lock the door.
+      final store = FakeStore()..sites.clear();
+      final container = fakeContainer(store);
+      final session = container.read(sessionProvider.notifier);
+      await session.signInWithCredentials('TV1001', kSeedPassword);
+
+      expect(container.read(sessionProvider).availableSites, isEmpty);
+      expect(container.read(sessionProvider).site, isEmpty);
+
+      session.enterApp();
+      expect(container.read(sessionProvider).stage, AuthStage.signedIn);
+    });
+
+    test('everyone else still needs a site before entering', () async {
+      final container = fakeContainer();
+      final session = container.read(sessionProvider.notifier);
+      await session.signInWithCredentials('TV4021', kSeedPassword);
+
+      session.selectSite('');
+      session.enterApp();
+      expect(container.read(sessionProvider).stage, isNot(AuthStage.signedIn));
     });
   });
 }

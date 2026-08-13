@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
 
     # --- app ---
     app_name: str = "Transvolt E&M Maintenance API"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
     environment: str = "development"
     debug: bool = False
     api_prefix: str = "/api/v1"
@@ -39,14 +40,18 @@ class Settings(BaseSettings):
     ms_jwks_cache_seconds: int = 3600
 
     # --- CORS ---
-    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    # NoDecode: these arrive as plain comma-separated strings in .env, not
+    # JSON, and `_split_csv` below is what turns them into lists.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["*"]
+    )
 
     # --- media / photo upload ---
     media_root: str = "media"
     media_url_path: str = "/media"
     public_base_url: str = "http://localhost:8000"
     max_photo_bytes: int = 10 * 1024 * 1024
-    allowed_photo_types: list[str] = Field(
+    allowed_photo_types: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["image/jpeg", "image/png"]
     )
 
@@ -62,6 +67,18 @@ class Settings(BaseSettings):
     breakdown_sla_enabled: bool = True
     breakdown_sla_hours: int = 4
     breakdown_sla_scan_minutes: int = 30
+
+    # --- inspection schedule ---
+    # The nightly run: plan tomorrow, mark what was missed, raise alerts.
+    schedule_generator_enabled: bool = True
+    schedule_generator_hour: int = 22
+    schedule_generator_minute: int = 0
+
+    # --- odometers ---
+    # Master switch for the server-side pull. Each site still has its own
+    # `odometer_sync_minutes`; this is only how often we check which are due.
+    odometer_sync_enabled: bool = True
+    odometer_scan_minutes: int = 5
 
     @field_validator("cors_origins", "allowed_photo_types", mode="before")
     @classmethod

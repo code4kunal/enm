@@ -28,7 +28,12 @@ enum FieldType {
 }
 
 /// Master list a [FieldType.select] column draws its options from.
-enum MasterList { defectSources, defectTypes }
+/// Which master list backs a `select` field.
+///
+/// [staff] is the site's own people — the mechanics and supervisors on its
+/// roster — so "attended by" and "supervisor" are picked, not typed. Typed
+/// names drift ("R.Sharma", "Rahul S") and stop matching each other.
+enum MasterList { defectSources, defectTypes, staff }
 
 /// Layout slot within the wrapped two-column form grid.
 ///

@@ -14,7 +14,7 @@ TODAY = date.today().isoformat()
 
 BREAKDOWN = {
     "register": "breakdown",
-    "depot": "MBMT",
+    "site": "MBMT",
     "date": TODAY,
     "data": {"bus_no": "MH40LY1895", "complaint": "HV contactor tripped"},
 }

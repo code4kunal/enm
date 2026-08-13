@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
-from app.deps import CurrentUser, DepotDep, PageDep, SessionDep, assert_depot_access
+from app.deps import CurrentUser, PageDep, SessionDep, SiteDep, assert_site_access
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import BreakdownEntry, Entry
 from app.models.enums import AuditAction, EntryStatus, Register, Role
@@ -18,6 +18,7 @@ from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
 from app.services import audit, notifications, storage
 from app.services import entries as svc
+from app.services.sites import assert_site_accepts_entries
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -33,7 +34,7 @@ def _today() -> date_t:
 
 
 def _filters(
-    depot: str,
+    site: str,
     register: Register | None,
     date_from: date_t | None,
     date_to: date_t | None,
@@ -43,7 +44,7 @@ def _filters(
 ):
     frm, to = svc.resolve_period(period, date_from, date_to, _today())
     return {
-        "depot_code": depot,
+        "site_code": site,
         "register": register,
         "date_from": frm,
         "date_to": to,
@@ -60,7 +61,7 @@ async def _load(session: SessionDep, entry_id: str) -> Entry:
 
 
 def _can_edit(user, entry: Entry) -> bool:
-    if not user.can_access(entry.depot_code):
+    if not user.can_access(entry.site_code):
         return False
     if entry.created_by_id == user.id:
         return True
@@ -74,7 +75,7 @@ def _can_edit(user, entry: Entry) -> bool:
 async def list_entries(
     _user: CurrentUser,
     session: SessionDep,
-    depot: DepotDep,
+    site: SiteDep,
     page: PageDep,
     register: RegisterQ = None,
     date_from: Annotated[date_t | None, Query()] = None,
@@ -83,7 +84,7 @@ async def list_entries(
     q: Annotated[str | None, Query(max_length=200)] = None,
     entry_status: Annotated[EntryStatus | None, Query(alias="status")] = None,
 ) -> Page[EntryOut]:
-    filters = _filters(depot, register, date_from, date_to, period, q, entry_status)
+    filters = _filters(site, register, date_from, date_to, period, q, entry_status)
     stmt = svc.apply_filters(select(Entry), **filters)
     total = await svc.count_entries(session, stmt)
     rows = (
@@ -107,11 +108,13 @@ async def create_entry(
     user: CurrentUser,
     session: SessionDep,
 ) -> EntryOut:
-    depot = assert_depot_access(user, payload.depot)
+    site = assert_site_access(user, payload.site)
+    # A deactivated site keeps its history but accepts nothing new.
+    await assert_site_accepts_entries(session, site)
     entry = await svc.create_entry(
         session,
         register=payload.register,
-        depot_code=depot,
+        site_code=site,
         entry_date=payload.date,
         entry_time=payload.entry_time,
         raw_data=payload.data,
@@ -139,7 +142,7 @@ async def create_entry(
 async def summary(
     _user: CurrentUser,
     session: SessionDep,
-    depot: DepotDep,
+    site: SiteDep,
     date: Annotated[date_t | None, Query()] = None,
 ) -> SummaryOut:
     """Single call powering the Home screen counters."""
@@ -147,7 +150,7 @@ async def summary(
 
     counts = await session.execute(
         select(Entry.register, func.count())
-        .where(Entry.depot_code == depot, Entry.entry_date == day)
+        .where(Entry.site_code == site, Entry.entry_date == day)
         .group_by(Entry.register)
     )
     by_register = {r.value: 0 for r in Register}
@@ -160,14 +163,14 @@ async def summary(
         select(func.count())
         .select_from(Entry)
         .where(
-            Entry.depot_code == depot,
+            Entry.site_code == site,
             Entry.register == Register.breakdown,
             Entry.status == EntryStatus.open,
         )
     )
     return SummaryOut(
         date=day,
-        depot=depot,
+        site=site,
         total_today=total,
         by_register=by_register,
         open_breakdowns=int(open_breakdowns or 0),
@@ -178,7 +181,7 @@ async def summary(
 async def export_csv(
     _user: CurrentUser,
     session: SessionDep,
-    depot: DepotDep,
+    site: SiteDep,
     register: RegisterQ = None,
     date_from: Annotated[date_t | None, Query()] = None,
     date_to: Annotated[date_t | None, Query()] = None,
@@ -186,7 +189,7 @@ async def export_csv(
     q: Annotated[str | None, Query(max_length=200)] = None,
     entry_status: Annotated[EntryStatus | None, Query(alias="status")] = None,
 ) -> StreamingResponse:
-    filters = _filters(depot, register, date_from, date_to, period, q, entry_status)
+    filters = _filters(site, register, date_from, date_to, period, q, entry_status)
     stmt = svc.apply_filters(select(Entry), **filters).order_by(
         Entry.entry_date.desc(), Entry.created_at.desc()
     )
@@ -194,14 +197,14 @@ async def export_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Register", "Date", "Depot", "Bus No", "Details", "Entered By"])
+    writer.writerow(["Register", "Date", "Site", "Bus No", "Details", "Entered By"])
     for e in rows:
         writer.writerow(
             [
                 e.register.value,
                 e.entry_date.isoformat(),
-                e.depot_code,
-                e.bus.bus_no,
+                e.site_code,
+                e.vehicle.registration_no,
                 svc.csv_details(e),
                 f"{e.created_by.name} ({e.created_by.user_id})",
             ]
@@ -210,7 +213,7 @@ async def export_csv(
 
     frm = (filters["date_from"] or (rows[-1].entry_date if rows else _today())).isoformat()
     to = (filters["date_to"] or (rows[0].entry_date if rows else _today())).isoformat()
-    filename = f"transvolt-em-register-{depot}-{frm}-{to}.csv"
+    filename = f"transvolt-em-register-{site}-{frm}-{to}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv; charset=utf-8",
@@ -226,7 +229,7 @@ async def get_entry(
     entry_id: str, user: CurrentUser, session: SessionDep
 ) -> EntryOut:
     entry = await _load(session, entry_id)
-    assert_depot_access(user, entry.depot_code)
+    assert_site_access(user, entry.site_code)
     return EntryOut(**svc.serialize_entry(entry))
 
 
@@ -236,7 +239,7 @@ async def update_entry(
 ) -> EntryOut:
     entry = await _load(session, entry_id)
     if not _can_edit(user, entry):
-        raise Forbidden("You can only edit your own entries for this depot")
+        raise Forbidden("You can only edit your own entries for this site")
 
     before: dict[str, Any] = svc.serialize_data(entry)
     await svc.update_entry(
@@ -265,7 +268,7 @@ async def resolve_breakdown(
     entry_id: str, user: CurrentUser, session: SessionDep
 ) -> EntryOut:
     entry = await _load(session, entry_id)
-    assert_depot_access(user, entry.depot_code)
+    assert_site_access(user, entry.site_code)
     if entry.register is not Register.breakdown:
         raise Conflict("Only breakdown entries can be resolved")
     if entry.status is EntryStatus.resolved:

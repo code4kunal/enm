@@ -43,6 +43,7 @@ class ShellScreen extends ConsumerWidget {
       const _Tab('Home', Routes.home),
       const _Tab('Registers', Routes.registers),
       const _Tab('Breakdowns', Routes.breakdowns),
+      const _Tab('Schedule', Routes.schedule),
       // Site and Admin are role-gated — hidden rather than disabled, and the
       // server enforces the same rule.
       if (session.canManageSites) const _Tab('Site', Routes.site),
