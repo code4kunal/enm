@@ -14,18 +14,20 @@ State after the site-management, snag-import and inspection-schedule work.
   entries routed across five registers by TYPE OF WORK, 611 inspection slots
   generated, 24 open-breakdown alerts raised.
 
-## 1. Reports: three of six are built, three are not
+## 1. Reports: four of six are built, two are not
 
 **Built and driven in a browser:** the Daily Maintenance Report (day view, month
-grid, CSV export, nightly freeze at 22:05), the off-road / held-up list, and
-breakdown investigations.
+grid, CSV export, nightly freeze at 22:05), the off-road / held-up list,
+breakdown investigations, and the Annexure-IV control charts (six grids, CSV
+export, colour marks carried per cell).
+
+Two of the six charts are still empty for a reason rather than a bug. Tyre
+pressure and bus washing read from a checklist line the depot nominates with
+`chart_key`; until the D.I checklist is written and one line on it carries that
+key, both grids stay blank. kWh/km has no feed at all and says so on screen.
 
 **Not built:**
 
-- **Control charts** (Annexure-IV). Six bus × date grids. Three are computable
-  today — coolant topping, P.M schedule, driver complaints + breakdowns. Two
-  more (tyre pressure, bus washing) fall out for free once the D.I checklist
-  has those lines. Only kWh/km is blocked, on energy data nothing captures.
 - **Unit Failure Statement** and **Bus History**. `unit_types` and
   `fitted_units` are modelled and seeded with the nine components the statement
   lists, but there is no capture screen and no data. They are one dataset seen
