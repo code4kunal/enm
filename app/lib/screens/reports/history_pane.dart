@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories.dart';
 import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../state/providers.dart';
@@ -12,6 +13,7 @@ import '../../utils/dates.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
 import 'units_pane.dart';
 
@@ -129,7 +131,15 @@ class _Card extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (canEdit) const _RemoveButton(),
+                if (canEdit) ...<Widget>[
+                  const _RemoveButton(),
+                  const SizedBox(width: 8),
+                ],
+                ReportDownloadButton(
+                  doc: ReportDoc.busHistory,
+                  vehicleId: card.vehicleId,
+                  month: ref.watch(historyMonthProvider),
+                ),
               ],
             ),
             const SizedBox(height: 10),

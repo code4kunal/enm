@@ -128,6 +128,39 @@ class ApiClient {
     return _decode(await http.Response.fromStream(streamed));
   }
 
+  /// Fetches a file rather than JSON — the report PDFs and CSVs.
+  ///
+  /// Kept apart from [_send] because the response body is bytes and an error
+  /// body is still JSON, so the two cannot share a decoder.
+  Future<Uint8List> download(
+    String path, {
+    Map<String, String>? query,
+  }) async {
+    Future<http.Response> attempt() => _http.get(
+          _uri(path, query),
+          headers: <String, String>{
+            if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+          },
+        );
+
+    http.Response response;
+    try {
+      response = await attempt();
+    } on Exception catch (e) {
+      throw ApiException('Cannot reach the server at $baseUrl — $e');
+    }
+    if (response.statusCode == 401 && await _refresh()) {
+      response = await attempt();
+    }
+    if (response.statusCode >= 400) {
+      // The failure is a JSON envelope even though success is not, so reuse
+      // the one decoder that knows how to turn it into a message.
+      _decode(response);
+      throw const ApiException('Could not download the file');
+    }
+    return response.bodyBytes;
+  }
+
   Future<dynamic> _send(
     String method,
     String path, {

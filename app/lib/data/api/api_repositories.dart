@@ -1067,4 +1067,70 @@ class ApiReportRepository implements ReportRepository {
     );
     return BusHistory.fromJson(json as Map<String, dynamic>);
   }
+
+  @override
+  Future<ReportFile> downloadReport(
+    ReportDoc doc, {
+    required String siteCode,
+    String? date,
+    String? month,
+    String? chartKind,
+    String? fromDate,
+    String? toDate,
+    String? vehicleId,
+  }) async {
+    final site = '/sites/$siteCode/reports';
+    final (String path, Map<String, String> query) = switch (doc) {
+      ReportDoc.dmrDay => ('$site/dmr/day/export', <String, String>{
+          if (date != null) 'date': date,
+        }),
+      ReportDoc.dmrMonth => ('$site/dmr/export', <String, String>{
+          if (month != null) 'month': month,
+          'format': 'pdf',
+        }),
+      ReportDoc.controlChart => (
+          '$site/control-charts/${chartKind ?? ''}/export',
+          <String, String>{
+            if (fromDate != null) 'from': fromDate,
+            if (toDate != null) 'to': toDate,
+            'format': 'pdf',
+          }
+        ),
+      ReportDoc.offRoad => ('$site/off-road/export', <String, String>{
+          if (date != null) 'date': date,
+        }),
+      ReportDoc.investigations => ('$site/investigations/export', <String, String>{
+          if (date != null) 'date': date,
+        }),
+      ReportDoc.unitFailures => ('$site/unit-failures/export', <String, String>{
+          if (month != null) 'month': month,
+          'format': 'pdf',
+        }),
+      ReportDoc.busHistory => (
+          '$site/bus-history/${vehicleId ?? ''}/export',
+          <String, String>{if (month != null) 'to': month},
+        ),
+    };
+
+    return ReportFile(
+      name: _pdfName(doc, siteCode, date ?? month ?? ''),
+      bytes: await _api.download(path, query: query),
+    );
+  }
+
+  /// The server sets the real filename on the response; this is what the
+  /// share sheet shows if the platform needs a name up front.
+  static String _pdfName(ReportDoc doc, String site, String period) {
+    final kind = switch (doc) {
+      ReportDoc.dmrDay => 'dmr',
+      ReportDoc.dmrMonth => 'dmr-month',
+      ReportDoc.controlChart => 'control-chart',
+      ReportDoc.offRoad => 'off-road',
+      ReportDoc.investigations => 'investigations',
+      ReportDoc.unitFailures => 'unit-failures',
+      ReportDoc.busHistory => 'bus-history',
+    };
+    final stem = <String>[site, kind, period].where((p) => p.isNotEmpty).join('-');
+    return '${stem.toLowerCase()}.pdf';
+  }
 }

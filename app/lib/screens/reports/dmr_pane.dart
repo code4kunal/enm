@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories.dart';
 import '../../models/report.dart';
 import '../../state/reports.dart';
 import '../../state/session.dart';
@@ -12,6 +13,7 @@ import '../../widgets/buttons.dart';
 import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
 
 /// The Daily Maintenance Report for one day.
@@ -142,10 +144,10 @@ class _DmrPaneState extends ConsumerState<DmrPane> {
                 ],
               ),
             ),
-            if (canEdit) ...<Widget>[
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                if (canEdit) ...<Widget>[
                   Expanded(
                     child: FilledActionButton(
                       label: _saving ? 'Saving…' : 'Save entered lines',
@@ -158,9 +160,14 @@ class _DmrPaneState extends ConsumerState<DmrPane> {
                     label: day.isSnapshot ? 'Re-freeze' : 'Freeze day',
                     onPressed: _saving ? null : _snapshot,
                   ),
+                  const SizedBox(width: 10),
                 ],
-              ),
-            ],
+                ReportDownloadButton(
+                  doc: ReportDoc.dmrDay,
+                  date: day.reportDate,
+                ),
+              ],
+            ),
             const SizedBox(height: 32),
           ],
         );
@@ -325,6 +332,8 @@ class DmrMonthPane extends ConsumerWidget {
                   .read(reportMonthProvider.notifier)
                   .state = Dates.shiftMonth(month, 1),
             ),
+            const SizedBox(width: 10),
+            ReportDownloadButton(doc: ReportDoc.dmrMonth, month: month),
           ],
         ),
         const SizedBox(height: 14),

@@ -492,6 +492,41 @@ abstract interface class ReportRepository {
     required String vehicleId,
     required String toMonth,
   });
+
+  /// A report as a printable file, ready to hand to the platform share sheet.
+  ///
+  /// One method rather than seven so no screen has to know a URL — the
+  /// repository is still the only thing that does. Which of the optional
+  /// scopes matter depends on [doc]; the rest are ignored.
+  Future<ReportFile> downloadReport(
+    ReportDoc doc, {
+    required String siteCode,
+    String? date,
+    String? month,
+    String? chartKind,
+    String? fromDate,
+    String? toDate,
+    String? vehicleId,
+  });
+}
+
+/// The reports that can be printed.
+enum ReportDoc {
+  dmrDay,
+  dmrMonth,
+  controlChart,
+  offRoad,
+  investigations,
+  unitFailures,
+  busHistory,
+}
+
+/// A downloaded file: what the server called it, and its bytes.
+class ReportFile {
+  const ReportFile({required this.name, required this.bytes});
+
+  final String name;
+  final Uint8List bytes;
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────

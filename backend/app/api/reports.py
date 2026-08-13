@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
 from app.errors import NotFound, ValidationError
-from app.models.enums import AuditAction
+from app.models.enums import AuditAction, StrEnum
 from app.models.master import Vehicle
 from app.models.report import FittedUnit, OffRoadCase, UnitType
 from app.schemas.report import (
@@ -40,13 +40,42 @@ from app.schemas.report import (
     RemoveUnitIn,
     UnitTypeOut,
 )
-from app.services import audit, control_charts, dmr, investigations, units
+from app.services import audit, control_charts, dmr, investigations, pdf, units
 from app.services.common import today_ist
 
 router = APIRouter(tags=["reports"])
 
 #: A month grid at most; anything wider belongs in a download.
 MAX_REPORT_DAYS = 62
+
+
+# --- PDF ---------------------------------------------------------------------
+
+
+class ExportFormat(StrEnum):
+    csv = "csv"
+    pdf = "pdf"
+
+
+FormatQuery = Annotated[ExportFormat, Query(alias="format")]
+
+
+def _pdf_response(story: pdf.Story, kind: str, period: str) -> Response:
+    name = pdf.filename(kind, story.info.site_code, period)
+    return Response(
+        content=pdf.render(story),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+def _csv_response(buffer: io.StringIO, name: str) -> Response:
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
 
 
 def _parse_day(raw: str | None, fallback: date_t) -> date_t:
@@ -205,12 +234,25 @@ async def export_dmr(
     user: CurrentUser,
     session: SessionDep,
     month: Annotated[str | None, Query()] = None,
+    fmt: FormatQuery = ExportFormat.csv,
 ) -> Response:
     """The month in the layout the depot already sends on."""
     site_code = assert_site_access(user, code)
     target = month or today_ist().strftime("%Y-%m")
     grid = await _month_grid(session, site_code, target)
     await session.commit()
+
+    if fmt is ExportFormat.pdf:
+        return _pdf_response(
+            pdf.dmr_month(
+                site_code=site_code,
+                month=target,
+                dates=grid.dates,
+                values={k: list(v) for k, v in grid.values.items()},
+            ),
+            "dmr-month",
+            target,
+        )
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -519,8 +561,9 @@ async def export_control_chart(
     session: SessionDep,
     from_date: Annotated[str | None, Query(alias="from")] = None,
     to_date: Annotated[str | None, Query(alias="to")] = None,
+    fmt: FormatQuery = ExportFormat.csv,
 ) -> Response:
-    """The grid as the depot files it, colours carried as a suffix.
+    """The grid as the depot files it.
 
     A CSV cannot hold a fill colour, so a marked block is exported as its value
     with the mark appended — `2 (BD)` — rather than silently losing the half of
@@ -531,6 +574,15 @@ async def export_control_chart(
     chart = await control_charts.build(
         session, site_code=site_code, kind=kind, from_date=start, to_date=end
     )
+
+    if fmt is ExportFormat.pdf:
+        # A PDF can hold the fill colours, so the chart comes out looking like
+        # the Annexure-IV sheet rather than a column of suffixes.
+        return _pdf_response(
+            pdf.control_chart(chart),
+            f"chart-{kind.value}",
+            f"{chart.from_date}-to-{chart.to_date}",
+        )
 
     suffix = {
         control_charts.CellMark.pm: " (PM)",
@@ -719,11 +771,19 @@ async def export_unit_failures(
     user: CurrentUser,
     session: SessionDep,
     month: Annotated[str | None, Query()] = None,
+    fmt: FormatQuery = ExportFormat.csv,
 ) -> Response:
     """The statement in the layout the depot already files."""
     site_code = assert_site_access(user, code)
     target = month or today_ist().strftime("%Y-%m")
     rows = await units.statement(session, site_code, target)
+
+    if fmt is ExportFormat.pdf:
+        return _pdf_response(
+            pdf.unit_failures(site_code=site_code, month=target, stays=rows),
+            "unit-failures",
+            target,
+        )
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -817,4 +877,85 @@ async def bus_history(
             for row in card.rows
         ],
         events=card.events,
+    )
+
+
+@router.get("/sites/{code}/reports/dmr/day/export")
+async def export_dmr_day(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    date: Annotated[str | None, Query()] = None,
+) -> Response:
+    """One day's numbered sheet, as the depot files it."""
+    site_code = assert_site_access(user, code)
+    day = _parse_day(date, today_ist())
+    values, is_snapshot = await dmr.compose(session, site_code, day)
+    row = await dmr.get_day(session, site_code, day)
+    await session.commit()
+    story = pdf.dmr_day(
+        site_code=site_code,
+        day=day,
+        values=values,
+        is_snapshot=is_snapshot,
+        notes=(row.notes if row else "") or "",
+    )
+    return _pdf_response(story, "dmr", day.isoformat())
+
+
+@router.get("/sites/{code}/reports/off-road/export")
+async def export_off_road(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    date: Annotated[str | None, Query()] = None,
+) -> Response:
+    """The defective-bus list as it stood that morning."""
+    site_code = assert_site_access(user, code)
+    day = _parse_day(date, today_ist())
+    cases = await investigations.open_cases(session, site_code, day)
+    story = pdf.off_road(site_code=site_code, day=day, cases=cases)
+    return _pdf_response(story, "off-road", day.isoformat())
+
+
+@router.get("/sites/{code}/reports/investigations/export")
+async def export_investigations(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    date: Annotated[str | None, Query()] = None,
+) -> Response:
+    """Annexure-V, one block per breakdown — a form people write on."""
+    site_code = assert_site_access(user, code)
+    day = _parse_day(date, today_ist())
+    pairs = await investigations.for_day(session, site_code, day)
+    items = [_investigation_out(e, i) for e, i in pairs]
+    story = pdf.investigations(site_code=site_code, day=day, items=items)
+    return _pdf_response(story, "investigations", day.isoformat())
+
+
+@router.get("/sites/{code}/reports/bus-history/{vehicle_id}/export")
+async def export_bus_history(
+    code: str,
+    vehicle_id: str,
+    user: CurrentUser,
+    session: SessionDep,
+    to_month: Annotated[str | None, Query(alias="to")] = None,
+    months: Annotated[int, Query(ge=1, le=36)] = units.HISTORY_MONTHS,
+) -> Response:
+    """One bus's card."""
+    site_code = assert_site_access(user, code)
+    vehicle = await session.get(Vehicle, vehicle_id)
+    if vehicle is None or vehicle.site_code != site_code:
+        raise NotFound("Vehicle not found")
+    card = await units.history(
+        session,
+        site_code=site_code,
+        vehicle=vehicle,
+        to_month=to_month or today_ist().strftime("%Y-%m"),
+        months=months,
+    )
+    story = pdf.bus_history(card)
+    return _pdf_response(
+        story, f"bus-history-{vehicle.registration_no}", card.months[-1]
     )

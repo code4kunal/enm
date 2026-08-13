@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories.dart';
 import '../../models/report.dart';
 import '../../state/reports.dart';
 import '../../state/session.dart';
@@ -12,6 +13,7 @@ import '../../widgets/buttons.dart';
 import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/report_download.dart';
 import '../../widgets/sheet.dart';
 import '../../widgets/sub_tabs.dart';
 
@@ -63,16 +65,26 @@ class InvestigationsPane extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(
-              outstanding == 0
-                  ? '${items.length} breakdown${items.length == 1 ? '' : 's'}, '
-                      'all investigated'
-                  : '$outstanding of ${items.length} still to explain',
-              style: AppText.sans(
-                size: 13.5,
-                weight: FontWeight.w600,
-                color: outstanding == 0 ? T.greenInk : T.amber,
-              ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    outstanding == 0
+                        ? '${items.length} breakdown'
+                            '${items.length == 1 ? '' : 's'}, all investigated'
+                        : '$outstanding of ${items.length} still to explain',
+                    style: AppText.sans(
+                      size: 13.5,
+                      weight: FontWeight.w600,
+                      color: outstanding == 0 ? T.greenInk : T.amber,
+                    ),
+                  ),
+                ),
+                ReportDownloadButton(
+                  doc: ReportDoc.investigations,
+                  date: ref.watch(reportDateProvider),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             for (final item in items) ...<Widget>[

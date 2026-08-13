@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories.dart';
 import '../../models/report.dart';
 import '../../state/reports.dart';
 import '../../theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../theme/tokens.dart';
 import '../../utils/dates.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/dashed.dart';
+import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
 
 /// Annexure-IV: the fleet down the side, the month across the top.
@@ -60,6 +62,16 @@ class ChartsPane extends ConsumerWidget {
           loading: () => const _Waiting(),
           error: (e, _) => EmptyState(message: e.toString()),
           data: _ChartPicker.new,
+        ),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ReportDownloadButton(
+            doc: ReportDoc.controlChart,
+            chartKind: ref.watch(chartKindProvider),
+            fromDate: '$month-01',
+            toDate: Dates.lastOfMonth(month),
+          ),
         ),
         const SizedBox(height: 14),
         const _ChartGrid(),
