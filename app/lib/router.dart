@@ -15,6 +15,7 @@ import 'screens/schedule_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/site_screen.dart';
 import 'state/session.dart';
+import 'widgets/page_body.dart';
 
 abstract final class Routes {
   static const login = '/login';
@@ -87,53 +88,59 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: <RouteBase>[
           GoRoute(
             path: Routes.home,
-            builder: (context, state) => const HomeScreen(),
+            builder: (context, state) => const PageBody(child: HomeScreen()),
           ),
           GoRoute(
             path: Routes.registers,
-            builder: (context, state) => const RegistersScreen(),
+            builder: (context, state) => const PageBody(child: RegistersScreen()),
           ),
           GoRoute(
             path: Routes.breakdowns,
-            builder: (context, state) => const BreakdownsScreen(),
+            builder: (context, state) => const PageBody(child: BreakdownsScreen()),
           ),
           GoRoute(
             path: '/inspection/new/:workTypeId',
-            builder: (context, state) => InspectionFormScreen(
+            builder: (context, state) => PageBody(
+              child: InspectionFormScreen(
               workTypeId:
                   int.tryParse(state.pathParameters['workTypeId'] ?? '') ?? 0,
+            ),
             ),
           ),
           GoRoute(
             path: Routes.schedule,
-            builder: (context, state) => const ScheduleScreen(),
+            builder: (context, state) => const PageBody(child: ScheduleScreen()),
           ),
           GoRoute(
             path: Routes.reports,
-            builder: (context, state) => const ReportsScreen(),
+            builder: (context, state) => const PageBody(child: ReportsScreen()),
           ),
           GoRoute(
             path: Routes.site,
-            builder: (context, state) => const SiteScreen(),
+            builder: (context, state) => const PageBody(child: SiteScreen()),
           ),
           GoRoute(
             path: Routes.admin,
-            builder: (context, state) => const AdminScreen(),
+            builder: (context, state) => const PageBody(child: AdminScreen()),
           ),
           GoRoute(
             path: Routes.profile,
-            builder: (context, state) => const ProfileScreen(),
+            builder: (context, state) => const PageBody(child: ProfileScreen()),
           ),
           GoRoute(
             path: '/entry/new/:registerId',
-            builder: (context, state) => RegisterFormScreen(
+            builder: (context, state) => PageBody(
+              child: RegisterFormScreen(
               registerId: state.pathParameters['registerId']!,
+            ),
             ),
           ),
           GoRoute(
             path: '/entry/edit/:entryId',
-            builder: (context, state) => RegisterFormScreen(
+            builder: (context, state) => PageBody(
+              child: RegisterFormScreen(
               entryId: state.pathParameters['entryId'],
+            ),
             ),
           ),
         ],

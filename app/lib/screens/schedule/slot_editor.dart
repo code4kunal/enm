@@ -11,6 +11,7 @@ import '../../theme/tokens.dart';
 import '../../utils/dates.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/sheet.dart';
 
 /// Opens the editor for one booking: move it, mark it, annotate it, drop it.
 Future<void> showSlotEditor(
@@ -18,13 +19,8 @@ Future<void> showSlotEditor(
   WidgetRef ref,
   InspectionSlot slot,
 ) {
-  return showModalBottomSheet<void>(
+  return showEditorSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: T.card,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: T.rCard),
-    ),
     builder: (_) => _SlotEditorSheet(slot: slot),
   );
 }
@@ -35,13 +31,8 @@ Future<void> showSlotCreator(
   WidgetRef ref,
   String date,
 ) {
-  return showModalBottomSheet<void>(
+  return showEditorSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: T.card,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: T.rCard),
-    ),
     builder: (_) => _SlotCreatorSheet(date: date),
   );
 }

@@ -71,26 +71,10 @@ class ShellScreen extends ConsumerWidget {
                 activeRoute: activeRoute,
                 openBreakdowns: openBreakdowns,
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(maxWidth: T.maxContentWidth),
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          20,
-                          20,
-                          // Clear the fixed bottom nav on mobile.
-                          isMobile ? 96 : 32,
-                        ),
-                        child: child,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              // A bounded box, and nothing else: `child` is the ShellRoute's
+              // Navigator, which cannot lay out against an unbounded height.
+              // Each page scrolls itself, inside `PageBody`.
+              Expanded(child: child),
             ],
           ),
           if (isMobile)
