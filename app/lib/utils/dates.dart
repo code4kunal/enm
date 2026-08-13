@@ -51,6 +51,20 @@ abstract final class Dates {
         '${shifted.month.toString().padLeft(2, '0')}';
   }
 
+  /// The last day of a `yyyy-MM`, as a date. Day zero of the next month is
+  /// the last of this one, which sidesteps leap years entirely.
+  static String lastOfMonth(String month) {
+    final parts = month.split('-');
+    if (parts.length < 2) return month;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null) return month;
+    final last = DateTime(y, m + 1, 0);
+    return '${last.year.toString().padLeft(4, '0')}-'
+        '${last.month.toString().padLeft(2, '0')}-'
+        '${last.day.toString().padLeft(2, '0')}';
+  }
+
   /// Monday=1 … Sunday=7, for laying out a calendar grid.
   static int weekday(String isoDate) => parse(isoDate)?.weekday ?? 1;
 

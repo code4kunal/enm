@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import DefectCategory
 from app.schemas.common import HHMM, DecimalOut, ISTDateTime
+from app.services.control_charts import CellMark, ChartKind
 
 
 class DmrLine(BaseModel):
@@ -154,3 +155,45 @@ class OffRoadIn(BaseModel):
 
 class OffRoadClose(BaseModel):
     returned_on: date_t
+
+
+class ChartCellOut(BaseModel):
+    """One block on a control chart."""
+
+    #: Empty means the block is blank — no topping, no inspection, no complaint.
+    value: str = ""
+    #: What the depot colours it: plain, pm, docking, breakdown.
+    mark: CellMark = CellMark.plain
+    #: The full text when `value` was shortened to fit the block. Empty when
+    #: the two are the same.
+    title: str = ""
+
+
+class ChartRowOut(BaseModel):
+    vehicle_id: str
+    registration_no: str
+    #: One per date, in `dates` order, always the same length as `dates`.
+    cells: list[ChartCellOut]
+
+
+class ChartKindOut(BaseModel):
+    """A chart offered by the site, whether or not it has data behind it."""
+
+    kind: ChartKind
+    title: str
+    legend: str
+    unit: str = ""
+    #: False when nothing in the system can answer it; the client says why
+    #: rather than drawing an empty grid.
+    available: bool = True
+    unavailable_reason: str = ""
+
+
+class ControlChartOut(ChartKindOut):
+    site_code: str
+    from_date: date_t
+    to_date: date_t
+    dates: list[date_t]
+    rows: list[ChartRowOut]
+    #: How many blocks carry anything — a whole-chart "is this being kept up".
+    filled: int = 0

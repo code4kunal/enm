@@ -7,6 +7,7 @@ so a result can point at the exact line it answers.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from datetime import date as date_t
 from datetime import time as time_t
@@ -81,18 +82,30 @@ async def ensure_template(
     return template
 
 
+@dataclass(frozen=True, slots=True)
+class ChecklistLine:
+    """One line as it arrives from the site's checklist editor."""
+
+    section: str
+    label: str
+    response_type: ResponseType = ResponseType.ok_not_ok
+    is_required: bool = True
+    #: `tyre_pressure` or `washing` when this line feeds a control chart.
+    chart_key: str | None = None
+
+
 async def replace_items(
     session: AsyncSession,
     template: ChecklistTemplate,
-    items: list[tuple[str, str, ResponseType, bool]],
+    items: list[ChecklistLine],
 ) -> None:
-    """Replace a checklist wholesale: (section, label, response_type, required).
+    """Replace a checklist wholesale.
 
     Items already answered by an inspection cannot be deleted — the result
     points at them — so an item that disappears from the new list is retired
     rather than removed.
     """
-    incoming = {(section.strip(), label.strip()) for section, label, _, _ in items}
+    incoming = {(line.section.strip(), line.label.strip()) for line in items}
     answered = {
         item_id
         for (item_id,) in (
@@ -110,15 +123,16 @@ async def replace_items(
             template.items.remove(existing)
 
     by_key = {(i.section, i.label): i for i in template.items}
-    for order, (section, label, response_type, required) in enumerate(items):
-        key = (section.strip(), label.strip())
+    for order, line in enumerate(items):
+        key = (line.section.strip(), line.label.strip())
         item = by_key.get(key)
         if item is None:
             item = ChecklistItem(template_id=template.id, section=key[0], label=key[1])
             template.items.append(item)
         item.sort_order = order
-        item.response_type = response_type
-        item.is_required = required
+        item.response_type = line.response_type
+        item.is_required = line.is_required
+        item.chart_key = line.chart_key
         item.is_active = True
 
     template.updated_at = datetime.now(UTC)

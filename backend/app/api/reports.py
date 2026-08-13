@@ -15,6 +15,10 @@ from app.models.enums import AuditAction
 from app.models.master import Vehicle
 from app.models.report import OffRoadCase
 from app.schemas.report import (
+    ChartCellOut,
+    ChartKindOut,
+    ChartRowOut,
+    ControlChartOut,
     DmrDayOut,
     DmrEnteredIn,
     DmrLine,
@@ -27,7 +31,7 @@ from app.schemas.report import (
     OffRoadList,
     OffRoadOut,
 )
-from app.services import audit, dmr, investigations
+from app.services import audit, control_charts, dmr, investigations
 from app.services.common import today_ist
 
 router = APIRouter(tags=["reports"])
@@ -410,3 +414,135 @@ async def close_off_road(
     await session.commit()
     await session.refresh(case)
     return _off_road_out(case, payload.returned_on)
+
+
+def _chart_out(chart: control_charts.Chart) -> ControlChartOut:
+    spec = chart.spec
+    return ControlChartOut(
+        kind=spec.kind,
+        title=spec.title,
+        legend=spec.legend,
+        unit=spec.unit,
+        available=spec.available,
+        unavailable_reason=spec.unavailable_reason,
+        site_code=chart.site_code,
+        from_date=chart.from_date,
+        to_date=chart.to_date,
+        dates=chart.dates,
+        rows=[
+            ChartRowOut(
+                vehicle_id=row.vehicle_id,
+                registration_no=row.registration_no,
+                cells=[
+                    ChartCellOut(value=c.value, mark=c.mark, title=c.title)
+                    for c in row.cells
+                ],
+            )
+            for row in chart.rows
+        ],
+        filled=chart.filled,
+    )
+
+
+def _chart_window(
+    from_date: str | None, to_date: str | None
+) -> tuple[date_t, date_t]:
+    """Default to the month the caller is looking at, ending today."""
+    end = _parse_day(to_date, today_ist())
+    start = _parse_day(from_date, end.replace(day=1))
+    return start, end
+
+
+@router.get("/reports/control-charts", response_model=list[ChartKindOut])
+async def list_control_charts(user: CurrentUser) -> list[ChartKindOut]:
+    """Which charts exist, and which of them have data behind them."""
+    del user
+    return [
+        ChartKindOut(
+            kind=spec.kind,
+            title=spec.title,
+            legend=spec.legend,
+            unit=spec.unit,
+            available=spec.available,
+            unavailable_reason=spec.unavailable_reason,
+        )
+        for spec in control_charts.CHARTS
+    ]
+
+
+@router.get(
+    "/sites/{code}/reports/control-charts/{kind}",
+    response_model=ControlChartOut,
+)
+async def control_chart(
+    code: str,
+    kind: control_charts.ChartKind,
+    user: CurrentUser,
+    session: SessionDep,
+    from_date: Annotated[str | None, Query(alias="from")] = None,
+    to_date: Annotated[str | None, Query(alias="to")] = None,
+) -> ControlChartOut:
+    """Annexure-IV: the fleet down, the days across, one mark per bus per day."""
+    site_code = assert_site_access(user, code)
+    start, end = _chart_window(from_date, to_date)
+    chart = await control_charts.build(
+        session,
+        site_code=site_code,
+        kind=kind,
+        from_date=start,
+        to_date=end,
+    )
+    return _chart_out(chart)
+
+
+@router.get("/sites/{code}/reports/control-charts/{kind}/export")
+async def export_control_chart(
+    code: str,
+    kind: control_charts.ChartKind,
+    user: CurrentUser,
+    session: SessionDep,
+    from_date: Annotated[str | None, Query(alias="from")] = None,
+    to_date: Annotated[str | None, Query(alias="to")] = None,
+) -> Response:
+    """The grid as the depot files it, colours carried as a suffix.
+
+    A CSV cannot hold a fill colour, so a marked block is exported as its value
+    with the mark appended — `2 (BD)` — rather than silently losing the half of
+    the chart that the colour carries.
+    """
+    site_code = assert_site_access(user, code)
+    start, end = _chart_window(from_date, to_date)
+    chart = await control_charts.build(
+        session, site_code=site_code, kind=kind, from_date=start, to_date=end
+    )
+
+    suffix = {
+        control_charts.CellMark.pm: " (PM)",
+        control_charts.CellMark.docking: " (DOCKING)",
+        control_charts.CellMark.breakdown: " (BD)",
+    }
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([chart.spec.title])
+    writer.writerow([f"Location :- {site_code}"])
+    writer.writerow([f"{chart.from_date.isoformat()} to {chart.to_date.isoformat()}"])
+    writer.writerow([chart.spec.legend])
+    writer.writerow([])
+    writer.writerow(["Bus No", *[str(d.day) for d in chart.dates]])
+    for row in chart.rows:
+        writer.writerow(
+            [
+                row.registration_no,
+                *[
+                    f"{c.title or c.value}{suffix.get(c.mark, '')}".strip()
+                    for c in row.cells
+                ],
+            ]
+        )
+
+    name = f"{site_code}-{kind.value}-{chart.from_date}-to-{chart.to_date}.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )

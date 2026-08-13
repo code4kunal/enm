@@ -436,6 +436,18 @@ abstract interface class ReportRepository {
     String? lastPmFindings,
     String? relatedComplaints,
   });
+
+  /// Which control charts exist, and which of them have data behind them.
+  Future<List<ChartKind>> fetchChartKinds();
+
+  /// One Annexure-IV chart: the fleet down, the days across. The window is at
+  /// most a month — a wider grid is a download, not something to read.
+  Future<ControlChart> fetchControlChart({
+    required String siteCode,
+    required String kind,
+    required String fromDate,
+    required String toDate,
+  });
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────

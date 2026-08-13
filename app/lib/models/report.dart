@@ -318,3 +318,153 @@ class Investigation {
         updatedBy: json['updated_by'] as String? ?? '',
       );
 }
+
+// ─── Annexure-IV control charts ───────────────────────────────────────────
+
+/// What the depot colours a block on a control chart.
+enum CellMark {
+  plain,
+  /// A PM was attended that day — shaded on the coolant and energy charts.
+  pm,
+  /// A docking, which the P.M schedule chart marks red.
+  docking,
+  /// A breakdown, which the complaints chart marks red.
+  breakdown;
+
+  static CellMark parse(String? raw) => CellMark.values.firstWhere(
+        (m) => m.name == raw,
+        orElse: () => CellMark.plain,
+      );
+}
+
+/// One block: what happened, and how it is coloured.
+class ChartCell {
+  const ChartCell({
+    this.value = '',
+    this.mark = CellMark.plain,
+    this.title = '',
+  });
+
+  /// What the block shows — already short enough to read in one.
+  final String value;
+  final CellMark mark;
+
+  /// The full text when [value] had to be shortened to fit. Empty when the two
+  /// would be the same.
+  final String title;
+
+  /// A blank block is one where nothing happened — no topping, no inspection,
+  /// no complaint. It is as much of the chart as a filled one.
+  bool get isEmpty => value.isEmpty && mark == CellMark.plain;
+
+  factory ChartCell.fromJson(Map<String, dynamic> json) => ChartCell(
+        value: json['value'] as String? ?? '',
+        mark: CellMark.parse(json['mark'] as String?),
+        title: json['title'] as String? ?? '',
+      );
+}
+
+/// One bus, across every day in the window.
+class ChartRow {
+  const ChartRow({
+    required this.vehicleId,
+    required this.registrationNo,
+    required this.cells,
+  });
+
+  final String vehicleId;
+  final String registrationNo;
+  final List<ChartCell> cells;
+
+  factory ChartRow.fromJson(Map<String, dynamic> json) => ChartRow(
+        vehicleId: json['vehicle_id'] as String? ?? '',
+        registrationNo: json['registration_no'] as String? ?? '',
+        cells: <ChartCell>[
+          for (final c in (json['cells'] as List<dynamic>? ?? <dynamic>[]))
+            ChartCell.fromJson(c as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// A chart the site offers, ahead of asking for its grid.
+class ChartKind {
+  const ChartKind({
+    required this.kind,
+    required this.title,
+    this.legend = '',
+    this.unit = '',
+    this.available = true,
+    this.unavailableReason = '',
+  });
+
+  /// The wire value: `coolantTopping`, `pmSchedule`, and so on.
+  final String kind;
+  final String title;
+  final String legend;
+  final String unit;
+
+  /// False when nothing in the system can answer it. The pane says why rather
+  /// than drawing an empty grid that reads as a fleet nobody serviced.
+  final bool available;
+  final String unavailableReason;
+
+  factory ChartKind.fromJson(Map<String, dynamic> json) => ChartKind(
+        kind: json['kind'] as String,
+        title: json['title'] as String? ?? '',
+        legend: json['legend'] as String? ?? '',
+        unit: json['unit'] as String? ?? '',
+        available: json['available'] as bool? ?? true,
+        unavailableReason: json['unavailable_reason'] as String? ?? '',
+      );
+}
+
+/// One control chart: the fleet down, the days across.
+class ControlChart extends ChartKind {
+  const ControlChart({
+    required super.kind,
+    required super.title,
+    super.legend,
+    super.unit,
+    super.available,
+    super.unavailableReason,
+    this.siteCode = '',
+    this.fromDate = '',
+    this.toDate = '',
+    this.dates = const <String>[],
+    this.rows = const <ChartRow>[],
+    this.filled = 0,
+  });
+
+  final String siteCode;
+  final String fromDate;
+  final String toDate;
+  final List<String> dates;
+  final List<ChartRow> rows;
+
+  /// How many blocks carry anything — whether the chart is being kept up at
+  /// all, which is the first thing to read off it.
+  final int filled;
+
+  static const ControlChart empty = ControlChart(kind: '', title: '');
+
+  factory ControlChart.fromJson(Map<String, dynamic> json) => ControlChart(
+        kind: json['kind'] as String,
+        title: json['title'] as String? ?? '',
+        legend: json['legend'] as String? ?? '',
+        unit: json['unit'] as String? ?? '',
+        available: json['available'] as bool? ?? true,
+        unavailableReason: json['unavailable_reason'] as String? ?? '',
+        siteCode: json['site_code'] as String? ?? '',
+        fromDate: json['from_date'] as String? ?? '',
+        toDate: json['to_date'] as String? ?? '',
+        dates: <String>[
+          for (final d in (json['dates'] as List<dynamic>? ?? <dynamic>[]))
+            d as String,
+        ],
+        rows: <ChartRow>[
+          for (final r in (json['rows'] as List<dynamic>? ?? <dynamic>[]))
+            ChartRow.fromJson(r as Map<String, dynamic>),
+        ],
+        filled: (json['filled'] as num?)?.round() ?? 0,
+      );
+}

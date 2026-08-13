@@ -45,6 +45,7 @@ def _checklist_out(template: ChecklistTemplate) -> ChecklistOut:
                 response_type=item.response_type,
                 is_required=item.is_required,
                 is_active=item.is_active,
+                chart_key=item.chart_key,
             )
             for item in template.items
             if item.is_active
@@ -137,7 +138,13 @@ async def replace_checklist(
         session,
         template,
         [
-            (i.section, i.label, i.response_type, i.is_required)
+            checklists.ChecklistLine(
+                section=i.section,
+                label=i.label,
+                response_type=i.response_type,
+                is_required=i.is_required,
+                chart_key=i.chart_key.value if i.chart_key else None,
+            )
             for i in payload.items
         ],
     )

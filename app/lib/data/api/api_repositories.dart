@@ -961,4 +961,24 @@ class ApiReportRepository implements ReportRepository {
     );
     return Investigation.fromJson(json as Map<String, dynamic>);
   }
+
+  @override
+  Future<List<ChartKind>> fetchChartKinds() async =>
+      (await _api.get('/reports/control-charts') as List<dynamic>)
+          .map((e) => ChartKind.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+  @override
+  Future<ControlChart> fetchControlChart({
+    required String siteCode,
+    required String kind,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/reports/control-charts/$kind',
+      query: <String, String>{'from': fromDate, 'to': toDate},
+    );
+    return ControlChart.fromJson(json as Map<String, dynamic>);
+  }
 }

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import CheckResult, ResponseType
 from app.schemas.common import HHMM, ISTDateTime
+from app.services.control_charts import ChartKey
 
 
 class ChecklistItemIO(BaseModel):
@@ -18,6 +19,10 @@ class ChecklistItemIO(BaseModel):
     response_type: ResponseType = ResponseType.ok_not_ok
     is_required: bool = True
     is_active: bool = True
+    #: Ties this line to a control chart — `tyre_pressure` or `washing`. Two of
+    #: the six charts are "was this done that day", and the line that answers
+    #: them is the depot's to nominate, not this code's to guess.
+    chart_key: ChartKey | None = None
 
     @field_validator("label", "section")
     @classmethod

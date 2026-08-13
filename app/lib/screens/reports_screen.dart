@@ -11,15 +11,17 @@ import '../widgets/chips.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/sub_tabs.dart';
+import 'reports/charts_pane.dart';
 import 'reports/dmr_pane.dart';
 import 'reports/investigations_pane.dart';
 import 'reports/off_road_pane.dart';
 
 /// The depot's reports, computed from the registers.
 ///
-/// One date across all four panes, because they are read together: what the day
+/// One date across the day panes, because they are read together: what the day
 /// looked like, what is still off the road, and which breakdowns have not been
-/// explained. The month grid is the same report widened out.
+/// explained. The month grid and the control charts are the same registers
+/// widened out to a month, and carry their own period.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
@@ -30,7 +32,16 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   int _pane = 0;
 
-  static const _labels = <String>['DMR', 'Month', 'Off road', 'Investigations'];
+  static const _labels = <String>[
+    'DMR',
+    'Month',
+    'Off road',
+    'Investigations',
+    'Charts',
+  ];
+
+  /// Panes that pick their own month, so the day picker would only mislead.
+  static const _monthly = <int>{1, 4};
 
   @override
   Widget build(BuildContext context) {
@@ -48,8 +59,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(height: 14),
           // The month grid is its own period, so the day picker would only
           // mislead there.
-          if (_pane != 1) const _DatePicker(),
-          if (_pane != 1) const SizedBox(height: 14),
+          if (!_monthly.contains(_pane)) const _DatePicker(),
+          if (!_monthly.contains(_pane)) const SizedBox(height: 14),
           SubTabs(
             labels: _labels,
             selectedIndex: _pane,
@@ -60,7 +71,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             0 => const DmrPane(),
             1 => const DmrMonthPane(),
             2 => const OffRoadPane(),
-            _ => const InvestigationsPane(),
+            3 => const InvestigationsPane(),
+            _ => const ChartsPane(),
           },
         ],
       ),

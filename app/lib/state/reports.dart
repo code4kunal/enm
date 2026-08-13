@@ -62,6 +62,36 @@ final outstandingInvestigationsProvider = Provider<int>((ref) {
   return all.where((i) => !i.isComplete).length;
 });
 
+// ─── Annexure-IV control charts ───────────────────────────────────────────
+
+/// The chart on screen. The wire value, not the index — the list is served.
+final chartKindProvider = StateProvider<String>((ref) => 'pmSchedule');
+
+/// The window the chart covers, as `yyyy-MM`. A control chart is read a month
+/// at a time; that is the shape the depot files.
+final chartMonthProvider = StateProvider<String>(
+  (ref) => Dates.today().substring(0, 7),
+);
+
+final chartKindsProvider = FutureProvider<List<ChartKind>>((ref) {
+  return ref.watch(reportRepositoryProvider).fetchChartKinds();
+});
+
+final controlChartProvider = FutureProvider<ControlChart>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  final kind = ref.watch(chartKindProvider);
+  final month = ref.watch(chartMonthProvider);
+  if (site.isEmpty || kind.isEmpty) {
+    return Future<ControlChart>.value(ControlChart.empty);
+  }
+  return ref.watch(reportRepositoryProvider).fetchControlChart(
+        siteCode: site,
+        kind: kind,
+        fromDate: '$month-01',
+        toDate: Dates.lastOfMonth(month),
+      );
+});
+
 /// Writing to the reports.
 class ReportController {
   ReportController(this._ref);

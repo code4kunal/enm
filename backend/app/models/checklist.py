@@ -78,6 +78,7 @@ class ChecklistItem(Base):
     __tablename__ = "checklist_items"
     __table_args__ = (
         Index("ix_checklist_items_template_id_sort_order", "template_id", "sort_order"),
+        Index("ix_checklist_items_chart_key", "chart_key"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
@@ -107,6 +108,11 @@ class ChecklistItem(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    #: Ties this line to a control chart — `tyre_pressure`, `washing`. Two of
+    #: the charts are just "was this check done that day", and the honest way
+    #: to know is for the depot to say which line means it, rather than this
+    #: code guessing from the wording.
+    chart_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     template: Mapped[ChecklistTemplate] = relationship(back_populates="items")
 
