@@ -24,6 +24,7 @@ from app.models.enums import DefectCategory, Register
 from app.models.master import DefectType, Vehicle, WorkType
 from app.models.report import DmrDay, OffRoadCase
 from app.models.user import User
+from app.services import units
 
 #: A bus off the road this long is reported separately.
 HELD_DAYS = 3
@@ -83,7 +84,9 @@ PARAMETERS: list[Parameter] = [
         "depot_accidents", derived=False,
     ),
     Parameter(29, "Nos of tyres scrapped", "tyres_scrapped", derived=False),
-    Parameter(30, "Nos of HV batteries replaced", "hv_batteries_replaced", derived=False),
+    # Derived since fitted units are recorded: an HV pack coming off the bus
+    # is the event this line counts, and it is now written down.
+    Parameter(30, "Nos of HV batteries replaced", "hv_batteries_replaced"),
     Parameter(31, "Nos of buses reported for body damages", "body_damages", derived=False),
 ]
 
@@ -236,6 +239,9 @@ async def derive(
         ),
         "dockings": await _count_inspections(session, site_code, day, ("P.M", "PM")),
         "coolant_litres": Decimal(coolant or 0),
+        "hv_batteries_replaced": await units.hv_batteries_replaced(
+            session, site_code, day
+        ),
     }
 
 

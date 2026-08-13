@@ -13,8 +13,10 @@ import '../widgets/fade_up.dart';
 import '../widgets/sub_tabs.dart';
 import 'reports/charts_pane.dart';
 import 'reports/dmr_pane.dart';
+import 'reports/history_pane.dart';
 import 'reports/investigations_pane.dart';
 import 'reports/off_road_pane.dart';
+import 'reports/units_pane.dart';
 
 /// The depot's reports, computed from the registers.
 ///
@@ -38,10 +40,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     'Off road',
     'Investigations',
     'Charts',
+    'Units',
+    'Bus history',
   ];
 
   /// Panes that pick their own month, so the day picker would only mislead.
-  static const _monthly = <int>{1, 4};
+  static const _monthly = <int>{1, 4, 5, 6};
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +76,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             1 => const DmrMonthPane(),
             2 => const OffRoadPane(),
             3 => const InvestigationsPane(),
-            _ => const ChartsPane(),
+            4 => const ChartsPane(),
+            5 => const UnitsPane(),
+            _ => const HistoryPane(),
           },
         ],
       ),

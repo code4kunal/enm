@@ -12,6 +12,7 @@ import '../../widgets/buttons.dart';
 import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/sheet.dart';
 import '../../widgets/sub_tabs.dart';
 
 /// Annexure-V: every breakdown that day, and why it happened.
@@ -32,10 +33,30 @@ class InvestigationsPane extends ConsumerWidget {
         child: Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => EmptyState(message: e.toString()),
-      data: (items) {
+      data: (day) {
+        final items = day.items;
         if (items.isEmpty) {
-          return const EmptyState(
-            message: 'No breakdowns on this date — nothing to investigate.',
+          // A quiet date and a broken screen look identical, so say where the
+          // work actually is rather than only that there is none here.
+          final nearest = day.nearestDate;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const EmptyState(
+                message: 'No breakdowns on this date — nothing to investigate.',
+              ),
+              if (nearest != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Center(
+                  child: OutlineActionButton(
+                    label: 'Go to ${Dates.dayLabel(nearest)}',
+                    onPressed: () => ref
+                        .read(reportDateProvider.notifier)
+                        .state = nearest,
+                  ),
+                ),
+              ],
+            ],
           );
         }
         final outstanding = items.where((i) => !i.isComplete).length;
@@ -223,13 +244,8 @@ Future<void> showInvestigationEditor(
   WidgetRef ref,
   Investigation item,
 ) {
-  return showModalBottomSheet<void>(
+  return showEditorSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: T.card,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: T.rCard),
-    ),
     builder: (_) => _InvestigationSheet(item: item),
   );
 }

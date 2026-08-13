@@ -43,11 +43,11 @@ final offRoadProvider = FutureProvider<List<OffRoadCase>>((ref) {
       .fetchOffRoad(siteCode: site, date: date);
 });
 
-final investigationsProvider = FutureProvider<List<Investigation>>((ref) {
+final investigationsProvider = FutureProvider<InvestigationDay>((ref) {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   final date = ref.watch(reportDateProvider);
   if (site.isEmpty) {
-    return Future<List<Investigation>>.value(const <Investigation>[]);
+    return Future<InvestigationDay>.value(InvestigationDay.empty);
   }
   return ref
       .watch(reportRepositoryProvider)
@@ -57,9 +57,10 @@ final investigationsProvider = FutureProvider<List<Investigation>>((ref) {
 /// Breakdowns that day with nothing written against them yet — the badge on
 /// the tab, because an unexplained breakdown is the thing that gets forgotten.
 final outstandingInvestigationsProvider = Provider<int>((ref) {
-  final all = ref.watch(investigationsProvider).valueOrNull ??
-      const <Investigation>[];
-  return all.where((i) => !i.isComplete).length;
+  final day = ref.watch(investigationsProvider).valueOrNull;
+  return (day?.items ?? const <Investigation>[])
+      .where((i) => !i.isComplete)
+      .length;
 });
 
 // ─── Annexure-IV control charts ───────────────────────────────────────────
@@ -92,6 +93,61 @@ final controlChartProvider = FutureProvider<ControlChart>((ref) {
       );
 });
 
+// ─── Fitted units: the statement and the history card ─────────────────────
+
+/// The month the Unit Failure Statement is showing, as `yyyy-MM`.
+final unitMonthProvider = StateProvider<String>(
+  (ref) => Dates.today().substring(0, 7),
+);
+
+/// The bus whose history card is open. Empty until one is picked — a card is
+/// per-bus, so there is no sensible default.
+final historyVehicleProvider = StateProvider<String>((ref) => '');
+
+/// The month the history card runs to, as `yyyy-MM`.
+final historyMonthProvider = StateProvider<String>(
+  (ref) => Dates.today().substring(0, 7),
+);
+
+final unitTypesProvider = FutureProvider<List<UnitType>>((ref) {
+  return ref.watch(reportRepositoryProvider).fetchUnitTypes();
+});
+
+final unitFailuresProvider = FutureProvider<List<FittedUnit>>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  final month = ref.watch(unitMonthProvider);
+  if (site.isEmpty) return Future<List<FittedUnit>>.value(const <FittedUnit>[]);
+  return ref
+      .watch(reportRepositoryProvider)
+      .fetchUnitFailures(siteCode: site, month: month);
+});
+
+/// What is on the bus whose card is open — the list a removal is picked from.
+final fittedUnitsProvider = FutureProvider<List<FittedUnit>>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  final vehicleId = ref.watch(historyVehicleProvider);
+  if (site.isEmpty || vehicleId.isEmpty) {
+    return Future<List<FittedUnit>>.value(const <FittedUnit>[]);
+  }
+  return ref
+      .watch(reportRepositoryProvider)
+      .fetchFittedUnits(siteCode: site, vehicleId: vehicleId);
+});
+
+final busHistoryProvider = FutureProvider<BusHistory>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  final vehicleId = ref.watch(historyVehicleProvider);
+  final month = ref.watch(historyMonthProvider);
+  if (site.isEmpty || vehicleId.isEmpty) {
+    return Future<BusHistory>.value(BusHistory.empty);
+  }
+  return ref.watch(reportRepositoryProvider).fetchBusHistory(
+        siteCode: site,
+        vehicleId: vehicleId,
+        toMonth: month,
+      );
+});
+
 /// Writing to the reports.
 class ReportController {
   ReportController(this._ref);
@@ -103,6 +159,54 @@ class ReportController {
   String get _site => _ref.read(sessionProvider).site;
 
   String get _date => _ref.read(reportDateProvider);
+
+  /// Put a component on a bus. Refreshes both views it feeds.
+  Future<void> fitUnit({
+    required String vehicleId,
+    required int unitTypeId,
+    required String fittedOn,
+    String? unitNo,
+    int? fittedOdometerKm,
+    String? remarks,
+  }) async {
+    await _repo.fitUnit(
+      siteCode: _site,
+      vehicleId: vehicleId,
+      unitTypeId: unitTypeId,
+      fittedOn: fittedOn,
+      unitNo: unitNo,
+      fittedOdometerKm: fittedOdometerKm,
+      remarks: remarks,
+    );
+    _refreshUnits();
+  }
+
+  /// Take it off, which is what puts it on the failure statement.
+  Future<void> removeUnit(
+    String unitId, {
+    required String removedOn,
+    int? removedOdometerKm,
+    String? removalReason,
+    String? remarks,
+  }) async {
+    await _repo.removeUnit(
+      unitId,
+      removedOn: removedOn,
+      removedOdometerKm: removedOdometerKm,
+      removalReason: removalReason,
+      remarks: remarks,
+    );
+    _refreshUnits();
+  }
+
+  /// A fitting or a removal moves the statement, the card, and the DMR line
+  /// that counts HV packs — so all three are invalidated together.
+  void _refreshUnits() {
+    _ref.invalidate(unitFailuresProvider);
+    _ref.invalidate(fittedUnitsProvider);
+    _ref.invalidate(busHistoryProvider);
+    _ref.invalidate(dmrDayProvider);
+  }
 
   Future<void> saveEntered(Map<String, int?> values, {String? notes}) async {
     await _repo.saveDmrEntered(

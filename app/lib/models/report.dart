@@ -319,6 +319,33 @@ class Investigation {
       );
 }
 
+/// A day's breakdowns, with the nearest date that has any when this one has
+/// none.
+class InvestigationDay {
+  const InvestigationDay({
+    this.items = const <Investigation>[],
+    this.nearestDate,
+  });
+
+  final List<Investigation> items;
+
+  /// The closest date that does have breakdowns. Non-null only when this date
+  /// has none — an empty pane on a quiet day is indistinguishable from a
+  /// broken one without it.
+  final String? nearestDate;
+
+  static const InvestigationDay empty = InvestigationDay();
+
+  factory InvestigationDay.fromJson(Map<String, dynamic> json) =>
+      InvestigationDay(
+        items: <Investigation>[
+          for (final i in (json['items'] as List<dynamic>? ?? <dynamic>[]))
+            Investigation.fromJson(i as Map<String, dynamic>),
+        ],
+        nearestDate: json['nearest_date'] as String?,
+      );
+}
+
 // ─── Annexure-IV control charts ───────────────────────────────────────────
 
 /// What the depot colours a block on a control chart.
@@ -466,5 +493,190 @@ class ControlChart extends ChartKind {
             ChartRow.fromJson(r as Map<String, dynamic>),
         ],
         filled: (json['filled'] as num?)?.round() ?? 0,
+      );
+}
+
+// ─── Fitted units: the statement and the history card ─────────────────────
+
+/// A component worth tracking on its own.
+class UnitType {
+  const UnitType({
+    required this.id,
+    required this.name,
+    this.sortOrder = 0,
+    this.isHvBattery = false,
+  });
+
+  final int id;
+  final String name;
+  final int sortOrder;
+
+  /// Marks the unit the DMR counts under "HV batteries replaced".
+  final bool isHvBattery;
+
+  factory UnitType.fromJson(Map<String, dynamic> json) => UnitType(
+        id: (json['id'] as num).toInt(),
+        name: json['name'] as String? ?? '',
+        sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+        isHvBattery: json['is_hv_battery'] as bool? ?? false,
+      );
+}
+
+/// One component's stay on one bus. A row of the Unit Failure Statement once
+/// it has come off.
+class FittedUnit {
+  const FittedUnit({
+    required this.id,
+    required this.vehicleId,
+    required this.registrationNo,
+    required this.unitTypeId,
+    required this.unitName,
+    required this.fittedOn,
+    this.siteCode = '',
+    this.unitNo,
+    this.fittedOdometerKm,
+    this.removedOn,
+    this.removedOdometerKm,
+    this.kmsCovered,
+    this.removalReason,
+    this.remarks,
+    this.isFitted = true,
+  });
+
+  final String id;
+  final String siteCode;
+  final String vehicleId;
+  final String registrationNo;
+  final int unitTypeId;
+  final String unitName;
+  final String? unitNo;
+  final String fittedOn;
+  final int? fittedOdometerKm;
+  final String? removedOn;
+  final int? removedOdometerKm;
+
+  /// Null when either reading is missing — an unknown life is not a life of
+  /// zero, and the column shows a dash rather than a nil.
+  final int? kmsCovered;
+  final String? removalReason;
+  final String? remarks;
+  final bool isFitted;
+
+  String get kmsDisplay => kmsCovered == null ? '—' : '$kmsCovered';
+
+  factory FittedUnit.fromJson(Map<String, dynamic> json) => FittedUnit(
+        id: json['id'] as String,
+        siteCode: json['site_code'] as String? ?? '',
+        vehicleId: json['vehicle_id'] as String? ?? '',
+        registrationNo: json['registration_no'] as String? ?? '',
+        unitTypeId: (json['unit_type_id'] as num).toInt(),
+        unitName: json['unit_name'] as String? ?? '',
+        unitNo: json['unit_no'] as String?,
+        fittedOn: json['fitted_on'] as String,
+        fittedOdometerKm: (json['fitted_odometer_km'] as num?)?.toInt(),
+        removedOn: json['removed_on'] as String?,
+        removedOdometerKm: (json['removed_odometer_km'] as num?)?.toInt(),
+        kmsCovered: (json['kms_covered'] as num?)?.toInt(),
+        removalReason: json['removal_reason'] as String?,
+        remarks: json['remarks'] as String?,
+        isFitted: json['is_fitted'] as bool? ?? true,
+      );
+}
+
+/// What happened to one unit in one month of a bus history card.
+class HistoryEvent {
+  const HistoryEvent({
+    required this.kind,
+    required this.label,
+    this.unitNo = '',
+    this.reason = '',
+    this.kmsCovered,
+  });
+
+  /// `fitted`, `removed`, or `replaced` when both happened that month.
+  final String kind;
+
+  /// What the block shows — the day, or both days.
+  final String label;
+  final String unitNo;
+  final String reason;
+  final int? kmsCovered;
+
+  factory HistoryEvent.fromJson(Map<String, dynamic> json) => HistoryEvent(
+        kind: json['kind'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        unitNo: json['unit_no'] as String? ?? '',
+        reason: json['reason'] as String? ?? '',
+        kmsCovered: (json['kms_covered'] as num?)?.toInt(),
+      );
+}
+
+class HistoryRow {
+  const HistoryRow({
+    required this.unitTypeId,
+    required this.unitName,
+    required this.cells,
+    this.fittedNow = false,
+  });
+
+  final int unitTypeId;
+  final String unitName;
+
+  /// One per month in `months` order; null where nothing happened.
+  final List<HistoryEvent?> cells;
+
+  /// True when the unit is on the bus as at the end of the window.
+  final bool fittedNow;
+
+  factory HistoryRow.fromJson(Map<String, dynamic> json) => HistoryRow(
+        unitTypeId: (json['unit_type_id'] as num).toInt(),
+        unitName: json['unit_name'] as String? ?? '',
+        fittedNow: json['fitted_now'] as bool? ?? false,
+        cells: <HistoryEvent?>[
+          for (final c in (json['cells'] as List<dynamic>? ?? <dynamic>[]))
+            c == null
+                ? null
+                : HistoryEvent.fromJson(c as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// One bus's card: every unit down the side, the months across.
+class BusHistory {
+  const BusHistory({
+    this.siteCode = '',
+    this.vehicleId = '',
+    this.registrationNo = '',
+    this.months = const <String>[],
+    this.rows = const <HistoryRow>[],
+    this.events = 0,
+  });
+
+  final String siteCode;
+  final String vehicleId;
+  final String registrationNo;
+
+  /// `yyyy-MM`, oldest first.
+  final List<String> months;
+  final List<HistoryRow> rows;
+
+  /// How many blocks carry anything — whether the card is being kept at all.
+  final int events;
+
+  static const BusHistory empty = BusHistory();
+
+  factory BusHistory.fromJson(Map<String, dynamic> json) => BusHistory(
+        siteCode: json['site_code'] as String? ?? '',
+        vehicleId: json['vehicle_id'] as String? ?? '',
+        registrationNo: json['registration_no'] as String? ?? '',
+        months: <String>[
+          for (final m in (json['months'] as List<dynamic>? ?? <dynamic>[]))
+            m as String,
+        ],
+        rows: <HistoryRow>[
+          for (final r in (json['rows'] as List<dynamic>? ?? <dynamic>[]))
+            HistoryRow.fromJson(r as Map<String, dynamic>),
+        ],
+        events: (json['events'] as num?)?.toInt() ?? 0,
       );
 }

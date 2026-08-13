@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_t
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import NotFound, ValidationError
@@ -328,3 +328,32 @@ async def resolve_vehicle(
     return matches[0] if len(matches) == 1 else None
 
 
+
+
+async def nearest_breakdown_day(
+    session: AsyncSession, site_code: str, day: date_t
+) -> date_t | None:
+    """The closest date to `day` that actually has breakdowns.
+
+    A depot reads this report on the day it happened, so landing on a quiet
+    date shows an empty pane that is indistinguishable from a broken one. This
+    is what lets the pane say where the work actually is. Looks back first,
+    since the usual case is catching up.
+    """
+    before = await session.scalar(
+        select(func.max(Entry.entry_date)).where(
+            Entry.site_code == site_code,
+            Entry.register == Register.breakdown,
+            Entry.entry_date < day,
+        )
+    )
+    after = await session.scalar(
+        select(func.min(Entry.entry_date)).where(
+            Entry.site_code == site_code,
+            Entry.register == Register.breakdown,
+            Entry.entry_date > day,
+        )
+    )
+    if before and after:
+        return before if (day - before) <= (after - day) else after
+    return before or after

@@ -421,7 +421,8 @@ abstract interface class ReportRepository {
   });
 
   /// Every breakdown that day, with its investigation where one has started.
-  Future<List<Investigation>> fetchInvestigations({
+  /// Carries the nearest date with breakdowns when this one has none.
+  Future<InvestigationDay> fetchInvestigations({
     required String siteCode,
     required String date,
   });
@@ -447,6 +448,49 @@ abstract interface class ReportRepository {
     required String kind,
     required String fromDate,
     required String toDate,
+  });
+
+  /// The components worth tracking, in the history card's order.
+  Future<List<UnitType>> fetchUnitTypes();
+
+  /// The Unit Failure Statement: every unit that came off in a month.
+  Future<List<FittedUnit>> fetchUnitFailures({
+    required String siteCode,
+    required String month,
+  });
+
+  /// What is on a bus right now.
+  Future<List<FittedUnit>> fetchFittedUnits({
+    required String siteCode,
+    required String vehicleId,
+  });
+
+  /// Put a component on a bus. The odometer defaults to the bus's last
+  /// reading, so leaving it out is the normal case.
+  Future<FittedUnit> fitUnit({
+    required String siteCode,
+    required String vehicleId,
+    required int unitTypeId,
+    required String fittedOn,
+    String? unitNo,
+    int? fittedOdometerKm,
+    String? remarks,
+  });
+
+  /// Take it off — which is what puts it on the failure statement.
+  Future<FittedUnit> removeUnit(
+    String unitId, {
+    required String removedOn,
+    int? removedOdometerKm,
+    String? removalReason,
+    String? remarks,
+  });
+
+  /// One bus's history card: units down, months across.
+  Future<BusHistory> fetchBusHistory({
+    required String siteCode,
+    required String vehicleId,
+    required String toMonth,
   });
 }
 

@@ -8,13 +8,15 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
+from sqlalchemy import select
 
 from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
 from app.errors import NotFound, ValidationError
 from app.models.enums import AuditAction
 from app.models.master import Vehicle
-from app.models.report import OffRoadCase
+from app.models.report import FittedUnit, OffRoadCase, UnitType
 from app.schemas.report import (
+    BusHistoryOut,
     ChartCellOut,
     ChartKindOut,
     ChartRowOut,
@@ -23,6 +25,11 @@ from app.schemas.report import (
     DmrEnteredIn,
     DmrLine,
     DmrMonthOut,
+    FittedUnitList,
+    FittedUnitOut,
+    FitUnitIn,
+    HistoryEventOut,
+    HistoryRowOut,
     InvestigationIn,
     InvestigationList,
     InvestigationOut,
@@ -30,8 +37,10 @@ from app.schemas.report import (
     OffRoadIn,
     OffRoadList,
     OffRoadOut,
+    RemoveUnitIn,
+    UnitTypeOut,
 )
-from app.services import audit, control_charts, dmr, investigations
+from app.services import audit, control_charts, dmr, investigations, units
 from app.services.common import today_ist
 
 router = APIRouter(tags=["reports"])
@@ -294,6 +303,13 @@ async def investigations_for_day(
         report_date=day,
         items=items,
         outstanding=sum(1 for i in items if not i.is_complete),
+        nearest_date=(
+            None
+            if items
+            else await investigations.nearest_breakdown_day(
+                session, site_code, day
+            )
+        ),
     )
 
 
@@ -545,4 +561,260 @@ async def export_control_chart(
         content=buffer.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+# --- fitted units: the statement and the history card ------------------------
+
+
+def _unit_out(stay: FittedUnit) -> FittedUnitOut:
+    return FittedUnitOut(
+        id=stay.id,
+        site_code=stay.site_code,
+        vehicle_id=stay.vehicle_id,
+        registration_no=stay.vehicle.registration_no if stay.vehicle else "",
+        unit_type_id=stay.unit_type_id,
+        unit_name=stay.unit_type.name if stay.unit_type else "",
+        unit_no=stay.unit_no,
+        fitted_on=stay.fitted_on,
+        fitted_odometer_km=stay.fitted_odometer_km,
+        removed_on=stay.removed_on,
+        removed_odometer_km=stay.removed_odometer_km,
+        kms_covered=stay.kms_covered,
+        removal_reason=stay.removal_reason,
+        remarks=stay.remarks,
+        is_fitted=stay.is_fitted,
+    )
+
+
+@router.get("/unit-types", response_model=list[UnitTypeOut])
+async def list_unit_types(user: CurrentUser, session: SessionDep) -> list[UnitTypeOut]:
+    """The components worth tracking, in the history card's order."""
+    del user
+    rows = await session.scalars(
+        select(UnitType)
+        .where(UnitType.is_active.is_(True))
+        .order_by(UnitType.sort_order, UnitType.name)
+    )
+    return [
+        UnitTypeOut(
+            id=row.id,
+            name=row.name,
+            sort_order=row.sort_order,
+            is_hv_battery=row.is_hv_battery,
+        )
+        for row in rows.all()
+    ]
+
+
+@router.get("/sites/{code}/units", response_model=FittedUnitList)
+async def units_on_bus(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    vehicle_id: Annotated[str, Query()],
+) -> FittedUnitList:
+    """What is on a bus right now."""
+    site_code = assert_site_access(user, code)
+    rows = await units.fitted_to(session, site_code, vehicle_id)
+    return FittedUnitList(
+        site_code=site_code, items=[_unit_out(row) for row in rows]
+    )
+
+
+@router.post(
+    "/sites/{code}/units",
+    response_model=FittedUnitOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def fit_unit(
+    code: str, payload: FitUnitIn, user: CurrentUser, session: SessionDep
+) -> FittedUnitOut:
+    """Put a component on a bus."""
+    site_code = assert_site_admin(user, code)
+    vehicle = await session.get(Vehicle, payload.vehicle_id)
+    if vehicle is None or vehicle.site_code != site_code:
+        raise NotFound("Vehicle not found")
+
+    stay = await units.fit_unit(
+        session,
+        site_code=site_code,
+        vehicle=vehicle,
+        unit_type_id=payload.unit_type_id,
+        fitted_on=payload.fitted_on,
+        unit_no=payload.unit_no,
+        fitted_odometer_km=payload.fitted_odometer_km,
+        remarks=payload.remarks,
+        actor=user,
+    )
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.entry_created,
+        object_type="fitted_unit",
+        object_id=stay.id,
+        after={"vehicle": vehicle.registration_no, "unit": stay.unit_type.name},
+    )
+    await session.commit()
+    return _unit_out(stay)
+
+
+@router.post("/units/{unit_id}/remove", response_model=FittedUnitOut)
+async def remove_unit(
+    unit_id: str, payload: RemoveUnitIn, user: CurrentUser, session: SessionDep
+) -> FittedUnitOut:
+    """Take it off — which is what puts it on the failure statement."""
+    stay = await session.get(FittedUnit, unit_id)
+    if stay is None:
+        raise NotFound("Fitted unit not found")
+    assert_site_admin(user, stay.site_code)
+    if stay.removed_on is not None:
+        raise ValidationError(
+            "This unit is already recorded as removed",
+            {"removed_on": "already removed"},
+        )
+
+    await units.remove_unit(
+        session,
+        stay,
+        removed_on=payload.removed_on,
+        removed_odometer_km=payload.removed_odometer_km,
+        removal_reason=payload.removal_reason,
+        remarks=payload.remarks,
+        actor=user,
+    )
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.entry_updated,
+        object_type="fitted_unit",
+        object_id=stay.id,
+        after={"removed_on": str(payload.removed_on)},
+    )
+    await session.commit()
+    return _unit_out(stay)
+
+
+@router.get("/sites/{code}/reports/unit-failures", response_model=FittedUnitList)
+async def unit_failure_statement(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    month: Annotated[str | None, Query()] = None,
+) -> FittedUnitList:
+    """Every unit that came off in a month."""
+    site_code = assert_site_access(user, code)
+    target = month or today_ist().strftime("%Y-%m")
+    rows = await units.statement(session, site_code, target)
+    return FittedUnitList(
+        site_code=site_code,
+        month=target,
+        items=[_unit_out(row) for row in rows],
+    )
+
+
+@router.get("/sites/{code}/reports/unit-failures/export")
+async def export_unit_failures(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    month: Annotated[str | None, Query()] = None,
+) -> Response:
+    """The statement in the layout the depot already files."""
+    site_code = assert_site_access(user, code)
+    target = month or today_ist().strftime("%Y-%m")
+    rows = await units.statement(session, site_code, target)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Unit Failure Statement"])
+    writer.writerow([f"Month :- {target}"])
+    writer.writerow([f"Location :- {site_code}"])
+    writer.writerow([])
+    writer.writerow(
+        [
+            "Sl.No",
+            "Bus No",
+            "Name of unit",
+            "Unit No",
+            "Date fitted",
+            "Date removed",
+            "Kms covered",
+            "Reason for removal",
+            "Remarks",
+        ]
+    )
+    for number, stay in enumerate(rows, start=1):
+        writer.writerow(
+            [
+                number,
+                stay.vehicle.registration_no if stay.vehicle else "",
+                stay.unit_type.name if stay.unit_type else "",
+                stay.unit_no or "",
+                stay.fitted_on.isoformat(),
+                stay.removed_on.isoformat() if stay.removed_on else "",
+                "" if stay.kms_covered is None else stay.kms_covered,
+                stay.removal_reason or "",
+                stay.remarks or "",
+            ]
+        )
+
+    name = f"{site_code}-unit-failures-{target}.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.get(
+    "/sites/{code}/reports/bus-history/{vehicle_id}", response_model=BusHistoryOut
+)
+async def bus_history(
+    code: str,
+    vehicle_id: str,
+    user: CurrentUser,
+    session: SessionDep,
+    to_month: Annotated[str | None, Query(alias="to")] = None,
+    months: Annotated[int, Query(ge=1, le=36)] = units.HISTORY_MONTHS,
+) -> BusHistoryOut:
+    """One bus's card: every unit down the side, the months across."""
+    site_code = assert_site_access(user, code)
+    vehicle = await session.get(Vehicle, vehicle_id)
+    if vehicle is None or vehicle.site_code != site_code:
+        raise NotFound("Vehicle not found")
+
+    card = await units.history(
+        session,
+        site_code=site_code,
+        vehicle=vehicle,
+        to_month=to_month or today_ist().strftime("%Y-%m"),
+        months=months,
+    )
+    return BusHistoryOut(
+        site_code=card.site_code,
+        vehicle_id=card.vehicle_id,
+        registration_no=card.registration_no,
+        months=card.months,
+        rows=[
+            HistoryRowOut(
+                unit_type_id=row.unit_type_id,
+                unit_name=row.unit_name,
+                fitted_now=row.fitted_now,
+                cells=[
+                    None
+                    if cell is None
+                    else HistoryEventOut(
+                        kind=cell.kind,
+                        label=cell.label,
+                        unit_no=cell.unit_no,
+                        reason=cell.reason,
+                        kms_covered=cell.kms_covered,
+                    )
+                    for cell in row.cells
+                ],
+            )
+            for row in card.rows
+        ],
+        events=card.events,
     )

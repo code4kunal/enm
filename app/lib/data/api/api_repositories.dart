@@ -926,14 +926,16 @@ class ApiReportRepository implements ReportRepository {
   }
 
   @override
-  Future<List<Investigation>> fetchInvestigations({
+  Future<InvestigationDay> fetchInvestigations({
     required String siteCode,
     required String date,
-  }) async =>
-      itemsOf(await _api.get(
-        '/sites/$siteCode/reports/investigations',
-        query: <String, String>{'date': date},
-      )).map(Investigation.fromJson).toList();
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/reports/investigations',
+      query: <String, String>{'date': date},
+    );
+    return InvestigationDay.fromJson(json as Map<String, dynamic>);
+  }
 
   @override
   Future<Investigation> openInvestigation(String entryId) async {
@@ -980,5 +982,89 @@ class ApiReportRepository implements ReportRepository {
       query: <String, String>{'from': fromDate, 'to': toDate},
     );
     return ControlChart.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<UnitType>> fetchUnitTypes() async =>
+      (await _api.get('/unit-types') as List<dynamic>)
+          .map((e) => UnitType.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+  @override
+  Future<List<FittedUnit>> fetchUnitFailures({
+    required String siteCode,
+    required String month,
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/reports/unit-failures',
+        query: <String, String>{'month': month},
+      )).map(FittedUnit.fromJson).toList();
+
+  @override
+  Future<List<FittedUnit>> fetchFittedUnits({
+    required String siteCode,
+    required String vehicleId,
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/units',
+        query: <String, String>{'vehicle_id': vehicleId},
+      )).map(FittedUnit.fromJson).toList();
+
+  @override
+  Future<FittedUnit> fitUnit({
+    required String siteCode,
+    required String vehicleId,
+    required int unitTypeId,
+    required String fittedOn,
+    String? unitNo,
+    int? fittedOdometerKm,
+    String? remarks,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/units',
+      body: <String, dynamic>{
+        'vehicle_id': vehicleId,
+        'unit_type_id': unitTypeId,
+        'fitted_on': fittedOn,
+        if (unitNo != null && unitNo.isNotEmpty) 'unit_no': unitNo,
+        if (fittedOdometerKm != null) 'fitted_odometer_km': fittedOdometerKm,
+        if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+      },
+    );
+    return FittedUnit.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FittedUnit> removeUnit(
+    String unitId, {
+    required String removedOn,
+    int? removedOdometerKm,
+    String? removalReason,
+    String? remarks,
+  }) async {
+    final json = await _api.post(
+      '/units/$unitId/remove',
+      body: <String, dynamic>{
+        'removed_on': removedOn,
+        if (removedOdometerKm != null) 'removed_odometer_km': removedOdometerKm,
+        if (removalReason != null && removalReason.isNotEmpty)
+          'removal_reason': removalReason,
+        if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+      },
+    );
+    return FittedUnit.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<BusHistory> fetchBusHistory({
+    required String siteCode,
+    required String vehicleId,
+    required String toMonth,
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/reports/bus-history/$vehicleId',
+      query: <String, String>{'to': toMonth},
+    );
+    return BusHistory.fromJson(json as Map<String, dynamic>);
   }
 }

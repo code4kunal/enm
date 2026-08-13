@@ -45,7 +45,6 @@ class DmrEnteredIn(BaseModel):
     washed_cleaned: int | None = Field(default=None, ge=0, le=10_000)
     depot_accidents: int | None = Field(default=None, ge=0, le=10_000)
     tyres_scrapped: int | None = Field(default=None, ge=0, le=10_000)
-    hv_batteries_replaced: int | None = Field(default=None, ge=0, le=10_000)
     body_damages: int | None = Field(default=None, ge=0, le=10_000)
     notes: str | None = None
 
@@ -96,6 +95,10 @@ class InvestigationList(BaseModel):
     report_date: date_t
     items: list[InvestigationOut]
     outstanding: int = 0
+    #: The closest date that does have breakdowns, when this one has none. An
+    #: empty pane on a quiet day is indistinguishable from a broken one without
+    #: it. Null when the site has no breakdowns at all.
+    nearest_date: date_t | None = None
 
 
 class InvestigationIn(BaseModel):
@@ -197,3 +200,92 @@ class ControlChartOut(ChartKindOut):
     rows: list[ChartRowOut]
     #: How many blocks carry anything — a whole-chart "is this being kept up".
     filled: int = 0
+
+
+# --- fitted units: the statement and the history card ------------------------
+
+
+class UnitTypeOut(BaseModel):
+    id: int
+    name: str
+    sort_order: int = 0
+    #: Marks the unit the DMR counts under "HV batteries replaced".
+    is_hv_battery: bool = False
+
+
+class FittedUnitOut(BaseModel):
+    """One component's stay on one bus."""
+
+    id: str
+    site_code: str
+    vehicle_id: str
+    registration_no: str
+    unit_type_id: int
+    unit_name: str
+    unit_no: str | None = None
+    fitted_on: date_t
+    fitted_odometer_km: int | None = None
+    removed_on: date_t | None = None
+    removed_odometer_km: int | None = None
+    #: Removal odometer less fitting odometer. Null when either is missing — an
+    #: unknown life is not a life of zero.
+    kms_covered: int | None = None
+    removal_reason: str | None = None
+    remarks: str | None = None
+    #: False once it has come off.
+    is_fitted: bool = True
+
+
+class FittedUnitList(BaseModel):
+    site_code: str
+    month: str = ""
+    items: list[FittedUnitOut]
+
+
+class FitUnitIn(BaseModel):
+    vehicle_id: str = Field(min_length=1, max_length=32)
+    unit_type_id: int
+    fitted_on: date_t
+    unit_no: str | None = Field(default=None, max_length=120)
+    #: Defaults to the bus's last odometer reading when left out.
+    fitted_odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)
+    remarks: str | None = None
+
+
+class RemoveUnitIn(BaseModel):
+    removed_on: date_t
+    removed_odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)
+    removal_reason: str | None = None
+    remarks: str | None = None
+
+
+class HistoryEventOut(BaseModel):
+    """What happened to one unit in one month."""
+
+    #: "fitted", "removed", or "replaced" when both happened that month.
+    kind: str
+    #: What the block shows — the day, or both days.
+    label: str
+    unit_no: str = ""
+    reason: str = ""
+    kms_covered: int | None = None
+
+
+class HistoryRowOut(BaseModel):
+    unit_type_id: int
+    unit_name: str
+    #: One per month in `months` order; null where nothing happened.
+    cells: list[HistoryEventOut | None]
+    #: True when the unit is on the bus as at the end of the window.
+    fitted_now: bool = False
+
+
+class BusHistoryOut(BaseModel):
+    site_code: str
+    vehicle_id: str
+    registration_no: str
+    #: `yyyy-MM`, oldest first.
+    months: list[str]
+    rows: list[HistoryRowOut]
+    #: How many blocks carry anything — whether the card is being kept at all.
+    events: int = 0

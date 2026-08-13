@@ -14,6 +14,7 @@ import '../../widgets/buttons.dart';
 import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
+import '../../widgets/sheet.dart';
 import '../../widgets/sub_tabs.dart';
 
 /// Details of defective buses: what is off the road and why.
@@ -242,13 +243,8 @@ Future<void> showOffRoadEditor(
   WidgetRef ref, {
   OffRoadCase? existing,
 }) {
-  return showModalBottomSheet<void>(
+  return showEditorSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: T.card,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: T.rCard),
-    ),
     builder: (_) => _OffRoadSheet(existing: existing),
   );
 }
@@ -322,28 +318,21 @@ class _OffRoadSheetState extends ConsumerState<_OffRoadSheet> {
     final active = fleet.where((v) => v.isActive).toList();
     final existing = widget.existing;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+    return EditorSheet(
+      title: existing == null
+          ? 'Put a bus off the road'
+          : existing.registrationNo,
+      subtitle: 'One open case per bus — two faults is still one bus down.',
+      action: FilledActionButton(
+        label: _busy ? 'Saving…' : 'Save',
+        expand: true,
+        onPressed: _busy ||
+                (_vehicleId.isEmpty && existing == null) ||
+                _issue.text.trim().isEmpty
+            ? null
+            : _save,
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              existing == null ? 'Put a bus off the road' : existing.registrationNo,
-              style: AppText.sectionTitle,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'One open case per bus — two faults is still one bus down.',
-              style: AppText.meta,
-            ),
-            const SizedBox(height: 18),
+      children: <Widget>[
             if (existing == null) ...<Widget>[
               const FieldLabel(label: 'Bus No', required: true),
               const SizedBox(height: 6),
@@ -367,6 +356,7 @@ class _OffRoadSheetState extends ConsumerState<_OffRoadSheet> {
               controller: _issue,
               placeholder: 'What is wrong with it',
               rows: 2,
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 14),
             const FieldLabel(label: 'Category'),
@@ -447,19 +437,7 @@ class _OffRoadSheetState extends ConsumerState<_OffRoadSheet> {
               fontSize: 12.5,
               onTap: () => setState(() => _vendor = !_vendor),
             ),
-            const SizedBox(height: 20),
-            FilledActionButton(
-              label: _busy ? 'Saving…' : 'Save',
-              expand: true,
-              onPressed: _busy ||
-                      (_vehicleId.isEmpty && existing == null) ||
-                      _issue.text.trim().isEmpty
-                  ? null
-                  : _save,
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 

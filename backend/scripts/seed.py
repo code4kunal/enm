@@ -79,16 +79,86 @@ WORK_TYPES = [
 
 #: The components the Unit Failure Statement tracks by name. Their life is
 #: worth following individually; everything else is a consumable.
+#: The bus history card's unit list, read off MBMT's own workbook — the
+#: Unit Failure Statement's nine pre-printed rows are a sample of it, not the
+#: master. Three names are spelled as the depot means them rather than as the
+#: sheet has them (Comporessor, Sterring, Invertor); a site can rename any of
+#: these anyway.
 UNIT_TYPES = [
-    ("Battery Pack", True),
+    ("Battery pack 1", True),
+    ("Battery pack 2", True),
+    ("Battery pack 3", True),
+    ("Air Compressor Oil", False),
+    ("Coolant", False),
+    ("AC Compressor Oil", False),
+    ("Steering Oil", False),
+    ("Differential Oil", False),
     ("Traction Motor", False),
     ("Motor Controller", False),
-    ("Air Compressor", False),
+    ("DC DC Converter", False),
+    ("Air Compressor Filter", False),
     ("Steering Motor", False),
     ("Air Compressor Motor", False),
-    ("Steering Pump", False),
-    ("Steering Box", False),
+    ("Water Pump", False),
+    ("Inverter", False),
+    ("PDU", False),
+    ("Steering Oil Filter", False),
+    ("Brake Pad F/L", False),
+    ("Brake Pad F/R", False),
+    ("Brake Liner R/L", False),
+    ("Brake Liner R/R", False),
+    ("Balloon R/R/F", False),
+    ("Balloon R/R/R", False),
+    ("Balloon R/L/F", False),
+    ("Balloon R/L/R", False),
+    ("Engine", False),
+    ("Eng. Cylinder Head", False),
+    ("Cylinder Hd. Gasket", False),
     ("Radiator", False),
+    ("Steering Box", False),
+    ("Steering Pump", False),
+    ("Differential", False),
+    ("Front Axle", False),
+    ("Prop. Shaft 1", False),
+    ("Slack Adjuster F/R", False),
+    ("Slack Adjuster F/L", False),
+    ("Slack Adjuster R/R", False),
+    ("Slack Adjuster R/L", False),
+    ("Shock Absorber R/R", False),
+    ("Shock Absorber R/L", False),
+    ("Shock Absorber F/R", False),
+    ("Shock Absorber F/L", False),
+    ("Dual Brake Valve", False),
+    ("DDU", False),
+    ("Master Cylinder", False),
+    ("Slave Cylinder", False),
+    ("Air Filter Unit", False),
+    ("Relay Valve", False),
+    ("Quick Release Valve", False),
+    ("Unloader Valve", False),
+    ("NRV", False),
+    ("Brake Booster (R)", False),
+    ("Brake Booster (R) Diaph.", False),
+    ("Brake Booster (L)", False),
+    ("Brake Booster (L) Diaph.", False),
+    ("RWO Unit (R)", False),
+    ("RWO Unit (R) Diaph.", False),
+    ("RWO Unit (L)", False),
+    ("RWO Unit (L) Diaph.", False),
+    ("Levelling Valve (R)", False),
+    ("Levelling Valve (L)", False),
+    ("Wheel Drum F/R", False),
+    ("Wheel Drum F/L", False),
+    ("Wheel Drum R/R", False),
+    ("Wheel Drum R/L", False),
+    ("Air Compressor", False),
+    ("Wiper Motor", False),
+    ("Battery 1.", False),
+    ("Battery 2.", False),
+    ("Fan belt", False),
+    ("Tie rod Kit", False),
+    ("Push rod Kit", False),
+    ("Feed pump", False),
 ]
 
 
@@ -108,18 +178,38 @@ async def _seed_defect_types(session) -> int:
 
 
 async def _seed_unit_types(session) -> int:
+    """Insert missing units, and keep the known ones in the card's order.
+
+    Unlike the other masters, `sort_order` here is not a preference — it is the
+    layout of the bus history card, which the depot reads top to bottom. So a
+    name on the canonical list has its order and its HV flag reconciled, while
+    anything a site added itself is left alone after them.
+    """
     added = 0
     for order, (name, is_hv_battery) in enumerate(UNIT_TYPES):
-        exists = await session.scalar(
-            select(UnitType.id).where(func.lower(UnitType.name) == name.lower())
+        existing = await session.scalar(
+            select(UnitType).where(func.lower(UnitType.name) == name.lower())
         )
-        if not exists:
+        if existing is None:
             session.add(
                 UnitType(
                     name=name, is_hv_battery=is_hv_battery, sort_order=order
                 )
             )
             added += 1
+            continue
+        existing.sort_order = order
+        existing.is_hv_battery = is_hv_battery
+
+    # Anything the site added sorts after the card, not through it.
+    known = {name.lower() for name, _ in UNIT_TYPES}
+    extras = (
+        await session.scalars(
+            select(UnitType).where(func.lower(UnitType.name).notin_(known))
+        )
+    ).all()
+    for offset, extra in enumerate(sorted(extras, key=lambda u: u.name)):
+        extra.sort_order = len(UNIT_TYPES) + offset
     return added
 
 
