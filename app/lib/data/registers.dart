@@ -215,6 +215,13 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         width: FieldWidth.half,
       ),
       FieldDef(
+        key: 'defectType',
+        label: 'Type of Defect',
+        type: FieldType.select,
+        optionsFrom: MasterList.defectTypes,
+        master: true,
+      ),
+      FieldDef(
         key: 'driver',
         label: 'Driver ID',
         type: FieldType.text,

@@ -25,6 +25,13 @@ from app.models.master import (
     WorkType,
 )
 from app.models.notification import Notification
+from app.models.report import (
+    BreakdownInvestigation,
+    DmrDay,
+    FittedUnit,
+    OffRoadCase,
+    UnitType,
+)
 from app.models.site_config import ServicePlan, ShiftWindow, SiteConfig
 from app.models.site_import import (
     SiteImportMapping,
@@ -41,17 +48,21 @@ __all__ = [
     "ChecklistTemplate",
     "Base",
     "BreakdownEntry",
+    "BreakdownInvestigation",
     "CoolantEntry",
     "DefectSource",
     "DefectType",
     "DeviceToken",
+    "DmrDay",
     "DriverComplaintEntry",
     "Entry",
+    "FittedUnit",
     "InspectionEntry",
     "InspectionPlan",
     "InspectionResult",
     "InspectionSlot",
     "Notification",
+    "OffRoadCase",
     "OdometerReading",
     "PMScheduleEntry",
     "RefreshToken",
@@ -63,6 +74,7 @@ __all__ = [
     "SiteImportProfile",
     "SiteImportRun",
     "User",
+    "UnitType",
     "UserSiteAccess",
     "Vehicle",
     "WorkType",

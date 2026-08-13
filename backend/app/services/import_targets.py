@@ -50,6 +50,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
     },
     Register.breakdown: {
         "bus": "bus_no",
+        "defectType": "defect_type",
         "driver": "driver_id",
         "loc": "location",
         "complaint": "complaint",
@@ -113,6 +114,7 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
     Register.breakdown: [
         TargetField("date", "Date", required=True),
         TargetField("bus", "Bus No", required=True),
+        TargetField("defectType", "Type of Defect"),
         TargetField("driver", "Driver ID"),
         TargetField("loc", "Location of Breakdown"),
         TargetField("complaint", "Complaint Reported by the Driver", required=True),
@@ -170,6 +172,7 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
     Register.breakdown: {
         "bus": "bus",
         "supervisor": "supervisor",
+        "defectType": "defectType",
         "complaint": "complaint",
         "driver": "driver",
         "loc": "loc",

@@ -145,7 +145,9 @@ async def _build_detail(
         ]
 
     if register is Register.breakdown:
+        typ = await resolve_defect_type(session, data.defect_type)
         row = BreakdownEntry(
+            defect_type=typ,
             driver_id=data.driver_id,
             location=data.location,
             complaint=data.complaint,
@@ -159,6 +161,7 @@ async def _build_detail(
         )
         return row, [
             data.complaint,
+            data.defect_type,
             data.driver_id,
             data.location,
             data.attended_details,
@@ -309,6 +312,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
     if entry.register is Register.breakdown:
         return {
             "bus_no": bus_no,
+            "defect_type": d.defect_type.name if d.defect_type else None,
             "driver_id": d.driver_id,
             "location": d.location,
             "complaint": d.complaint,

@@ -18,7 +18,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime, created_at_col, new_uuid
-from app.models.enums import REGISTER_ENUM, Register
+from app.models.enums import (
+    DEFECT_CATEGORY_ENUM,
+    REGISTER_ENUM,
+    DefectCategory,
+    Register,
+)
 
 
 class Site(Base):
@@ -133,13 +138,28 @@ class DefectSource(Base):
 
 
 class DefectType(Base):
-    """Master list backing the Defect Type dropdown."""
+    """Master list backing the Defect Type dropdown.
+
+    `category` is what lets the Daily Maintenance Report split breakdowns into
+    Mechanical / Electrical / Body / AC / ITS / Tyre without hard-coding the
+    site's own GROUP names.
+    """
 
     __tablename__ = "defect_types"
     __table_args__ = (UniqueConstraint("name", name="uq_defect_types_name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[DefectCategory] = mapped_column(
+        Enum(
+            DefectCategory,
+            name=DEFECT_CATEGORY_ENUM,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+        default=DefectCategory.other,
+        server_default="other",
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

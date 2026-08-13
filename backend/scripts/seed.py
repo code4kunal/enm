@@ -14,8 +14,9 @@ import os
 from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.models.enums import Register, Role
+from app.models.enums import DefectCategory, Register, Role
 from app.models.master import DefectSource, DefectType, WorkType
+from app.models.report import UnitType
 from app.models.user import User
 from app.security import hash_password
 
@@ -35,23 +36,25 @@ DEFECT_SOURCES = [
 #: These are the GROUP values as written on MBMT's own snag report, not an
 #: invented taxonomy — an imported row has to match a master entry exactly, and
 #: the sheet is the authority on what the fitters actually write.
+#: `category` is what the Daily Maintenance Report splits breakdowns and
+#: defects on. A manager can re-map any of them; these are the defaults.
 DEFECT_TYPES = [
-    "BODY REFURBISHMENT",
-    "BODY ELECTRICALS",
-    "ELECTRICAL",
-    "SUSPENSION",
-    "HV SYSTEM",
-    "LV SYSTEM",
-    "DOOR SYSTEM",
-    "STEERING SYSTEM",
-    "BRAKE SYSTEM",
-    "COOLING SYSTEM",
-    "TRANSMISSION/DRIVER SYSTEM",
-    "CHARGING SYSTEM",
-    "ITS SYSTEM",
-    "AIR CONDITION",
-    "TYRE",
-    "OTHERS",
+    ("BODY REFURBISHMENT", DefectCategory.body),
+    ("BODY ELECTRICALS", DefectCategory.electrical),
+    ("ELECTRICAL", DefectCategory.electrical),
+    ("SUSPENSION", DefectCategory.mechanical),
+    ("HV SYSTEM", DefectCategory.electrical),
+    ("LV SYSTEM", DefectCategory.electrical),
+    ("DOOR SYSTEM", DefectCategory.mechanical),
+    ("STEERING SYSTEM", DefectCategory.mechanical),
+    ("BRAKE SYSTEM", DefectCategory.mechanical),
+    ("COOLING SYSTEM", DefectCategory.mechanical),
+    ("TRANSMISSION/DRIVER SYSTEM", DefectCategory.mechanical),
+    ("CHARGING SYSTEM", DefectCategory.electrical),
+    ("ITS SYSTEM", DefectCategory.its),
+    ("AIR CONDITION", DefectCategory.ac),
+    ("TYRE", DefectCategory.tyre),
+    ("OTHERS", DefectCategory.other),
 ]
 
 #: The "TYPE OF WORK" column on the snag report. A code either files into a
@@ -72,6 +75,52 @@ WORK_TYPES = [
     ("10 DAYS SERVICE", "10 day inspection", None, True),
     ("P.M", "Preventive maintenance docking", None, True),
 ]
+
+
+#: The components the Unit Failure Statement tracks by name. Their life is
+#: worth following individually; everything else is a consumable.
+UNIT_TYPES = [
+    ("Battery Pack", True),
+    ("Traction Motor", False),
+    ("Motor Controller", False),
+    ("Air Compressor", False),
+    ("Steering Motor", False),
+    ("Air Compressor Motor", False),
+    ("Steering Pump", False),
+    ("Steering Box", False),
+    ("Radiator", False),
+]
+
+
+async def _seed_defect_types(session) -> int:
+    """Defect types carry the report category they roll up into."""
+    added = 0
+    for order, (name, category) in enumerate(DEFECT_TYPES):
+        exists = await session.scalar(
+            select(DefectType.id).where(func.lower(DefectType.name) == name.lower())
+        )
+        if not exists:
+            session.add(
+                DefectType(name=name, category=category, sort_order=order)
+            )
+            added += 1
+    return added
+
+
+async def _seed_unit_types(session) -> int:
+    added = 0
+    for order, (name, is_hv_battery) in enumerate(UNIT_TYPES):
+        exists = await session.scalar(
+            select(UnitType.id).where(func.lower(UnitType.name) == name.lower())
+        )
+        if not exists:
+            session.add(
+                UnitType(
+                    name=name, is_hv_battery=is_hv_battery, sort_order=order
+                )
+            )
+            added += 1
+    return added
 
 
 async def _seed_list(session, model, names: list[str]) -> int:
@@ -112,11 +161,12 @@ async def _seed_work_types(session) -> int:
 async def seed() -> None:
     async with SessionLocal() as session:
         sources = await _seed_list(session, DefectSource, DEFECT_SOURCES)
-        types = await _seed_list(session, DefectType, DEFECT_TYPES)
+        types = await _seed_defect_types(session)
         work = await _seed_work_types(session)
+        units = await _seed_unit_types(session)
         print(
             f"  defect sources: +{sources}, defect types: +{types}, "
-            f"work types: +{work}"
+            f"work types: +{work}, unit types: +{units}"
         )
 
         handle = os.environ.get("BOOTSTRAP_SUPERADMIN_USER_ID", "KUNAL").upper()

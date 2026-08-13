@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import api_router
 from app.config import settings
 from app.errors import register_exception_handlers
+from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
@@ -69,6 +70,19 @@ async def lifespan(_app: FastAPI):
                 timezone=settings.timezone,
             ),
             id="inspection_schedule",
+            max_instances=1,
+            coalesce=True,
+        )
+        # Freeze the day's report a few minutes after the schedule run, so the
+        # numbers reported are the ones the day actually ended with.
+        scheduler.add_job(
+            snapshot_all_sites,
+            CronTrigger(
+                hour=settings.schedule_generator_hour,
+                minute=min(settings.schedule_generator_minute + 5, 59),
+                timezone=settings.timezone,
+            ),
+            id="dmr_snapshot",
             max_instances=1,
             coalesce=True,
         )

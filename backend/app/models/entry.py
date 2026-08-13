@@ -23,9 +23,11 @@ from app.models.enums import (
     ENTRY_STATUS_ENUM,
     REGISTER_ENUM,
     SHIFT_ENUM,
+    UNIT_STATUS_ENUM,
     EntryStatus,
     Register,
     Shift,
+    UnitStatus,
 )
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
 from app.models.user import User
@@ -63,6 +65,7 @@ class Entry(Base):
         Index("ix_entries_register_status", "register", "status"),
         Index("ix_entries_bus_id", "bus_id"),
         Index("ix_entries_work_type_id_entry_date", "work_type_id", "entry_date"),
+        Index("ix_entries_site_code_unit_status", "site_code", "unit_status"),
         Index("ix_entries_created_by_id", "created_by_id"),
         Index("ix_entries_entry_date_created_at", "entry_date", "created_at"),
         # backs the `q` free-text filter without fanning out over five joins
@@ -103,6 +106,16 @@ class Entry(Base):
         ),
         nullable=False,
         default=EntryStatus.done,
+    )
+    # The bus's condition after this job, as the snag report records it. What
+    # the DMR counts as "defective in depot" and "held more than 3 days".
+    unit_status: Mapped[UnitStatus | None] = mapped_column(
+        Enum(
+            UnitStatus,
+            name=UNIT_STATUS_ENUM,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=True,
     )
     photo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -210,6 +223,12 @@ class BreakdownEntry(Base):
     __tablename__ = "breakdown_entries"
 
     entry_id: Mapped[str] = _entry_fk()
+    # What kind of failure it was. The Daily Maintenance Report splits
+    # breakdowns into Mechanical / Electrical / Tyre / AC / ITS, and this is
+    # what it splits on.
+    defect_type_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("defect_types.id", ondelete="RESTRICT"), nullable=True
+    )
     driver_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
@@ -230,6 +249,7 @@ class BreakdownEntry(Base):
     sla_notified_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="breakdown")
+    defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
     resolved_by: Mapped[User | None] = relationship(
         lazy="joined", foreign_keys=[resolved_by_id]
     )

@@ -59,6 +59,7 @@ class DriverComplaintData(_DataBase):
 
 class BreakdownData(_DataBase):
     bus_no: BusNo
+    defect_type: OptText = None
     driver_id: OptText = None
     location: OptText = None
     complaint: Req = Field(min_length=1)

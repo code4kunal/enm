@@ -92,6 +92,30 @@ class ImportTarget(StrEnum):
         return _IMPORT_TARGET_REGISTER.get(self)
 
 
+class DefectCategory(StrEnum):
+    """How the Daily Maintenance Report splits defects and breakdowns.
+
+    The site's own GROUP values map onto these, so a depot can add a group
+    without the report losing a line.
+    """
+
+    mechanical = "mechanical"
+    electrical = "electrical"
+    body = "body"
+    ac = "ac"
+    its = "its"
+    tyre = "tyre"
+    other = "other"
+
+
+class UnitStatus(StrEnum):
+    """A bus's condition after a job, as the snag report records it."""
+
+    serviceable = "serviceable"
+    pending = "pending"
+    held_up = "held_up"
+
+
 class ResponseType(StrEnum):
     """What a checklist line asks for."""
 
@@ -156,6 +180,7 @@ class AuditAction(StrEnum):
     alert_acknowledged = "alert_acknowledged"
     inspection_recorded = "inspection_recorded"
     checklist_updated = "checklist_updated"
+    dmr_updated = "dmr_updated"
 
 
 _ROLE_RANK: dict[Role, int] = {
@@ -179,6 +204,8 @@ ROLE_ENUM = "role_enum"
 IMPORT_TARGET_ENUM = "import_target_enum"
 SLOT_STATUS_ENUM = "slot_status_enum"
 RESPONSE_TYPE_ENUM = "response_type_enum"
+DEFECT_CATEGORY_ENUM = "defect_category_enum"
+UNIT_STATUS_ENUM = "unit_status_enum"
 CHECK_RESULT_ENUM = "check_result_enum"
 ALERT_TYPE_ENUM = "alert_type_enum"
 ALERT_STATUS_ENUM = "alert_status_enum"

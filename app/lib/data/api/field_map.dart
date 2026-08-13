@@ -39,6 +39,7 @@ abstract final class RegisterFieldMap {
     },
     'breakdown': <String, String>{
       'bus': 'bus_no',
+      'defectType': 'defect_type',
       'driver': 'driver_id',
       'loc': 'location',
       'complaint': 'complaint',
