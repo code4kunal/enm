@@ -169,7 +169,6 @@ class FakeStore {
       case ImportTarget.coolant:
       case ImportTarget.driverComplaint:
       case ImportTarget.breakdown:
-      case ImportTarget.pmSchedule:
         final registerId = profile.target.registerId!;
         for (final row in rows) {
           final data = Map<String, String>.of(row)

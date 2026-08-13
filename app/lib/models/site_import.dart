@@ -17,8 +17,7 @@ enum ImportTarget {
   workDone('Register · Daily Work Done', 'Historical backfill'),
   coolant('Register · Coolant Topping', 'Historical backfill'),
   driverComplaint('Register · Driver Complaints', 'Historical backfill'),
-  breakdown('Register · Breakdown Report', 'Historical backfill'),
-  pmSchedule('Register · PM Schedule Attention', 'Historical backfill');
+  breakdown('Register · Breakdown Report', 'Historical backfill');
 
   const ImportTarget(this.label, this.description);
 
@@ -30,7 +29,6 @@ enum ImportTarget {
         ImportTarget.coolant,
         ImportTarget.driverComplaint,
         ImportTarget.breakdown,
-        ImportTarget.pmSchedule,
       }.contains(this);
 
   /// Register id in `data/registers.dart`, for register targets.
@@ -39,7 +37,6 @@ enum ImportTarget {
         ImportTarget.coolant => 'coolant',
         ImportTarget.driverComplaint => 'complaint',
         ImportTarget.breakdown => 'breakdown',
-        ImportTarget.pmSchedule => 'pm',
         _ => null,
       };
 

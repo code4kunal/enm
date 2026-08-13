@@ -42,8 +42,20 @@ def _now_ist() -> datetime:
 # --- validation ------------------------------------------------------------
 
 
+#: Retired: inspections hold this now, with their own checklist and their own
+#: form. The enum value stays so historical rows still read, but nothing new
+#: may be written to it.
+RETIRED_REGISTERS = frozenset({Register.pm_schedule})
+
+
 def validate_data(register: Register, raw: dict[str, Any]) -> Any:
     """Validate the register-specific `data` payload, surfacing a `fields` map."""
+    if register in RETIRED_REGISTERS:
+        raise ValidationError(
+            "PM Schedule Attention has been replaced by Inspections — record "
+            "it against the inspection's own checklist instead.",
+            {"register": "retired"},
+        )
     schema = REGISTER_DATA_SCHEMAS[register]
     if not isinstance(raw, dict):
         raise ValidationError("data must be an object", {"data": "expected object"})

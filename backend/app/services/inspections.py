@@ -34,6 +34,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.checklist import InspectionEntry
 from app.models.entry import BreakdownEntry, Entry
 from app.models.enums import (
     AlertStatus,
@@ -84,18 +85,39 @@ class GenerationResult:
 async def last_done_by_vehicle(
     session: AsyncSession, site_code: str, work_type_id: int
 ) -> dict[str, date_t]:
-    """The most recent date each bus had this inspection, from the register.
+    """The most recent date each bus had this inspection.
 
-    Read from entries rather than from slots, so an inspection that was simply
-    written down — or imported from the site's own snag report — counts just as
-    much as one the scheduler booked.
+    Read from what was actually recorded, not from the slots the scheduler
+    booked, so an inspection written up by hand counts as much as a planned
+    one. Two sources are merged: `inspection_entries`, which is where an
+    inspection lands now, and `entries.work_type_id`, which is where the
+    historical snag-report import put them before inspections became their own
+    record. The later of the two wins.
     """
-    rows = await session.execute(
+    merged: dict[str, date_t] = {}
+
+    inspected = await session.execute(
+        select(InspectionEntry.vehicle_id, func.max(InspectionEntry.inspected_on))
+        .where(
+            InspectionEntry.site_code == site_code,
+            InspectionEntry.work_type_id == work_type_id,
+        )
+        .group_by(InspectionEntry.vehicle_id)
+    )
+    for vehicle_id, last in inspected.all():
+        merged[vehicle_id] = last
+
+    historical = await session.execute(
         select(Entry.bus_id, func.max(Entry.entry_date))
         .where(Entry.site_code == site_code, Entry.work_type_id == work_type_id)
         .group_by(Entry.bus_id)
     )
-    return dict(rows.all())
+    for vehicle_id, last in historical.all():
+        current = merged.get(vehicle_id)
+        if current is None or last > current:
+            merged[vehicle_id] = last
+
+    return merged
 
 
 async def _discharge_slots(
@@ -120,13 +142,34 @@ async def _discharge_slots(
         # An inspection done a little early still discharges the booking; one
         # done late discharges it too, and the slot is marked done rather than
         # missed because the work exists.
+        window_start = slot.scheduled_on - timedelta(days=1)
+        inspection = await session.scalar(
+            select(InspectionEntry)
+            .where(
+                InspectionEntry.site_code == site_code,
+                InspectionEntry.vehicle_id == slot.vehicle_id,
+                InspectionEntry.work_type_id == slot.work_type_id,
+                InspectionEntry.inspected_on >= window_start,
+                InspectionEntry.inspected_on <= today,
+            )
+            .order_by(InspectionEntry.inspected_on)
+            .limit(1)
+        )
+        if inspection is not None:
+            slot.status = SlotStatus.done
+            slot.completed_on = inspection.inspected_on
+            slot.updated_at = datetime.now(tz=None).astimezone()
+            completed += 1
+            continue
+
+        # Historical rows imported before inspections became their own record.
         entry = await session.scalar(
             select(Entry)
             .where(
                 Entry.site_code == site_code,
                 Entry.bus_id == slot.vehicle_id,
                 Entry.work_type_id == slot.work_type_id,
-                Entry.entry_date >= slot.scheduled_on - timedelta(days=1),
+                Entry.entry_date >= window_start,
                 Entry.entry_date <= today,
             )
             .order_by(Entry.entry_date)
@@ -204,9 +247,14 @@ async def _plan_one(
     last_done = await last_done_by_vehicle(session, site_code, plan.work_type_id)
     cycle = timedelta(days=plan.cycle_days)
 
-    # Nights that already have bookings, and which bus is on which night, so a
-    # re-run tops up rather than double-books. Buses already booked keep the
-    # date they were given — "missed jumps the queue, others hold".
+    # What each night already holds, so a re-run tops up rather than
+    # double-books. Buses already booked keep the date they were given —
+    # "missed jumps the queue, others hold".
+    #
+    # `on_day` counts slots of *any* status: a night a bus already has a slot
+    # for is spoken for, and one already marked done still occupies that date
+    # as far as the unique constraint is concerned. Capacity, though, only
+    # counts work that still stands.
     taken: dict[date_t, int] = {}
     existing_days: dict[str, date_t] = {}
     on_day: dict[date_t, set[str]] = {}
@@ -215,13 +263,15 @@ async def _plan_one(
             select(InspectionSlot).where(
                 InspectionSlot.site_code == site_code,
                 InspectionSlot.work_type_id == plan.work_type_id,
-                InspectionSlot.status == SlotStatus.scheduled,
                 InspectionSlot.scheduled_on >= today,
             )
         )
     ).all():
-        taken[slot.scheduled_on] = taken.get(slot.scheduled_on, 0) + 1
         on_day.setdefault(slot.scheduled_on, set()).add(slot.vehicle_id)
+        if slot.status in (SlotStatus.scheduled, SlotStatus.done):
+            taken[slot.scheduled_on] = taken.get(slot.scheduled_on, 0) + 1
+        if slot.status is not SlotStatus.scheduled:
+            continue
         current = existing_days.get(slot.vehicle_id)
         if current is None or slot.scheduled_on > current:
             existing_days[slot.vehicle_id] = slot.scheduled_on

@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models.enums import Register, SlotStatus
+from app.models.enums import SlotStatus
 from app.models.inspection import Alert, InspectionPlan, InspectionSlot
 from app.models.master import Vehicle, WorkType
 from app.services import inspections
@@ -28,9 +28,7 @@ async def _setup_plans(daily_cap: int = 0, ten_day_cap: int = 2) -> dict[str, in
                 select(WorkType).where(WorkType.code == code)
             )
             if work_type is None:
-                work_type = WorkType(
-                    code=code, name=name, register=Register.pm_schedule
-                )
+                work_type = WorkType(code=code, name=name, is_inspection=True)
                 session.add(work_type)
                 await session.flush()
             ids[code] = work_type.id
@@ -197,28 +195,20 @@ async def test_a_recorded_inspection_discharges_its_booking(
         )
         vehicle_id = vehicle.id
 
+    # An inspection is its own record with its own checklist, so this is what
+    # actually discharges the booking.
     created = await client.post(
-        "/entries",
+        "/sites/MBMT/inspections",
         json={
-            "register": "pm_schedule",
-            "site": "MBMT",
-            "date": TODAY.isoformat(),
-            "data": {
-                "bus_no": "MH40LY1894",
-                "defects_noticed": "Daily inspection done",
-            },
+            "vehicle_id": vehicle_id,
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "done_by": "Tushar",
+            "results": [],
         },
         headers=h,
     )
     assert created.status_code == 201, created.text
-
-    # Stamp it as the daily inspection, the way the snag import does.
-    async with SessionLocal() as session:
-        from app.models.entry import Entry
-
-        entry = await session.get(Entry, created.json()["id"])
-        entry.work_type_id = ids["D.I"]
-        await session.commit()
 
     result = await _generate()
     assert result.completed >= 1

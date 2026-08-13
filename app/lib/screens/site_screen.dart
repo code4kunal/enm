@@ -8,6 +8,7 @@ import '../theme/tokens.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/sub_tabs.dart';
+import 'site/checklists_pane.dart';
 import 'site/docking_pane.dart';
 import 'site/fleet_pane.dart';
 import 'site/import_pane.dart';
@@ -30,6 +31,7 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
   static const _labels = <String>[
     'Fleet',
     'Master data',
+    'Checklists',
     'Docking',
     'Import',
   ];
@@ -64,7 +66,8 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
           switch (_pane) {
             0 => const FleetPane(),
             1 => const MasterDataPane(),
-            2 => const DockingPane(),
+            2 => const ChecklistsPane(),
+            3 => const DockingPane(),
             _ => const ImportPane(),
           },
         ],

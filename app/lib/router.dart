@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'screens/admin_screen.dart';
 import 'screens/breakdowns_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/inspection_form_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_form_screen.dart';
 import 'screens/profile_screen.dart';
@@ -25,6 +26,10 @@ abstract final class Routes {
   static const profile = '/profile';
 
   static String newEntry(String registerId) => '/entry/new/$registerId';
+
+  /// Data entry for one inspection type — each has its own checklist, so each
+  /// has its own form.
+  static String newInspection(int workTypeId) => '/inspection/new/$workTypeId';
 
   static String editEntry(String entryId) => '/entry/edit/$entryId';
 }
@@ -89,6 +94,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: Routes.breakdowns,
             builder: (context, state) => const BreakdownsScreen(),
+          ),
+          GoRoute(
+            path: '/inspection/new/:workTypeId',
+            builder: (context, state) => InspectionFormScreen(
+              workTypeId:
+                  int.tryParse(state.pathParameters['workTypeId'] ?? '') ?? 0,
+            ),
           ),
           GoRoute(
             path: Routes.schedule,

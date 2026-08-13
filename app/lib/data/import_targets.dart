@@ -91,7 +91,6 @@ List<TargetField> targetFieldsFor(ImportTarget target) {
     case ImportTarget.coolant:
     case ImportTarget.driverComplaint:
     case ImportTarget.breakdown:
-    case ImportTarget.pmSchedule:
       return const <TargetField>[];
   }
 }

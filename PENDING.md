@@ -29,21 +29,21 @@ manager at 22:00 and pushes through FCM **only if** `FCM_CREDENTIALS_FILE` and
 `FCM_PROJECT_ID` are set. Without them the alert is in the app and nowhere
 else. Set both to get the push.
 
-## 3. Two work types are routed on an assumption
+## 3. The checklists are empty and waiting
 
-`C/F` (carried forward) routes to the work-done register and `P.M` / `PM`
-(dockings — the sheet says "80K DOCKING", "110K DOCKING") route to the PM
-schedule. Those two were not specified; the other six came from the brief.
-Change them in Admin → master data, or in `scripts/seed.py::WORK_TYPES` before
-a fresh seed — the routing is data, not code.
+`D.I`, `10 DAYS SERVICE` and `P.M` each have a checklist under
+**Site → Master data → Checklists**, and all three are empty. Nothing was
+invented: the lines have to be the depot's own. Type them there, or send the
+checklist documents and they can be seeded the way the snag report was.
 
-## 4. The daily-inspection cycle is a guess at 1 day
+Until a checklist has lines, its Home card says "Checklist not written yet" and
+its form refuses to save.
 
-`D.I` is seeded as every bus every night, uncapped, per the instruction. The
-sheet itself shows 40 D.I events over 10 days across 25 of 57 buses, which is
-nothing like nightly — so either the sheet under-records D.I, or the real
-cadence is longer. Worth confirming against the depot before the first live
-month. `scripts/seed_import_profile.py::INSPECTION_PLANS` holds it.
+## 4. `C/F` is routed on an assumption
+
+`C/F` (carried forward) files as day-to-day work done. That one was not
+specified; the rest came from you. Change it in the work-type master — the
+routing is data, not code.
 
 ## 5. Microsoft SSO
 

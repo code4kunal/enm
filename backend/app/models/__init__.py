@@ -1,5 +1,11 @@
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.checklist import (
+    ChecklistItem,
+    ChecklistTemplate,
+    InspectionEntry,
+    InspectionResult,
+)
 from app.models.entry import (
     REGISTER_MODELS,
     BreakdownEntry,
@@ -31,6 +37,8 @@ __all__ = [
     "REGISTER_MODELS",
     "Alert",
     "AuditLog",
+    "ChecklistItem",
+    "ChecklistTemplate",
     "Base",
     "BreakdownEntry",
     "CoolantEntry",
@@ -39,7 +47,9 @@ __all__ = [
     "DeviceToken",
     "DriverComplaintEntry",
     "Entry",
+    "InspectionEntry",
     "InspectionPlan",
+    "InspectionResult",
     "InspectionSlot",
     "Notification",
     "OdometerReading",

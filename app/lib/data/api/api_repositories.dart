@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../../models/app_user.dart';
 import '../../models/entry.dart';
+import '../../models/checklist.dart';
 import '../../models/inspection.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
@@ -732,4 +733,78 @@ class ApiInspectionRepository implements InspectionRepository {
     final json = await _api.post('/alerts/$alertId/acknowledge');
     return SiteAlert.fromJson(json as Map<String, dynamic>);
   }
+}
+
+// ─── Checklists and inspections ───────────────────────────────────────────
+
+class ApiChecklistRepository implements ChecklistRepository {
+  ApiChecklistRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<List<Checklist>> fetchChecklists(String siteCode) async =>
+      itemsOf(await _api.get('/sites/$siteCode/checklists'))
+          .map(Checklist.fromJson)
+          .toList();
+
+  @override
+  Future<Checklist> saveChecklist(String siteCode, Checklist checklist) async {
+    final json = await _api.put(
+      '/sites/$siteCode/checklists/${checklist.workTypeId}',
+      body: <String, dynamic>{
+        'name': checklist.name,
+        'items': checklist.items.map((i) => i.toJson()).toList(),
+      },
+    );
+    return Checklist.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InspectionEntry> recordInspection({
+    required String siteCode,
+    required String vehicleId,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? doneBy,
+    String? supervisor,
+    int? odometerKm,
+    String? remarks,
+    required List<InspectionResult> results,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/inspections',
+      body: <String, dynamic>{
+        'vehicle_id': vehicleId,
+        'work_type_id': workTypeId,
+        'inspected_on': inspectedOn,
+        if (entryTime != null && entryTime.isNotEmpty) 'entry_time': entryTime,
+        if (doneBy != null && doneBy.isNotEmpty) 'done_by': doneBy,
+        if (supervisor != null && supervisor.isNotEmpty) 'supervisor': supervisor,
+        if (odometerKm != null) 'odometer_km': odometerKm,
+        if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+        'results': results.map((r) => r.toJson()).toList(),
+      },
+    );
+    return InspectionEntry.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<InspectionEntry>> fetchInspections(
+    String siteCode, {
+    int? workTypeId,
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/inspections',
+        query: <String, String>{
+          if (workTypeId != null) 'work_type_id': '$workTypeId',
+        },
+      )).map(InspectionEntry.fromJson).toList();
+
+  @override
+  Future<List<InspectionEntry>> todaysInspections(String siteCode) async =>
+      itemsOf(await _api.get('/sites/$siteCode/inspections/today'))
+          .map(InspectionEntry.fromJson)
+          .toList();
 }

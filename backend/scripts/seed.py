@@ -54,21 +54,23 @@ DEFECT_TYPES = [
     "OTHERS",
 ]
 
-#: The "TYPE OF WORK" column on the snag report, and the register each code
-#: routes its rows to. Codes are exactly as written on the sheet.
+#: The "TYPE OF WORK" column on the snag report. A code either files into a
+#: register or is an inspection with its own checklist and its own form.
+#: Codes are exactly as written on the sheet.
 #:
-#: `C/F` is a carried-forward continuation of an earlier job and `P.M` / `PM`
-#: are dockings; both are recorded, the first as day-to-day work done and the
-#: second against the PM schedule.
+#: `C/F` is a carried-forward continuation of an earlier job, so it files as
+#: day-to-day work done. `P.M` is a docking ("80K DOCKING"), a checklist job
+#: like the other inspections — the sheet also writes it `PM`, which the import
+#: matches to the same code because it compares without punctuation.
 WORK_TYPES = [
-    ("B.D", "Breakdown", Register.breakdown),
-    ("D.C", "Driver complaint", Register.driver_complaint),
-    ("DEPOT", "Daily work", Register.work_done),
-    ("C/F", "Carried forward", Register.work_done),
-    ("D.I", "Daily inspection", Register.pm_schedule),
-    ("10 DAYS SERVICE", "10 day inspection", Register.pm_schedule),
-    ("P.M", "Preventive maintenance docking", Register.pm_schedule),
-    ("PM", "Preventive maintenance docking", Register.pm_schedule),
+    # (code, name, register, is_inspection)
+    ("B.D", "Breakdown", Register.breakdown, False),
+    ("D.C", "Driver complaint", Register.driver_complaint, False),
+    ("DEPOT", "Daily work", Register.work_done, False),
+    ("C/F", "Carried forward", Register.work_done, False),
+    ("D.I", "Daily inspection", None, True),
+    ("10 DAYS SERVICE", "10 day inspection", None, True),
+    ("P.M", "Preventive maintenance docking", None, True),
 ]
 
 
@@ -89,13 +91,19 @@ async def _seed_list(session, model, names: list[str]) -> int:
 async def _seed_work_types(session) -> int:
     """Insert by code. Never re-routes a code an operator has already changed."""
     added = 0
-    for order, (code, name, register) in enumerate(WORK_TYPES):
+    for order, (code, name, register, is_inspection) in enumerate(WORK_TYPES):
         exists = await session.scalar(
             select(WorkType.id).where(func.upper(WorkType.code) == code)
         )
         if not exists:
             session.add(
-                WorkType(code=code, name=name, register=register, sort_order=order)
+                WorkType(
+                    code=code,
+                    name=name,
+                    register=register,
+                    is_inspection=is_inspection,
+                    sort_order=order,
+                )
             )
             added += 1
     return added

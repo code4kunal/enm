@@ -92,6 +92,20 @@ class ImportTarget(StrEnum):
         return _IMPORT_TARGET_REGISTER.get(self)
 
 
+class ResponseType(StrEnum):
+    """What a checklist line asks for."""
+
+    ok_not_ok = "ok_not_ok"
+    reading = "reading"
+    note = "note"
+
+
+class CheckResult(StrEnum):
+    ok = "ok"
+    not_ok = "not_ok"
+    na = "na"
+
+
 class SlotStatus(StrEnum):
     scheduled = "scheduled"
     done = "done"
@@ -140,6 +154,8 @@ class AuditAction(StrEnum):
     slot_updated = "slot_updated"
     slot_completed = "slot_completed"
     alert_acknowledged = "alert_acknowledged"
+    inspection_recorded = "inspection_recorded"
+    checklist_updated = "checklist_updated"
 
 
 _ROLE_RANK: dict[Role, int] = {
@@ -162,6 +178,8 @@ _IMPORT_TARGET_REGISTER: dict[ImportTarget, Register] = {
 ROLE_ENUM = "role_enum"
 IMPORT_TARGET_ENUM = "import_target_enum"
 SLOT_STATUS_ENUM = "slot_status_enum"
+RESPONSE_TYPE_ENUM = "response_type_enum"
+CHECK_RESULT_ENUM = "check_result_enum"
 ALERT_TYPE_ENUM = "alert_type_enum"
 ALERT_STATUS_ENUM = "alert_status_enum"
 REGISTER_ENUM = "register_enum"

@@ -1,10 +1,14 @@
 import '../models/register.dart';
 import '../theme/tokens.dart';
 
-/// The five physical registers, column for column.
+/// The physical registers, column for column.
 ///
 /// Field order and labels match the paper registers exactly — ground staff read
 /// down the same sequence on screen as on the page.
+///
+/// PM Schedule Attention is not here: what it recorded — defects noticed during
+/// preventive maintenance — is now an inspection against its own checklist, and
+/// keeping both would mean two places to write the same thing.
 const List<RegisterDef> kRegisters = <RegisterDef>[
   RegisterDef(
     id: 'work',
@@ -275,76 +279,6 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         label: 'Remarks',
         type: FieldType.text,
         placeholder: 'Optional',
-        width: FieldWidth.half,
-      ),
-    ],
-  ),
-  RegisterDef(
-    id: 'pm',
-    code: 'PM',
-    name: 'PM Schedule Attention',
-    color: T.indigo,
-    fields: <FieldDef>[
-      FieldDef(
-        key: 'date',
-        label: 'Date',
-        type: FieldType.date,
-        required: true,
-        width: FieldWidth.half,
-      ),
-      FieldDef(
-        key: 'bus',
-        label: 'Bus No',
-        type: FieldType.bus,
-        required: true,
-        width: FieldWidth.half,
-      ),
-      FieldDef(
-        key: 'defectType',
-        label: 'Type of Defect',
-        type: FieldType.select,
-        optionsFrom: MasterList.defectTypes,
-        master: true,
-      ),
-      FieldDef(
-        key: 'defects',
-        label: 'Defects Noticed',
-        type: FieldType.area,
-        required: true,
-        placeholder: 'During preventive maintenance',
-      ),
-      FieldDef(
-        key: 'action',
-        label: 'Action Taken',
-        type: FieldType.area,
-        placeholder: 'Action taken',
-      ),
-      FieldDef(
-        key: 'balance',
-        label: 'Reason for Balance Job (if any)',
-        type: FieldType.text,
-        placeholder: 'e.g. spare awaited, or NIL',
-      ),
-      FieldDef(
-        key: 'spares',
-        label: 'Spare Parts Used',
-        type: FieldType.text,
-        placeholder: 'Part name & qty, or NIL',
-      ),
-      FieldDef(
-        key: 'employee',
-        label: 'Attended By',
-        type: FieldType.select,
-        optionsFrom: MasterList.staff,
-        master: true,
-        width: FieldWidth.half,
-      ),
-      FieldDef(
-        key: 'supervisor',
-        label: 'Supervisor (Floor)',
-        type: FieldType.select,
-        optionsFrom: MasterList.staff,
-        master: true,
         width: FieldWidth.half,
       ),
     ],

@@ -4,6 +4,7 @@ import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
+import '../models/checklist.dart';
 import '../models/inspection.dart';
 import '../models/site_import.dart';
 
@@ -320,6 +321,45 @@ abstract interface class InspectionRepository {
   Future<List<SiteAlert>> fetchAlerts(String siteCode, {String status});
 
   Future<SiteAlert> acknowledgeAlert(String alertId);
+}
+
+// ─── Checklists and inspections ───────────────────────────────────────────
+
+/// A site's inspection checklists, and the sweeps that fill them in.
+///
+/// A daily inspection and a ten-day service are different jobs with different
+/// sheets, so each work type carries its own checklist and its own form. The
+/// checklist is site data: nothing is invented, and an empty one is a real
+/// state the form reports rather than papering over.
+abstract interface class ChecklistRepository {
+  /// One checklist per inspection type at this site.
+  Future<List<Checklist>> fetchChecklists(String siteCode);
+
+  /// Replaces a checklist wholesale. A line already answered by an inspection
+  /// is retired rather than deleted, so past sweeps keep reading correctly.
+  Future<Checklist> saveChecklist(String siteCode, Checklist checklist);
+
+  /// Records one completed inspection, discharging its booking.
+  Future<InspectionEntry> recordInspection({
+    required String siteCode,
+    required String vehicleId,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? doneBy,
+    String? supervisor,
+    int? odometerKm,
+    String? remarks,
+    required List<InspectionResult> results,
+  });
+
+  Future<List<InspectionEntry>> fetchInspections(
+    String siteCode, {
+    int? workTypeId,
+  });
+
+  /// What has already been swept today — the Home feed.
+  Future<List<InspectionEntry>> todaysInspections(String siteCode);
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────

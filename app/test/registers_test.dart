@@ -6,21 +6,23 @@ import 'package:transvolt_em/models/register.dart';
 /// renamed, reordered or dropped here, ground staff stop being able to read
 /// down the screen the way they read down the page.
 void main() {
-  test('all five registers are present with their codes and colours', () {
+  test('the four registers are present with their codes and colours', () {
+    // PM Schedule Attention is deliberately absent: what it recorded is now an
+    // inspection against its own checklist, and two places to write the same
+    // thing is how a register stops being trusted.
     expect(kRegisters.map((r) => r.id).toList(), <String>[
       'work',
       'coolant',
       'complaint',
       'breakdown',
-      'pm',
     ]);
     expect(kRegisters.map((r) => r.code).toList(), <String>[
       'WD',
       'CT',
       'DC',
       'BD',
-      'PM',
     ]);
+    expect(registerById('pm'), isNull);
   });
 
   test('Daily Work Done columns match the paper register', () {
@@ -56,11 +58,6 @@ void main() {
       expect(r.field(key)?.width, FieldWidth.third, reason: key);
     }
     expect(r.field('loss')?.unit, 'km');
-  });
-
-  test('PM Schedule Attention captures the balance-job reason', () {
-    expect(requireRegister('pm').field('balance')?.label,
-        'Reason for Balance Job (if any)');
   });
 
   test('every register requires Date and Bus No', () {

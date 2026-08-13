@@ -157,8 +157,9 @@ class WorkType(Base):
         B.D → breakdown, D.C → driver complaint, DEPOT → daily work done,
         D.I / 10 DAYS SERVICE / P.M → PM schedule.
 
-    `register` may be null for a code that is recognised but not yet routed;
-    those rows are rejected by name rather than silently dropped.
+    A code either files into a `register`, or is an `is_inspection` code with
+    its own checklist. A code that is neither is recognised but not yet routed;
+    its rows are rejected by name rather than silently dropped.
     """
 
     __tablename__ = "work_types"
@@ -175,6 +176,12 @@ class WorkType(Base):
             values_callable=lambda e: [m.value for m in e],
         ),
         nullable=True,
+    )
+    # A checklist sweep rather than a register entry. D.I and the 10-day
+    # service are inspections: they have their own checklist, their own form
+    # and their own record, and `register` is null for them.
+    is_inspection: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(

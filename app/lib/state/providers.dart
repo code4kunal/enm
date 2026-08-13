@@ -58,6 +58,10 @@ final inspectionRepositoryProvider = Provider<InspectionRepository>(
   (ref) => ApiInspectionRepository(ref.watch(apiClientProvider)),
 );
 
+final checklistRepositoryProvider = Provider<ChecklistRepository>(
+  (ref) => ApiChecklistRepository(ref.watch(apiClientProvider)),
+);
+
 // ─── Derived reference data ───────────────────────────────────────────────
 
 /// Full site records the signed-in user can reach. Super admins get all of them.

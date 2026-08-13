@@ -7,6 +7,8 @@ import '../models/entry.dart';
 import '../models/register.dart';
 import '../router.dart';
 import '../state/entries.dart';
+import '../models/checklist.dart';
+import '../state/inspections.dart';
 import '../state/session.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -14,6 +16,7 @@ import '../utils/dates.dart';
 import '../widgets/buttons.dart';
 import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
+import '../widgets/chips.dart';
 import '../widgets/fade_up.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -39,6 +42,8 @@ class HomeScreen extends ConsumerWidget {
           _Greeting(name: firstName, site: site),
           const SizedBox(height: 18),
           _RegisterCardGrid(todayEntries: todayEntries),
+          const SizedBox(height: 22),
+          const _InspectionCardGrid(),
           const SizedBox(height: 28),
           Text("Today's entries · $site", style: AppText.sectionTitle),
           const SizedBox(height: 12),
@@ -302,6 +307,130 @@ class _TodayRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+/// Data entry for the inspections, alongside the five registers.
+///
+/// Separate cards because they are separate jobs: a daily inspection and a
+/// ten-day service run different checklists, so each opens its own form. Driven
+/// by the site's work-type master, so a depot that adds an inspection type gets
+/// a card without a code change.
+class _InspectionCardGrid extends ConsumerWidget {
+  const _InspectionCardGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final checklists =
+        ref.watch(checklistsProvider).valueOrNull ?? const <Checklist>[];
+    if (checklists.isEmpty) return const SizedBox.shrink();
+
+    final done = ref.watch(todaysInspectionsProvider).valueOrNull ??
+        const <InspectionEntry>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text('Inspections', style: AppText.sectionTitle),
+        const SizedBox(height: 4),
+        Text(
+          'Each runs its own checklist.',
+          style: AppText.meta,
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 12.0;
+            const minItem = 190.0;
+            final width = constraints.maxWidth;
+            final columns = ((width + gap) / (minItem + gap))
+                .floor()
+                .clamp(1, checklists.length);
+            final itemWidth = (width - gap * (columns - 1)) / columns;
+
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: <Widget>[
+                for (final c in checklists)
+                  SizedBox(
+                    width: itemWidth,
+                    child: _InspectionCard(
+                      checklist: c,
+                      todayCount: done
+                          .where((d) => d.workTypeId == c.workTypeId)
+                          .length,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _InspectionCard extends StatelessWidget {
+  const _InspectionCard({required this.checklist, required this.todayCount});
+
+  final Checklist checklist;
+  final int todayCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return LiftOnHover(
+      onTap: () => context.go(Routes.newInspection(checklist.workTypeId)),
+      child: (context, hovered) => Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: T.card,
+              borderRadius: T.cardShape,
+              border: Border.all(
+                color: hovered ? T.cardHoverBorder : T.border,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    TagBadge(
+                      label: checklist.workTypeCode,
+                      background: T.indigoTint,
+                      foreground: T.indigo,
+                    ),
+                    const Spacer(),
+                    Text(
+                      todayCount == 0 ? '—' : '$todayCount',
+                      style: AppText.mono(size: 13, color: T.muted),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  checklist.workTypeName,
+                  style: AppText.cardTitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  checklist.isEmpty
+                      ? 'Checklist not written yet'
+                      : '${checklist.items.length} checks',
+                  style: AppText.sans(
+                    size: 13,
+                    weight: FontWeight.w600,
+                    color: checklist.isEmpty ? T.amber : T.green,
+                  ),
+                ),
+              ],
+            ),
+          ),
     );
   }
 }

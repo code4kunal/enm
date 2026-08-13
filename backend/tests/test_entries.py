@@ -291,7 +291,7 @@ async def test_csv_export(client: AsyncClient) -> None:
     assert "Rahul Sharma (TV4021)" in lines[1]
 
 
-async def test_coolant_and_pm_registers(client: AsyncClient) -> None:
+async def test_coolant_register(client: AsyncClient) -> None:
     h = await auth_headers(client)
     coolant = await client.post(
         "/entries",
@@ -311,7 +311,16 @@ async def test_coolant_and_pm_registers(client: AsyncClient) -> None:
     assert coolant.status_code == 201
     assert coolant.json()["data"]["bcs_litres"] == 2.5
 
-    pm = await client.post(
+
+async def test_the_pm_register_is_retired(client: AsyncClient) -> None:
+    """Inspections hold this now, with their own checklist and their own form.
+
+    The enum value survives so historical rows still read, but nothing new may
+    be written to it — two places to write the same thing is how a register
+    stops being trusted.
+    """
+    h = await auth_headers(client)
+    r = await client.post(
         "/entries",
         json={
             "register": "pm_schedule",
@@ -319,16 +328,13 @@ async def test_coolant_and_pm_registers(client: AsyncClient) -> None:
             "date": TODAY,
             "data": {
                 "bus_no": "MH40LY1894",
-                "defect_type": "Electrical / HV",
                 "defects_noticed": "HV cable lug loose",
-                "action_taken": "Retorqued to spec",
-                "employees": "S. Pawar, A. Kadam",
             },
         },
         headers=h,
     )
-    assert pm.status_code == 201
-    assert pm.json()["data"]["defect_type"] == "Electrical / HV"
+    assert r.status_code == 400
+    assert "replaced by Inspections" in r.json()["error"]["message"]
 
 
 async def test_unknown_defect_type_rejected(client: AsyncClient) -> None:

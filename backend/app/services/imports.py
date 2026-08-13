@@ -6,6 +6,7 @@ user approved is what lands.
 """
 from __future__ import annotations
 
+import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, ValidationError
+from app.models.checklist import InspectionEntry
 from app.models.enums import EntryStatus, ImportTarget, Register, Shift
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
 from app.models.site_config import ServicePlan
@@ -226,8 +228,8 @@ def _validate_row(
     values: dict[str, str],
     mappings: list[ColumnMappingIO],
     fleet: dict[str, Vehicle],
-    sources: set[str],
-    types: set[str],
+    sources: dict[str, str],
+    types: dict[str, str],
     work_types: dict[str, WorkType] | None = None,
 ) -> RowResult:
     result = RowResult(values=dict(values))
@@ -262,7 +264,7 @@ def _validate_row(
                     message=f'"{code}" is not on the work-type master list',
                 )
             )
-        elif work_type.register is None:
+        elif work_type.register is None and not work_type.is_inspection:
             result.errors.append(
                 RowErrorOut(
                     row_number=row_number,
@@ -306,8 +308,11 @@ def _validate_row(
         ("defectType", types, "Type of Defect"),
     ):
         value = collapse(result.values.get(key, ""))
-        result.values[key] = value
-        if value and value.lower() not in allowed:
+        if not value:
+            result.values[key] = ""
+            continue
+        canonical = allowed.get(master_key(value))
+        if canonical is None:
             result.errors.append(
                 RowErrorOut(
                     row_number=row_number,
@@ -315,6 +320,9 @@ def _validate_row(
                     message=f'"{value}" is not on the {label} master list',
                 )
             )
+            continue
+        # Store the master's own spelling, not the sheet's.
+        result.values[key] = canonical
 
     # Dates
     if register is not None or is_snag:
@@ -371,18 +379,30 @@ async def _fleet(session: AsyncSession, site_code: str) -> dict[str, Vehicle]:
 
 
 def normalize_work_type(raw: str) -> str:
-    """Codes are written by hand: "b.d", "10 days service" all normalise."""
-    return " ".join(raw.split()).upper()
+    """A comparable form of a TYPE OF WORK code.
+
+    Codes are written by hand and the same job appears as `P.M` and `PM`, so
+    punctuation and spacing are dropped for matching: `B.D` and `BD` are one
+    code, `10 DAYS SERVICE` and `10 Days Service` are one code. The master
+    list keeps whichever spelling the depot prefers for display.
+    """
+    return re.sub(r"[^A-Z0-9]", "", raw.upper())
 
 
 def collapse(raw: str) -> str:
-    """Collapse the line breaks a sheet author wraps long values with.
-
-    "TRANSMISSION/\nDRIVER SYSTEM" is the same master entry as
-    "TRANSMISSION/DRIVER SYSTEM"; where the column was narrow is not a
-    difference in meaning.
-    """
+    """Collapse the line breaks a sheet author wraps long values with."""
     return " ".join(raw.split())
+
+
+def master_key(raw: str) -> str:
+    """A comparable form of a master-list value.
+
+    "TRANSMISSION/\nDRIVER SYSTEM" is the same entry as
+    "TRANSMISSION/DRIVER SYSTEM": where the column was narrow, and whether
+    anyone typed a space after the slash, is not a difference in meaning. The
+    master's own spelling is what gets stored.
+    """
+    return re.sub(r"[^A-Z0-9]", "", raw.upper())
 
 
 #: Registration placeholders that are not vehicles.
@@ -394,13 +414,16 @@ async def _work_types(session: AsyncSession) -> dict[str, WorkType]:
     return {normalize_work_type(w.code): w for w in rows}
 
 
-async def _master_names(session: AsyncSession) -> tuple[set[str], set[str]]:
+async def _master_names(
+    session: AsyncSession,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Comparable key -> the master's own spelling, per list."""
     sources = {
-        collapse(n).lower()
+        master_key(n): n
         for n in (await session.scalars(select(DefectSource.name))).all()
     }
     types = {
-        collapse(n).lower()
+        master_key(n): n
         for n in (await session.scalars(select(DefectType.name))).all()
     }
     return sources, types
@@ -724,13 +747,33 @@ async def _commit_snag_report(
 
     for values in rows:
         work_type = work_types.get(values.get("work_type", ""))
-        if work_type is None or work_type.register is None:
+        if work_type is None:
             continue
-        register = work_type.register
 
         entry_date = parse_date(values.get("date", ""), None)
         if entry_date is None:
             continue
+
+        vehicle_for_row = fleet.get(values.get("bus", ""))
+        if work_type.is_inspection:
+            # A checklist sweep, not a register entry. The sheet records that
+            # it happened but never which lines were checked, so the results
+            # are empty — enough for the scheduler to see the work was done.
+            if vehicle_for_row is not None:
+                await _commit_inspection_row(
+                    session,
+                    site_code=site_code,
+                    vehicle=vehicle_for_row,
+                    work_type=work_type,
+                    values=values,
+                    inspected_on=entry_date,
+                    actor=actor,
+                )
+            continue
+
+        if work_type.register is None:
+            continue
+        register = work_type.register
 
         translated = {
             register_key: values[snag_key]
@@ -761,7 +804,7 @@ async def _commit_snag_report(
                 entry.breakdown.resolved_at = datetime.now(UTC)
 
         # The sheet's KMS column is an odometer reading taken that day.
-        vehicle = fleet.get(values.get("bus", ""))
+        vehicle = vehicle_for_row
         reading = parse_int(values.get("odometer_km", ""))
         fresh = vehicle is not None and reading is not None and (
             vehicle.odometer_updated_at is None or reading >= vehicle.odometer_km
@@ -775,6 +818,56 @@ async def _commit_snag_report(
                     source="snag report",
                 )
         await session.flush()
+
+
+async def _commit_inspection_row(
+    session: AsyncSession,
+    *,
+    site_code: str,
+    vehicle: Vehicle,
+    work_type: WorkType,
+    values: dict[str, str],
+    inspected_on: date_t,
+    actor: User,
+) -> None:
+    """One historical inspection from the snag report, with no checklist."""
+    existing = await session.scalar(
+        select(InspectionEntry.id).where(
+            InspectionEntry.site_code == site_code,
+            InspectionEntry.vehicle_id == vehicle.id,
+            InspectionEntry.work_type_id == work_type.id,
+            InspectionEntry.inspected_on == inspected_on,
+        )
+    )
+    if existing:
+        return
+
+    reading = parse_int(values.get("odometer_km", ""))
+    session.add(
+        InspectionEntry(
+            site_code=site_code,
+            vehicle_id=vehicle.id,
+            work_type_id=work_type.id,
+            inspected_on=inspected_on,
+            entry_time=parse_time(values.get("t_bd", "")),
+            done_by=values.get("employee") or None,
+            supervisor=values.get("supervisor") or None,
+            odometer_km=reading,
+            remarks=values.get("action") or values.get("complaint") or None,
+            created_by=actor,
+        )
+    )
+    if reading is not None and (
+        vehicle.odometer_updated_at is None or reading >= vehicle.odometer_km
+    ):
+        odometer_service.record_reading(
+            session,
+            vehicle,
+            odometer_km=reading,
+            recorded_at=datetime.combine(inspected_on, time_t(0, 0), tzinfo=UTC),
+            source="snag report",
+        )
+    await session.flush()
 
 
 def _to_register_data(register: Register, values: dict[str, str]) -> dict[str, object]:
