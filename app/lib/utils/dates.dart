@@ -39,6 +39,18 @@ abstract final class Dates {
         .inDays;
   }
 
+  /// `yyyy-MM` shifted by whole months, wrapping the year.
+  static String shiftMonth(String month, int by) {
+    final parts = month.split('-');
+    if (parts.length < 2) return month;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null) return month;
+    final shifted = DateTime(y, m + by);
+    return '${shifted.year.toString().padLeft(4, '0')}-'
+        '${shifted.month.toString().padLeft(2, '0')}';
+  }
+
   /// Monday=1 … Sunday=7, for laying out a calendar grid.
   static int weekday(String isoDate) => parse(isoDate)?.weekday ?? 1;
 

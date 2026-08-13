@@ -6,6 +6,7 @@ import '../models/site.dart';
 import '../models/site_config.dart';
 import '../models/checklist.dart';
 import '../models/inspection.dart';
+import '../models/report.dart';
 import '../models/site_import.dart';
 
 /// Contracts the UI is written against. Every implementation in `data/fake/` is
@@ -360,6 +361,81 @@ abstract interface class ChecklistRepository {
 
   /// What has already been swept today — the Home feed.
   Future<List<InspectionEntry>> todaysInspections(String siteCode);
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────
+
+/// The depot's own reports, derived from the registers rather than typed a
+/// second time.
+///
+/// The server owns every calculation: it knows what a breakdown's defect type
+/// rolls up to, which buses were off the road on a date, and what a bus's last
+/// PM found. The client asks for a day and renders it.
+abstract interface class ReportRepository {
+  /// One day of the Daily Maintenance Report.
+  Future<DmrDay> fetchDmr({required String siteCode, required String date});
+
+  /// Records the lines nothing else in the system observes. Values are keyed
+  /// by [DmrLine.key]; a null clears one.
+  Future<DmrDay> saveDmrEntered({
+    required String siteCode,
+    required String date,
+    required Map<String, int?> values,
+    String? notes,
+  });
+
+  /// Freezes the derived lines as reported. Runs nightly; this is on demand.
+  Future<DmrDay> snapshotDmr({
+    required String siteCode,
+    required String date,
+  });
+
+  /// The month grid, for trends and for spotting gaps.
+  Future<DmrMonth> fetchDmrMonth({
+    required String siteCode,
+    required String month,
+  });
+
+  /// The defective-bus list as it stood on one morning.
+  Future<List<OffRoadCase>> fetchOffRoad({
+    required String siteCode,
+    required String date,
+  });
+
+  Future<OffRoadCase> saveOffRoad({
+    required String siteCode,
+    required String vehicleId,
+    required String issue,
+    required DefectCategory category,
+    String? offRoadSince,
+    String? actionTaken,
+    int? expectedDays,
+    String? spareParts,
+    String? remarks,
+    bool awaitingVendor,
+  });
+
+  Future<OffRoadCase> closeOffRoad({
+    required String caseId,
+    required String returnedOn,
+  });
+
+  /// Every breakdown that day, with its investigation where one has started.
+  Future<List<Investigation>> fetchInvestigations({
+    required String siteCode,
+    required String date,
+  });
+
+  /// Opens one, pre-filled from what is already known about the bus.
+  Future<Investigation> openInvestigation(String entryId);
+
+  Future<Investigation> saveInvestigation(
+    String entryId, {
+    String? findings,
+    String? investigationAction,
+    String? lastPmFindings,
+    String? relatedComplaints,
+  });
 }
 
 // ─── Entries ──────────────────────────────────────────────────────────────

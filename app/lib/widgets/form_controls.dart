@@ -106,12 +106,16 @@ class AppTextField extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.textInputAction,
+    this.enabled = true,
   });
 
   final TextEditingController controller;
   final String? placeholder;
   final int rows;
   final bool mono;
+
+  /// A read-only field still shows its value; it just cannot be changed.
+  final bool enabled;
 
   /// User IDs and bus numbers are entered uppercase.
   final bool uppercase;
@@ -131,6 +135,7 @@ class AppTextField extends StatelessWidget {
       child: TextField(
         controller: controller,
         style: style,
+        enabled: enabled,
         obscureText: obscure,
         maxLines: obscure ? 1 : rows,
         minLines: obscure ? 1 : rows,

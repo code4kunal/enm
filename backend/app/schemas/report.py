@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import date as date_t
-from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import DefectCategory
-from app.schemas.common import HHMM, ISTDateTime
+from app.schemas.common import HHMM, DecimalOut, ISTDateTime
 
 
 class DmrLine(BaseModel):
@@ -17,7 +16,8 @@ class DmrLine(BaseModel):
     key: str
     #: False when nothing observes it, so a person enters it.
     derived: bool
-    value: Decimal | None = None
+    #: A JSON number, never a string — the client casts these to num.
+    value: DecimalOut = None
     #: Rendered with a decimal rather than as a count.
     is_decimal: bool = False
 
@@ -56,8 +56,9 @@ class DmrMonthOut(BaseModel):
     month: str
     dates: list[date_t]
     lines: list[DmrLine]
-    #: line key -> value per date, in `dates` order.
-    values: dict[str, list[Decimal | None]]
+    #: line key -> value per date, in `dates` order. Plain numbers: a grid of
+    #: quoted decimals is a parsing trap for every consumer.
+    values: dict[str, list[float | None]]
 
 
 # --- breakdown investigation (Annexure-V) ----------------------------------
@@ -75,7 +76,7 @@ class InvestigationOut(BaseModel):
     breakdown_time: HHMM | None = None
     mechanic_reported_time: HHMM | None = None
     attended_time: HHMM | None = None
-    loss_km: Decimal | None = None
+    loss_km: DecimalOut = None
     attended_details: str | None = None
     entry_date: date_t
 

@@ -5,6 +5,7 @@ import '../../models/app_user.dart';
 import '../../models/entry.dart';
 import '../../models/checklist.dart';
 import '../../models/inspection.dart';
+import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
@@ -807,4 +808,157 @@ class ApiChecklistRepository implements ChecklistRepository {
       itemsOf(await _api.get('/sites/$siteCode/inspections/today'))
           .map(InspectionEntry.fromJson)
           .toList();
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────
+
+class ApiReportRepository implements ReportRepository {
+  ApiReportRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<DmrDay> fetchDmr({
+    required String siteCode,
+    required String date,
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/reports/dmr',
+      query: <String, String>{'date': date},
+    );
+    return DmrDay.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DmrDay> saveDmrEntered({
+    required String siteCode,
+    required String date,
+    required Map<String, int?> values,
+    String? notes,
+  }) async {
+    final json = await _api.put(
+      '/sites/$siteCode/reports/dmr',
+      query: <String, String>{'date': date},
+      body: <String, dynamic>{
+        ...values,
+        if (notes != null) 'notes': notes,
+      },
+    );
+    return DmrDay.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DmrDay> snapshotDmr({
+    required String siteCode,
+    required String date,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/reports/dmr/snapshot',
+      query: <String, String>{'date': date},
+    );
+    return DmrDay.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DmrMonth> fetchDmrMonth({
+    required String siteCode,
+    required String month,
+  }) async {
+    final json = await _api.get(
+      '/sites/$siteCode/reports/dmr/month',
+      query: <String, String>{'month': month},
+    );
+    return DmrMonth.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<OffRoadCase>> fetchOffRoad({
+    required String siteCode,
+    required String date,
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/reports/off-road',
+        query: <String, String>{'date': date},
+      )).map(OffRoadCase.fromJson).toList();
+
+  @override
+  Future<OffRoadCase> saveOffRoad({
+    required String siteCode,
+    required String vehicleId,
+    required String issue,
+    required DefectCategory category,
+    String? offRoadSince,
+    String? actionTaken,
+    int? expectedDays,
+    String? spareParts,
+    String? remarks,
+    bool awaitingVendor = false,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/reports/off-road',
+      body: <String, dynamic>{
+        'vehicle_id': vehicleId,
+        'issue': issue,
+        'category': category.wireName,
+        if (offRoadSince != null) 'off_road_since': offRoadSince,
+        if (actionTaken != null && actionTaken.isNotEmpty)
+          'action_taken': actionTaken,
+        if (expectedDays != null) 'expected_days': expectedDays,
+        if (spareParts != null && spareParts.isNotEmpty)
+          'spare_parts_required': spareParts,
+        if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+        'awaiting_vendor': awaitingVendor,
+      },
+    );
+    return OffRoadCase.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<OffRoadCase> closeOffRoad({
+    required String caseId,
+    required String returnedOn,
+  }) async {
+    final json = await _api.post(
+      '/off-road/$caseId/close',
+      body: <String, dynamic>{'returned_on': returnedOn},
+    );
+    return OffRoadCase.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<Investigation>> fetchInvestigations({
+    required String siteCode,
+    required String date,
+  }) async =>
+      itemsOf(await _api.get(
+        '/sites/$siteCode/reports/investigations',
+        query: <String, String>{'date': date},
+      )).map(Investigation.fromJson).toList();
+
+  @override
+  Future<Investigation> openInvestigation(String entryId) async {
+    final json = await _api.get('/breakdowns/$entryId/investigation');
+    return Investigation.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Investigation> saveInvestigation(
+    String entryId, {
+    String? findings,
+    String? investigationAction,
+    String? lastPmFindings,
+    String? relatedComplaints,
+  }) async {
+    final json = await _api.put(
+      '/breakdowns/$entryId/investigation',
+      body: <String, dynamic>{
+        if (findings != null) 'findings': findings,
+        if (investigationAction != null)
+          'investigation_action': investigationAction,
+        if (lastPmFindings != null) 'last_pm_findings': lastPmFindings,
+        if (relatedComplaints != null) 'related_complaints': relatedComplaints,
+      },
+    );
+    return Investigation.fromJson(json as Map<String, dynamic>);
+  }
 }

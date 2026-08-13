@@ -10,6 +10,7 @@ import 'screens/login_screen.dart';
 import 'screens/register_form_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/registers_screen.dart';
+import 'screens/reports_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/site_screen.dart';
@@ -21,6 +22,7 @@ abstract final class Routes {
   static const registers = '/registers';
   static const breakdowns = '/breakdowns';
   static const schedule = '/schedule';
+  static const reports = '/reports';
   static const site = '/site';
   static const admin = '/admin';
   static const profile = '/profile';
@@ -105,6 +107,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: Routes.schedule,
             builder: (context, state) => const ScheduleScreen(),
+          ),
+          GoRoute(
+            path: Routes.reports,
+            builder: (context, state) => const ReportsScreen(),
           ),
           GoRoute(
             path: Routes.site,

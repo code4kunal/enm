@@ -19,7 +19,16 @@ def line(body: dict, number: int) -> dict:
 
 
 def value(body: dict, number: int):
+    """A line's figure, asserting it arrived as a JSON number.
+
+    Pydantic renders Decimal as a *string* by default and the client casts
+    these to `num`, so a quoted "57" is a crash rather than a cosmetic
+    difference. `float(raw)` would hide it.
+    """
     raw = line(body, number)["value"]
+    assert raw is None or isinstance(raw, int | float), (
+        f"line {number} came back as {type(raw).__name__}: {raw!r}"
+    )
     return None if raw is None else float(raw)
 
 
@@ -214,6 +223,11 @@ async def test_the_month_grid_exports_in_the_depots_layout(
     assert grid.status_code == 200, grid.text
     body = grid.json()
     assert len(body["dates"]) == len(body["values"]["breakdowns"])
+    # Numbers, not quoted decimals.
+    assert all(
+        v is None or isinstance(v, int | float)
+        for v in body["values"]["loss_km"]
+    )
 
     export = await client.get(
         "/sites/MBMT/reports/dmr/export", params={"month": "2026-08"}, headers=h

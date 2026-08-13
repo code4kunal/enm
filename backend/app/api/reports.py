@@ -149,7 +149,7 @@ async def _month_grid(
         last = max(today, first)
 
     dates: list[date_t] = []
-    columns: dict[str, list[Decimal | None]] = {p.key: [] for p in dmr.PARAMETERS}
+    columns: dict[str, list[float | None]] = {p.key: [] for p in dmr.PARAMETERS}
     day = first
     while day <= last and len(dates) < MAX_REPORT_DAYS:
         values, _ = await dmr.compose(session, site_code, day)
@@ -157,7 +157,7 @@ async def _month_grid(
         for parameter in dmr.PARAMETERS:
             raw = values.get(parameter.key)
             columns[parameter.key].append(
-                None if raw is None else Decimal(str(raw))
+                None if raw is None else float(raw)
             )
         day += timedelta(days=1)
 
