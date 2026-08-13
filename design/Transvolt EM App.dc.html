@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#F2F3EF;font-family:'IBM Plex Sans',sans-serif;color:#12161B;}
+  *{box-sizing:border-box;}
+  a{color:#3D74C6;text-decoration:none;} a:hover{color:#2C5CA5;}
+  input,select,textarea,button{font-family:'IBM Plex Sans',sans-serif;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:#568A37 !important;box-shadow:0 0 0 3px rgba(86,138,55,.15);}
+  @keyframes drift1{0%{transform:translate(0,0) rotate(0deg);}50%{transform:translate(60px,-40px) rotate(4deg);}100%{transform:translate(0,0) rotate(0deg);}}
+  @keyframes drift2{0%{transform:translate(0,0);}50%{transform:translate(-70px,50px);}100%{transform:translate(0,0);}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes sweep{0%{transform:translateX(-120%);}100%{transform:translateX(320%);}}
+</style>
+</helmet>
+<div style="min-height:100vh;">
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:100vh;background:#0E1216;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:24px;">
+      <div style="position:absolute;width:420px;height:420px;left:-80px;top:-60px;background:#568A37;opacity:.14;filter:blur(6px);clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%);animation:drift1 11s ease-in-out infinite;"></div>
+      <div style="position:absolute;width:520px;height:520px;right:-140px;bottom:-120px;background:#3D74C6;opacity:.13;filter:blur(6px);clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%);animation:drift2 13s ease-in-out infinite;"></div>
+      <div style="position:absolute;width:220px;height:220px;right:18%;top:8%;background:#568A37;opacity:.08;clip-path:polygon(0 0,55% 0,100% 50%,55% 100%,0 100%,45% 50%);animation:drift2 16s ease-in-out infinite;"></div>
+      <div style="background:#FFFFFF;border-radius:20px;padding:44px 40px 36px;width:100%;max-width:420px;box-shadow:0 30px 80px rgba(0,0,0,.5);animation:fadeUp .6s cubic-bezier(.2,.8,.2,1);position:relative;">
+        <img src="assets/transvolt-logo.png" alt="Transvolt" style="width:220px;display:block;margin:0 auto 6px;">
+        <div style="text-align:center;font-size:13px;letter-spacing:.22em;font-weight:600;color:#568A37;margin-top:10px;">E &amp; M MAINTENANCE</div>
+        <div style="text-align:center;font-size:14px;color:#5B6470;margin-top:6px;">Ground operations register · All depots</div>
+        <sc-if value="{{ stageSso }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ msSignIn }}" style="margin-top:32px;width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:15px 18px;border:1.5px solid #D6D9D2;border-radius:12px;background:#FFFFFF;font-size:16px;font-weight:600;color:#12161B;cursor:pointer;position:relative;overflow:hidden;" style-hover="border-color: #12161B; box-shadow: 0 4px 14px rgba(0,0,0,.08)">
+            <svg width="20" height="20" viewBox="0 0 20 20"><rect width="9" height="9" fill="#F25022"></rect><rect x="11" width="9" height="9" fill="#7FBA00"></rect><rect y="11" width="9" height="9" fill="#00A4EF"></rect><rect x="11" y="11" width="9" height="9" fill="#FFB900"></rect></svg>
+            {{ msLabel }}
+            <sc-if value="{{ signing }}" hint-placeholder-val="{{ false }}">
+              <span style="position:absolute;inset:0;background:linear-gradient(100deg,transparent,rgba(86,138,55,.15),transparent);width:40%;animation:sweep 1.1s linear infinite;"></span>
+            </sc-if>
+          </button>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:22px;">
+            <div style="flex:1;height:1px;background:#E3E6DF;"></div>
+            <span style="font-size:12px;font-weight:600;color:#8A93A0;">OR SIGN IN WITH USER ID</span>
+            <div style="flex:1;height:1px;background:#E3E6DF;"></div>
+          </div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px;">
+            <input type="text" value="{{ loginId }}" onChange="{{ setLoginId }}" placeholder="User ID (e.g. TV4021)" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;font-family:'IBM Plex Mono',monospace;font-weight:600;text-transform:uppercase;">
+            <input type="password" value="{{ loginPw }}" onChange="{{ setLoginPw }}" placeholder="Password" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;">
+            <sc-if value="{{ loginErr }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:13px;font-weight:600;color:#C2452D;">{{ loginErr }}</div>
+            </sc-if>
+            <button onClick="{{ idSignIn }}" style="width:100%;padding:14px;border:none;border-radius:12px;background:#12161B;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background: #2A3038">Sign in</button>
+          </div>
+          <div style="margin-top:14px;text-align:center;font-size:12.5px;color:#8A93A0;">Ground staff without a Transvolt mail ID use the User ID issued by the depot manager.</div>
+        </sc-if>
+        <sc-if value="{{ stageDepot }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:28px;font-size:14px;font-weight:600;color:#12161B;">Welcome, {{ userName }} — select your depot</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
+            <sc-for list="{{ depotPicks }}" as="d" hint-placeholder-count="8">
+              <button onClick="{{ d.pick }}" style="padding:14px 10px;border:1.5px solid {{ d.bd }};border-radius:12px;background:{{ d.bg }};color:{{ d.col }};font-size:15px;font-weight:600;cursor:pointer;font-family:'IBM Plex Mono',monospace;" style-hover="border-color: #568A37">{{ d.name }}</button>
+            </sc-for>
+          </div>
+          <button onClick="{{ enterApp }}" style="margin-top:20px;width:100%;padding:15px;border:none;border-radius:12px;background:#568A37;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background: #4A7A2E">Continue to {{ depot }}</button>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+    <div style="min-height:100vh;display:flex;flex-direction:column;">
+      <header style="background:#FFFFFF;border-bottom:1px solid #E3E6DF;position:sticky;top:0;z-index:20;">
+        <div style="max-width:1080px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <img src="assets/transvolt-logo.png" alt="Transvolt" style="height:20px;">
+          <div style="width:1px;height:22px;background:#E3E6DF;"></div>
+          <div style="font-size:13px;font-weight:700;letter-spacing:.14em;color:#568A37;">E&amp;M</div>
+          <div style="flex:1;"></div>
+          <select value="{{ depot }}" onChange="{{ setDepot }}" style="padding:8px 12px;border:1.5px solid #D6D9D2;border-radius:10px;background:#F7F8F5;font-size:14px;font-weight:600;color:#12161B;cursor:pointer;font-family:'IBM Plex Mono',monospace;">
+            <sc-for list="{{ depots }}" as="d" hint-placeholder-count="8"><option value="{{ d }}">{{ d }}</option></sc-for>
+          </select>
+          <div title="{{ userName }}" style="width:36px;height:36px;border-radius:50%;background:#12161B;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:pointer;" onClick="{{ signOut }}">{{ initials }}</div>
+        </div>
+        <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1080px;margin:0 auto;padding:0 20px;display:flex;gap:4px;overflow-x:auto;">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.go }}" style="padding:10px 16px 12px;border:none;background:none;font-size:14.5px;font-weight:600;color:{{ t.col }};border-bottom:3px solid {{ t.line }};cursor:pointer;white-space:nowrap;">{{ t.label }}<sc-if value="{{ t.badge }}" hint-placeholder-val="{{ false }}"><span style="margin-left:7px;background:#C2452D;color:#fff;border-radius:20px;padding:1px 7px;font-size:11.5px;font-weight:700;">{{ t.badge }}</span></sc-if></button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </header>
+      <main style="max-width:1080px;margin:0 auto;width:100%;padding:20px 20px {{ mainPadBottom }};flex:1;">
+        <sc-if value="{{ showForm }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:640px;margin:0 auto;animation:fadeUp .35s cubic-bezier(.2,.8,.2,1);">
+            <button onClick="{{ closeForm }}" style="border:none;background:none;color:#5B6470;font-size:14px;font-weight:600;cursor:pointer;padding:4px 0;display:flex;align-items:center;gap:6px;">← Back</button>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:10px;">
+              <div style="width:44px;height:44px;border-radius:12px;background:{{ regColor }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;font-family:'IBM Plex Mono',monospace;">{{ regCode }}</div>
+              <div>
+                <h1 style="margin:0;font-size:21px;font-weight:700;">{{ regName }}</h1>
+                <div style="font-size:13px;color:#5B6470;">{{ depot }} depot · {{ formMode }}</div>
+              </div>
+            </div>
+            <div style="background:#FFFFFF;border:1px solid #E3E6DF;border-radius:16px;padding:22px 20px;margin-top:16px;display:flex;flex-wrap:wrap;gap:16px 4%;">
+              <sc-for list="{{ fields }}" as="f" hint-placeholder-count="6">
+                <div style="width:{{ f.w }};">
+                  <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">{{ f.label }}<sc-if value="{{ f.req }}" hint-placeholder-val="{{ false }}"><span style="color:#C2452D;"> *</span></sc-if><sc-if value="{{ f.master }}" hint-placeholder-val="{{ false }}"><span style="margin-left:8px;background:#EDF1F8;color:#3D74C6;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;vertical-align:1px;">MASTER</span></sc-if></label>
+                  <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
+                    <input type="text" value="{{ f.value }}" onChange="{{ f.set }}" placeholder="{{ f.ph }}" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;background:#FFFFFF;">
+                  </sc-if>
+                  <sc-if value="{{ f.isBus }}" hint-placeholder-val="{{ false }}">
+                    <select value="{{ f.value }}" onChange="{{ f.set }}" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;font-family:'IBM Plex Mono',monospace;font-weight:600;background:#FFFFFF;cursor:pointer;">
+                      <option value="">Select bus…</option>
+                      <sc-for list="{{ masterBuses }}" as="b" hint-placeholder-count="4"><option value="{{ b }}">{{ b }}</option></sc-for>
+                    </select>
+                  </sc-if>
+                  <sc-if value="{{ f.isDate }}" hint-placeholder-val="{{ false }}">
+                    <input type="date" value="{{ f.value }}" onChange="{{ f.set }}" style="width:100%;padding:12px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;background:#FFFFFF;">
+                  </sc-if>
+                  <sc-if value="{{ f.isTime }}" hint-placeholder-val="{{ false }}">
+                    <input type="time" value="{{ f.value }}" onChange="{{ f.set }}" style="width:100%;padding:12px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;background:#FFFFFF;">
+                  </sc-if>
+                  <sc-if value="{{ f.isNum }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <input type="number" value="{{ f.value }}" onChange="{{ f.set }}" placeholder="0" style="flex:1;min-width:0;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:17px;font-family:'IBM Plex Mono',monospace;font-weight:600;background:#FFFFFF;">
+                      <sc-if value="{{ f.unit }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#5B6470;">{{ f.unit }}</span></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ f.isArea }}" hint-placeholder-val="{{ false }}">
+                    <textarea value="{{ f.value }}" onChange="{{ f.set }}" placeholder="{{ f.ph }}" rows="{{ f.rows }}" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;background:#FFFFFF;resize:vertical;"></textarea>
+                  </sc-if>
+                  <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+                    <select value="{{ f.value }}" onChange="{{ f.set }}" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;background:#FFFFFF;cursor:pointer;">
+                      <option value="">Select…</option>
+                      <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3"><option value="{{ o }}">{{ o }}</option></sc-for>
+                    </select>
+                  </sc-if>
+                  <sc-if value="{{ f.isSeg }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:8px;">
+                      <sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3">
+                        <button onClick="{{ o.pick }}" style="flex:1;padding:13px 8px;border:1.5px solid {{ o.bd }};border-radius:10px;background:{{ o.bg }};color:{{ o.col }};font-size:16px;font-weight:700;cursor:pointer;">{{ o.label }}</button>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <div style="width:100%;">
+                <button onClick="{{ togglePhoto }}" style="width:100%;padding:13px;border:1.5px dashed #B9BFB4;border-radius:10px;background:{{ photoBg }};font-size:14.5px;font-weight:600;color:{{ photoCol }};cursor:pointer;" style-hover="border-color: #568A37">{{ photoLabel }}</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:16px;padding-bottom:32px;">
+              <button onClick="{{ closeForm }}" style="padding:15px 22px;border:1.5px solid #D6D9D2;border-radius:12px;background:#FFFFFF;font-size:16px;font-weight:600;color:#3C4450;cursor:pointer;">Cancel</button>
+              <button onClick="{{ saveEntry }}" style="flex:1;padding:15px;border:none;border-radius:12px;background:#568A37;color:#FFFFFF;font-size:16.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(86,138,55,.3);" style-hover="background: #4A7A2E">Save entry</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showHome }}" hint-placeholder-val="{{ true }}">
+          <div style="animation:fadeUp .35s cubic-bezier(.2,.8,.2,1);">
+            <sc-if value="{{ openAlert }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ goBreakdowns }}" style="background:#FBEFEC;border:1px solid #E8C4BB;border-radius:12px;padding:13px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <span style="width:9px;height:9px;border-radius:50%;background:#C2452D;flex-shrink:0;"></span>
+                <span style="font-size:14.5px;font-weight:600;color:#8C3220;">{{ openAlert }} — tap to view</span>
+              </div>
+            </sc-if>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <h1 style="margin:0;font-size:22px;font-weight:700;">{{ greeting }}</h1>
+              <div style="font-size:13.5px;color:#5B6470;">{{ todayStr }} · <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;">{{ depot }}</span></div>
+            </div>
+            <div style="font-size:14px;color:#5B6470;margin-top:4px;">Pick a register to make an entry — same columns as your physical register.</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:18px;">
+              <sc-for list="{{ regCards }}" as="r" hint-placeholder-count="5">
+                <button onClick="{{ r.open }}" style="text-align:left;background:#FFFFFF;border:1px solid #E3E6DF;border-radius:16px;padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:12px;transition:box-shadow .15s, transform .15s;" style-hover="box-shadow: 0 10px 24px rgba(18,22,27,.09); transform: translateY(-2px); border-color: #C9CEC4">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="width:40px;height:40px;border-radius:11px;background:{{ r.color }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13.5px;font-family:'IBM Plex Mono',monospace;">{{ r.code }}</div>
+                    <div style="font-size:12px;color:#8A93A0;font-weight:600;">{{ r.countLabel }}</div>
+                  </div>
+                  <div>
+                    <div style="font-size:15.5px;font-weight:700;line-height:1.25;">{{ r.name }}</div>
+                    <div style="font-size:12.5px;color:#568A37;font-weight:700;margin-top:6px;">+ New entry</div>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+            <h2 style="font-size:16px;font-weight:700;margin:28px 0 12px;">Today's entries · {{ depot }}</h2>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <sc-for list="{{ todayList }}" as="e" hint-placeholder-count="3">
+                <div style="background:#FFFFFF;border:1px solid #E3E6DF;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+                  <div style="width:34px;height:34px;border-radius:9px;background:{{ e.color }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11.5px;font-family:'IBM Plex Mono',monospace;flex-shrink:0;">{{ e.code }}</div>
+                  <div style="min-width:0;flex:1;">
+                    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+                      <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;">{{ e.bus }}</span>
+                      <span style="font-size:12px;color:#8A93A0;">{{ e.time }} · {{ e.by }}</span>
+                    </div>
+                    <div style="font-size:13.5px;color:#3C4450;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.snippet }}</div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ todayEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1.5px dashed #D6D9D2;border-radius:12px;padding:22px;text-align:center;font-size:14px;color:#8A93A0;">No entries yet today at {{ depot }}. Start with any register above.</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showRegisters }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s cubic-bezier(.2,.8,.2,1);">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <input type="text" value="{{ q }}" onChange="{{ setQ }}" placeholder="Search bus no, defect, employee…" style="flex:1;min-width:220px;padding:12px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:15px;background:#FFFFFF;">
+              <button onClick="{{ exportCsv }}" style="padding:12px 16px;border:1.5px solid #12161B;border-radius:10px;background:#12161B;color:#FFFFFF;font-size:14px;font-weight:600;cursor:pointer;" style-hover="background: #2A3038">Export Excel (CSV)</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+              <sc-for list="{{ regChips }}" as="c" hint-placeholder-count="6">
+                <button onClick="{{ c.pick }}" style="padding:8px 14px;border:1.5px solid {{ c.bd }};border-radius:20px;background:{{ c.bg }};color:{{ c.col }};font-size:13.5px;font-weight:600;cursor:pointer;">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+              <span style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#8A93A0;">PERIOD</span>
+              <sc-for list="{{ dateChips }}" as="c" hint-placeholder-count="5">
+                <button onClick="{{ c.pick }}" style="padding:7px 13px;border:1.5px solid {{ c.bd }};border-radius:20px;background:{{ c.bg }};color:{{ c.col }};font-size:13px;font-weight:600;cursor:pointer;">{{ c.label }}</button>
+              </sc-for>
+              <sc-if value="{{ isCustom }}" hint-placeholder-val="{{ false }}">
+                <input type="date" value="{{ dFrom }}" onChange="{{ setFrom }}" style="padding:8px 10px;border:1.5px solid #D6D9D2;border-radius:9px;font-size:13.5px;background:#FFFFFF;">
+                <span style="font-size:13px;color:#8A93A0;">to</span>
+                <input type="date" value="{{ dTo }}" onChange="{{ setTo }}" style="padding:8px 10px;border:1.5px solid #D6D9D2;border-radius:9px;font-size:13.5px;background:#FFFFFF;">
+              </sc-if>
+            </div>
+            <div style="font-size:13px;color:#5B6470;margin-top:14px;">{{ resultCount }}</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+              <sc-for list="{{ filtered }}" as="e" hint-placeholder-count="5">
+                <div style="background:#FFFFFF;border:1px solid #E3E6DF;border-radius:12px;padding:13px 15px;">
+                  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <span style="background:{{ e.color }};color:#FFFFFF;border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700;font-family:'IBM Plex Mono',monospace;">{{ e.code }}</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14.5px;">{{ e.bus }}</span>
+                    <span style="font-size:12.5px;color:#8A93A0;">{{ e.date }} · {{ e.depot }} · {{ e.by }}</span>
+                    <div style="flex:1;"></div>
+                    <button onClick="{{ e.edit }}" style="padding:6px 13px;border:1.5px solid #D6D9D2;border-radius:8px;background:#FFFFFF;color:#3C4450;font-size:12.5px;font-weight:700;cursor:pointer;" style-hover="border-color: #568A37; color: #568A37">Edit</button>
+                  </div>
+                  <div style="font-size:14px;color:#3C4450;margin-top:7px;line-height:1.45;">{{ e.detail }}</div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ filteredEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1.5px dashed #D6D9D2;border-radius:12px;padding:22px;text-align:center;font-size:14px;color:#8A93A0;">No matching entries.</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showAdmin }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s cubic-bezier(.2,.8,.2,1);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+              <div>
+                <h1 style="margin:0;font-size:20px;font-weight:700;">User administration</h1>
+                <div style="font-size:13.5px;color:#5B6470;margin-top:3px;">Create users, assign role and depot access. Inactive users cannot log in.</div>
+              </div>
+              <button onClick="{{ newUser }}" style="padding:11px 16px;border:none;border-radius:10px;background:#568A37;color:#FFFFFF;font-size:14px;font-weight:700;cursor:pointer;" style-hover="background: #4A7A2E">+ Create user</button>
+            </div>
+            <sc-if value="{{ showUserForm }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#FFFFFF;border:1.5px solid #568A37;border-radius:16px;padding:22px 20px;margin-top:16px;">
+                <div style="font-size:16px;font-weight:700;">{{ userFormTitle }}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:16px 4%;margin-top:16px;">
+                  <div style="width:48%;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">Full name<span style="color:#C2452D;"> *</span></label>
+                    <input type="text" value="{{ ufName }}" onChange="{{ setUfName }}" placeholder="e.g. Sunil Patil" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;">
+                  </div>
+                  <div style="width:48%;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">User ID<span style="color:#C2452D;"> *</span></label>
+                    <input type="text" value="{{ ufId }}" onChange="{{ setUfId }}" placeholder="e.g. TV4105" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;font-family:'IBM Plex Mono',monospace;font-weight:600;text-transform:uppercase;">
+                  </div>
+                  <div style="width:48%;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">Email (optional — for Microsoft SSO)</label>
+                    <input type="text" value="{{ ufEmail }}" onChange="{{ setUfEmail }}" placeholder="name@transvolt.in" style="width:100%;padding:13px 14px;border:1.5px solid #D6D9D2;border-radius:10px;font-size:16px;">
+                  </div>
+                  <div style="width:48%;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">Role<span style="color:#C2452D;"> *</span></label>
+                    <div style="display:flex;gap:8px;">
+                      <sc-for list="{{ ufRoles }}" as="r" hint-placeholder-count="3">
+                        <button onClick="{{ r.pick }}" style="flex:1;padding:12px 6px;border:1.5px solid {{ r.bd }};border-radius:10px;background:{{ r.bg }};color:{{ r.col }};font-size:14px;font-weight:700;cursor:pointer;">{{ r.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="width:100%;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#3C4450;margin-bottom:7px;">Depot access<span style="color:#C2452D;"> *</span> <span style="font-weight:400;color:#8A93A0;">— select one or more</span></label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <sc-for list="{{ ufDepots }}" as="d" hint-placeholder-count="8">
+                        <button onClick="{{ d.pick }}" style="padding:9px 14px;border:1.5px solid {{ d.bd }};border-radius:20px;background:{{ d.bg }};color:{{ d.col }};font-size:13.5px;font-weight:600;cursor:pointer;font-family:'IBM Plex Mono',monospace;">{{ d.name }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+                <sc-if value="{{ ufErr }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;font-weight:600;color:#C2452D;margin-top:12px;">{{ ufErr }}</div>
+                </sc-if>
+                <div style="display:flex;gap:10px;margin-top:18px;">
+                  <button onClick="{{ cancelUser }}" style="padding:13px 20px;border:1.5px solid #D6D9D2;border-radius:11px;background:#FFFFFF;font-size:15px;font-weight:600;color:#3C4450;cursor:pointer;">Cancel</button>
+                  <button onClick="{{ saveUser }}" style="flex:1;padding:13px;border:none;border-radius:11px;background:#568A37;color:#FFFFFF;font-size:15.5px;font-weight:700;cursor:pointer;" style-hover="background: #4A7A2E">{{ userFormCta }}</button>
+                </div>
+              </div>
+            </sc-if>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
+              <sc-for list="{{ userChips }}" as="c" hint-placeholder-count="3">
+                <button onClick="{{ c.pick }}" style="padding:8px 14px;border:1.5px solid {{ c.bd }};border-radius:20px;background:{{ c.bg }};color:{{ c.col }};font-size:13.5px;font-weight:600;cursor:pointer;">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">
+              <sc-for list="{{ userList }}" as="u" hint-placeholder-count="4">
+                <div style="background:#FFFFFF;border:1px solid #E3E6DF;border-radius:12px;padding:14px 16px;opacity:{{ u.opacity }};">
+                  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:{{ u.avBg }};color:{{ u.avCol }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">{{ u.initials }}</div>
+                    <div style="min-width:0;">
+                      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <span style="font-size:15px;font-weight:700;">{{ u.name }}</span>
+                        <span style="border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700;background:{{ u.roleBg }};color:{{ u.roleCol }};">{{ u.role }}</span>
+                        <sc-if value="{{ u.inactive }}" hint-placeholder-val="{{ false }}">
+                          <span style="border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:700;background:#F1F2EF;color:#8A93A0;">INACTIVE</span>
+                        </sc-if>
+                      </div>
+                      <div style="font-size:12.5px;color:#8A93A0;margin-top:2px;"><span style="font-family:'IBM Plex Mono',monospace;font-weight:600;">{{ u.uid }}</span>{{ u.emailLabel }}</div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                      <sc-for list="{{ u.depots }}" as="d" hint-placeholder-count="2">
+                        <span style="padding:3px 9px;border-radius:6px;background:#F7F8F5;border:1px solid #E3E6DF;font-size:11.5px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:#5B6470;">{{ d }}</span>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                      <button onClick="{{ u.edit }}" style="padding:7px 13px;border:1.5px solid #D6D9D2;border-radius:8px;background:#FFFFFF;color:#3C4450;font-size:12.5px;font-weight:700;cursor:pointer;" style-hover="border-color: #568A37; color: #568A37">Edit</button>
+                      <button onClick="{{ u.toggle }}" style="padding:7px 13px;border:1.5px solid {{ u.tglBd }};border-radius:8px;background:#FFFFFF;color:{{ u.tglCol }};font-size:12.5px;font-weight:700;cursor:pointer;">{{ u.tglLabel }}</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showBreakdowns }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s cubic-bezier(.2,.8,.2,1);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+              <h1 style="margin:0;font-size:20px;font-weight:700;">Breakdown tracker</h1>
+              <button onClick="{{ newBreakdown }}" style="padding:11px 16px;border:none;border-radius:10px;background:#C2452D;color:#FFFFFF;font-size:14px;font-weight:700;cursor:pointer;" style-hover="background: #A93A24">+ Report breakdown</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+              <sc-for list="{{ bdList }}" as="b" hint-placeholder-count="3">
+                <div style="background:#FFFFFF;border:1px solid {{ b.border }};border-radius:14px;padding:15px 16px;">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15.5px;">{{ b.bus }}</span>
+                    <span style="border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;background:{{ b.chipBg }};color:{{ b.chipCol }};">{{ b.status }}</span>
+                    <span style="font-size:12.5px;color:#8A93A0;">{{ b.date }} · {{ b.loc }}</span>
+                    <div style="flex:1;"></div>
+                    <sc-if value="{{ b.canResolve }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ b.resolve }}" style="padding:8px 14px;border:1.5px solid #568A37;border-radius:9px;background:#FFFFFF;color:#568A37;font-size:13px;font-weight:700;cursor:pointer;" style-hover="background: #F0F5EC">Mark resolved</button>
+                    </sc-if>
+                  </div>
+                  <div style="font-size:14px;color:#3C4450;margin-top:8px;">{{ b.complaint }}</div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:#5B6470;">
+                    <span>B/Down <b style="font-family:'IBM Plex Mono',monospace;">{{ b.t1 }}</b></span>
+                    <span>Attended <b style="font-family:'IBM Plex Mono',monospace;">{{ b.t2 }}</b></span>
+                    <span>Time taken <b style="font-family:'IBM Plex Mono',monospace;">{{ b.taken }}</b></span>
+                    <span>Loss KM <b style="font-family:'IBM Plex Mono',monospace;">{{ b.loss }}</b></span>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ bdEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1.5px dashed #D6D9D2;border-radius:12px;padding:22px;text-align:center;font-size:14px;color:#8A93A0;">No breakdowns recorded at {{ depot }}.</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </main>
+      <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+        <nav style="position:fixed;bottom:0;left:0;right:0;background:#FFFFFF;border-top:1px solid #E3E6DF;display:flex;z-index:40;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 20px rgba(18,22,27,.06);">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+            <button onClick="{{ t.go }}" style="flex:1;min-height:56px;border:none;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;position:relative;">
+              <span style="width:34px;height:4px;border-radius:0 0 4px 4px;background:{{ t.line }};position:absolute;top:0;"></span>
+              <span style="font-size:13.5px;font-weight:{{ t.mWt }};color:{{ t.mCol }};">{{ t.label }}</span>
+              <sc-if value="{{ t.badge }}" hint-placeholder-val="{{ false }}">
+                <span style="position:absolute;top:8px;right:calc(50% - 34px);background:#C2452D;color:#fff;border-radius:20px;padding:0 6px;font-size:10.5px;font-weight:700;line-height:16px;">{{ t.badge }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </nav>
+      </sc-if>
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:fixed;bottom:{{ toastBottom }};left:50%;transform:translateX(-50%);background:#12161B;color:#FFFFFF;padding:13px 22px;border-radius:12px;font-size:14.5px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.3);animation:fadeUp .3s;z-index:50;max-width:calc(100vw - 32px);text-align:center;">{{ toast }}</div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;demoEntries&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;openBreakdownBanner&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const DEPOTS = ['MBMT','UMT','NTSPL','Julwania','VECV','STAR','GTI','KANDLA'];
+const ROLES = ['Manager','Supervisor','Executive'];
+const ROLE_STYLE = { Manager:{bg:'#EDF1F8',col:'#3D74C6'}, Supervisor:{bg:'#F0F5EC',col:'#3E6B26'}, Executive:{bg:'#F5EEDD',col:'#8A6A2F'} };
+const SEED_USERS = [
+  { id:'u1', name:'Rahul Sharma', uid:'TV4021', email:'rahul.sharma@transvolt.in', role:'Manager', depots:['MBMT','UMT'], active:true },
+  { id:'u2', name:'Sanjay Pawar', uid:'TV4102', email:'', role:'Supervisor', depots:['MBMT'], active:true },
+  { id:'u3', name:'Arif Khan', uid:'TV3987', email:'', role:'Executive', depots:['MBMT'], active:true },
+  { id:'u4', name:'Vikram Jadhav', uid:'TV4230', email:'', role:'Executive', depots:['MBMT','NTSPL'], active:true },
+  { id:'u5', name:'Manoj Patil', uid:'TV3855', email:'manoj.patil@transvolt.in', role:'Supervisor', depots:['UMT'], active:true },
+  { id:'u6', name:'Deepak Rane', uid:'TV3610', email:'', role:'Executive', depots:['KANDLA'], active:false }
+];
+const MASTER = {
+  buses: ['MH40LY1894','MH40LY1721','MH40LY1650','MH40LY1802','MH40LY1688','MH40LY1733','MH12ST4410','MH12ST4415'],
+  sources: ['Driver report','Daily inspection','PM schedule','Breakdown','Depot supervisor','Other'],
+  defectTypes: ['Electrical / HV','Electrical / LV','AC & HVAC','Brakes & air system','Doors','Suspension & axle','Body & interior','Tyres','Cooling system','Software / telematics','Other']
+};
+const REGS = [
+  { id:'work', code:'WD', name:'Daily Work Done', color:'#3D74C6', fields:[
+    { key:'shift', label:'Shift', type:'seg', options:['A','B','C'], w:'48%' },
+    { key:'date', label:'Date', type:'date', req:true, w:'48%' },
+    { key:'bus', label:'Bus No', type:'bus', req:true, w:'100%' },
+    { key:'defects', label:'Reported Defects', type:'area', ph:'e.g. AC not cooling, abnormal noise from rear axle', rows:2, req:true, w:'100%' },
+    { key:'source', label:'Source of Defect', type:'select', options: MASTER.sources, master:true, w:'48%' },
+    { key:'defectType', label:'Type of Defect', type:'select', options: MASTER.defectTypes, master:true, w:'48%' },
+    { key:'attended', label:'Attended Details', type:'area', ph:'What was done to rectify', rows:2, w:'100%' },
+    { key:'spares', label:'Spare Parts Used', type:'text', ph:'Part name & qty, or NIL', w:'100%' },
+    { key:'employee', label:'Name & No. of Employee', type:'text', ph:'e.g. R. Sharma / 4021', w:'100%' } ] },
+  { id:'coolant', code:'CT', name:'Coolant Topping', color:'#568A37', fields:[
+    { key:'date', label:'Date', type:'date', req:true, w:'48%' },
+    { key:'bus', label:'Bus No', type:'bus', req:true, w:'48%' },
+    { key:'bcs', label:'BCS Topping', type:'num', unit:'litres', w:'48%' },
+    { key:'tcs', label:'TCS Topping', type:'num', unit:'litres', w:'48%' },
+    { key:'employee', label:'Topped up by', type:'text', ph:'Name / employee no.', w:'100%' } ] },
+  { id:'complaint', code:'DC', name:'Driver Complaints', color:'#8A6A2F', fields:[
+    { key:'date', label:'Date', type:'date', req:true, w:'48%' },
+    { key:'bus', label:'Bus No', type:'bus', req:true, w:'48%' },
+    { key:'defectType', label:'Type of Defect', type:'select', options: MASTER.defectTypes, master:true, w:'100%' },
+    { key:'complaint', label:'Driver Complaint Reported', type:'area', ph:'As reported by the driver', rows:2, req:true, w:'100%' },
+    { key:'action', label:'Rectification Action Taken', type:'area', ph:'Action taken', rows:2, w:'100%' },
+    { key:'mechanic', label:'Name of the Mechanic', type:'text', ph:'Name / employee no.', w:'100%' } ] },
+  { id:'breakdown', code:'BD', name:'Breakdown Report', color:'#C2452D', fields:[
+    { key:'date', label:'Date', type:'date', req:true, w:'48%' },
+    { key:'bus', label:'Bus No', type:'bus', req:true, w:'48%' },
+    { key:'driver', label:'Driver ID', type:'text', ph:'e.g. DRV-2231', w:'48%' },
+    { key:'loc', label:'Location of Breakdown', type:'text', ph:'e.g. Kashimira signal, SV Road', w:'48%' },
+    { key:'complaint', label:'Complaint Reported by the Driver', type:'area', ph:'As reported over phone / app', rows:2, req:true, w:'100%' },
+    { key:'t_bd', label:'B/Down Time', type:'time', w:'31%' },
+    { key:'t_mech', label:'Mechanic Reported Time', type:'time', w:'31%' },
+    { key:'t_att', label:'Bus Attended Time', type:'time', w:'31%' },
+    { key:'loss', label:'Loss KM', type:'num', unit:'km', w:'48%' },
+    { key:'attended', label:'Bus Attended Details', type:'area', ph:'What was done on site', rows:2, w:'100%' },
+    { key:'remarks', label:'Remarks', type:'text', ph:'Optional', w:'100%' } ] },
+  { id:'pm', code:'PM', name:'PM Schedule Attention', color:'#5B5EA6', fields:[
+    { key:'date', label:'Date', type:'date', req:true, w:'48%' },
+    { key:'bus', label:'Bus No', type:'bus', req:true, w:'48%' },
+    { key:'defectType', label:'Type of Defect', type:'select', options: MASTER.defectTypes, master:true, w:'100%' },
+    { key:'defects', label:'Defects Noticed', type:'area', ph:'During preventive maintenance', rows:2, req:true, w:'100%' },
+    { key:'action', label:'Action Taken', type:'area', ph:'Action taken', rows:2, w:'100%' },
+    { key:'balance', label:'Reason for Balance Job (if any)', type:'text', ph:'e.g. spare awaited, or NIL', w:'100%' },
+    { key:'spares', label:'Spare Parts Used', type:'text', ph:'Part name & qty, or NIL', w:'100%' },
+    { key:'employee', label:'Name of Employees', type:'text', ph:'Names / employee nos.', w:'100%' } ] }
+];
+function today(off){ const d = new Date(); d.setDate(d.getDate() + (off||0)); const p = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); }
+class Component extends DCLogic {
+  state = { screen:'login', stage:'sso', signing:false, loginId:'', loginPw:'', loginErr:'', depot:'MBMT', tab:'home', activeReg:null, editingId:null, form:{}, photo:false, q:'', regFilter:'all', dateMode:'month', dFrom: today(-7), dTo: today(0), toast:'', entries:[], users: SEED_USERS, userFilter:'all', userForm:null, vw: 1200 };
+  componentDidMount(){
+    if(this.props.demoEntries ?? true) this.seed();
+    this._onRes = () => this.setState({ vw: window.innerWidth });
+    window.addEventListener('resize', this._onRes);
+    this.setState({ vw: window.innerWidth });
+  }
+  componentWillUnmount(){ window.removeEventListener('resize', this._onRes); }
+  seed(){
+    const mk = (regId, dOff, hhmm, depot, by, data, status) => ({ id: Math.random().toString(36).slice(2), regId, date: today(dOff), time: hhmm, depot, by, data, status: status||'done' });
+    this.setState({ entries: [
+      mk('work', 0, '07:40', 'MBMT', 'R. Sharma / 4021', { shift:'A', bus:'MH40LY1894', defects:'AC not cooling in saloon area', source:'Driver report', attended:'Condenser fan fuse replaced, gas pressure checked OK', spares:'Fuse 20A x1', employee:'R. Sharma / 4021' }),
+      mk('coolant', 0, '08:15', 'MBMT', 'S. Pawar / 4102', { bus:'MH40LY1721', bcs:'1.5', tcs:'0.5', employee:'S. Pawar / 4102' }),
+      mk('complaint', 0, '09:05', 'MBMT', 'A. Khan / 3987', { bus:'MH40LY1650', complaint:'Wiper blade not clearing on driver side', action:'Wiper blade replaced', mechanic:'A. Khan / 3987' }),
+      mk('breakdown', 0, '06:55', 'MBMT', 'V. Jadhav / 4230', { bus:'MH40LY1802', driver:'DRV-2231', loc:'Kashimira signal, SV Road', complaint:'Bus not taking traction after halt', t_bd:'06:32', t_mech:'06:50', t_att:'07:35', loss:'18', attended:'HV interlock fault reset, bus moved on own power', remarks:'Monitor for repeat' }, 'open'),
+      mk('breakdown', -1, '14:20', 'MBMT', 'V. Jadhav / 4230', { bus:'MH40LY1688', driver:'DRV-2114', loc:'Bhayandar station road', complaint:'Air pressure not building', t_bd:'13:58', t_mech:'14:10', t_att:'14:55', loss:'11', attended:'Compressor unloader valve cleaned', remarks:'' }, 'done'),
+      mk('pm', -1, '11:30', 'MBMT', 'Team B', { bus:'MH40LY1721', defects:'Brake pad wear near limit, coolant level low', action:'Pads replaced, coolant topped', balance:'NIL', spares:'Brake pad set x1', employee:'S. Pawar, A. Khan' }),
+      mk('work', -1, '16:10', 'UMT', 'M. Patil / 3855', { shift:'B', bus:'MH12ST4410', defects:'Door 2 sensor intermittent', source:'Daily inspection', defectType:'Doors', attended:'Sensor connector re-seated', spares:'NIL', employee:'M. Patil / 3855' }),
+      mk('work', -2, '10:05', 'MBMT', 'A. Khan / 3987', { shift:'A', bus:'MH40LY1733', defects:'Saloon light flickering', source:'Daily inspection', defectType:'Electrical / LV', attended:'LED strip driver replaced', spares:'LED driver x1', employee:'A. Khan / 3987' }),
+      mk('work', -4, '15:30', 'MBMT', 'R. Sharma / 4021', { shift:'B', bus:'MH40LY1650', defects:'Air leak near front axle', source:'Driver report', defectType:'Brakes & air system', attended:'Air hose clamp tightened, leak arrested', spares:'NIL', employee:'R. Sharma / 4021' }),
+      mk('coolant', -2, '08:40', 'MBMT', 'S. Pawar / 4102', { bus:'MH40LY1894', bcs:'2', tcs:'1', employee:'S. Pawar / 4102' }),
+      mk('coolant', -8, '09:10', 'MBMT', 'S. Pawar / 4102', { bus:'MH40LY1802', bcs:'1', tcs:'0.5', employee:'S. Pawar / 4102' }),
+      mk('coolant', -18, '08:20', 'MBMT', 'V. Jadhav / 4230', { bus:'MH40LY1688', bcs:'2.5', tcs:'1', employee:'V. Jadhav / 4230' }),
+      mk('complaint', -3, '11:45', 'MBMT', 'A. Khan / 3987', { bus:'MH40LY1721', defectType:'AC & HVAC', complaint:'Cabin blower noisy at high speed', action:'Blower motor bearing greased', mechanic:'A. Khan / 3987' }),
+      mk('complaint', -10, '17:20', 'MBMT', 'R. Sharma / 4021', { bus:'MH40LY1894', defectType:'Body & interior', complaint:'Driver seat backrest loose', action:'Seat recliner bolt replaced', mechanic:'R. Sharma / 4021' }),
+      mk('breakdown', -6, '12:35', 'MBMT', 'V. Jadhav / 4230', { bus:'MH40LY1733', driver:'DRV-2098', loc:'Ghodbunder Road, near Kajupada', complaint:'Sudden power loss, restricted mode', t_bd:'12:04', t_mech:'12:20', t_att:'13:10', loss:'22', attended:'BMS fault cleared, cell voltages verified', remarks:'Escalated to OEM' }, 'done'),
+      mk('breakdown', -16, '18:05', 'MBMT', 'A. Khan / 3987', { bus:'MH40LY1650', driver:'DRV-2231', loc:'Mira Road station stop', complaint:'Door 1 not closing', t_bd:'17:42', t_mech:'17:55', t_att:'18:25', loss:'6', attended:'Door limit switch adjusted', remarks:'' }, 'done'),
+      mk('pm', -5, '10:50', 'MBMT', 'Team A', { bus:'MH40LY1894', defectType:'Cooling system', defects:'Radiator fins clogged, low coolant', action:'Radiator cleaned, coolant topped', balance:'NIL', spares:'Coolant 3L', employee:'R. Sharma, S. Pawar' }),
+      mk('pm', -14, '12:15', 'MBMT', 'Team B', { bus:'MH40LY1802', defectType:'Suspension & axle', defects:'Rear bush wear noticed', action:'Marked for replacement', balance:'Spare bush awaited from CWH', spares:'NIL', employee:'A. Khan, V. Jadhav' }),
+      mk('pm', -25, '09:35', 'MBMT', 'Team A', { bus:'MH40LY1688', defectType:'Tyres', defects:'Front tyre uneven wear', action:'Tyre rotation done, alignment checked', balance:'NIL', spares:'NIL', employee:'S. Pawar' }),
+      mk('work', -35, '08:55', 'MBMT', 'R. Sharma / 4021', { shift:'A', bus:'MH40LY1721', defects:'HVAC filter choked', source:'PM schedule', defectType:'AC & HVAC', attended:'Filter cleaned and refitted', spares:'NIL', employee:'R. Sharma / 4021' })
+    ]});
+  }
+  reg(id){ return REGS.find(r => r.id === id); }
+  openForm(id){
+    const f = { date: today(0) };
+    if(id === 'work'){ const h = new Date().getHours(); f.shift = h < 14 ? 'A' : (h < 22 ? 'B' : 'C'); }
+    this.setState({ activeReg: id, editingId: null, form: f, photo: false });
+  }
+  openEdit(e){
+    this.setState({ activeReg: e.regId, editingId: e.id, form: { ...e.data, date: e.date }, photo: false });
+  }
+  flash(msg){ this.setState({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 2600); }
+  save(){
+    const { activeReg, form, depot, editingId } = this.state;
+    if(!form.bus || !form.date){ this.flash('Bus No and Date are required'); return; }
+    const data = { ...form, bus: (form.bus||'').toUpperCase().replace(/\s/g,'') };
+    if(editingId){
+      this.setState(s => ({ entries: s.entries.map(x => x.id === editingId ? { ...x, date: form.date, data, by: form.employee || form.mechanic || x.by } : x), activeReg: null, editingId: null, form: {} }));
+      this.flash('Entry updated in ' + this.reg(activeReg).name + ' register');
+      return;
+    }
+    const e = { id: Math.random().toString(36).slice(2), regId: activeReg, date: form.date, time: new Date().toTimeString().slice(0,5), depot, by: form.employee || form.mechanic || 'You', data, status: activeReg === 'breakdown' ? 'open' : 'done' };
+    this.setState(s => ({ entries: [e, ...s.entries], activeReg: null, form: {} }));
+    this.flash('Entry saved to ' + this.reg(activeReg).name + ' register');
+  }
+  inPeriod(e){
+    const { dateMode, dFrom, dTo } = this.state;
+    if(dateMode === 'all') return true;
+    if(dateMode === 'today') return e.date === today(0);
+    if(dateMode === 'week') return e.date >= today(-6) && e.date <= today(0);
+    if(dateMode === 'month') return e.date.slice(0,7) === today(0).slice(0,7);
+    if(dateMode === 'custom') return (!dFrom || e.date >= dFrom) && (!dTo || e.date <= dTo);
+    return true;
+  }
+  detail(e){
+    const d = e.data;
+    if(e.regId === 'coolant') return 'BCS ' + (d.bcs||0) + ' L · TCS ' + (d.tcs||0) + ' L';
+    if(e.regId === 'breakdown') return (d.loc ? d.loc + ' — ' : '') + (d.complaint||'') + (d.attended ? ' · ' + d.attended : '');
+    return (d.defects || d.complaint || '') + (d.attended || d.action ? ' · ' + (d.attended || d.action) : '');
+  }
+  taken(d){
+    if(!d.t_bd || !d.t_att) return '—';
+    const [a,b] = [d.t_bd, d.t_att].map(t => { const p = t.split(':'); return (+p[0])*60 + (+p[1]); });
+    let m = b - a; if(m < 0) m += 1440;
+    return Math.floor(m/60) ? Math.floor(m/60) + 'h ' + (m%60) + 'm' : (m%60) + ' min';
+  }
+  exportCsv(){
+    const rows = this.filteredEntries();
+    if(!rows.length){ this.flash('Nothing to export'); return; }
+    const cols = ['Register','Date','Depot','Bus No','Details','Entered by'];
+    const csv = [cols.join(',')].concat(rows.map(e => [this.reg(e.regId).name, e.date, e.depot, e.data.bus, '"' + this.detail(e).replace(/"/g,'""') + '"', '"' + e.by + '"'].join(','))).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+    a.download = 'transvolt-em-register-' + this.state.depot + '.csv'; a.click();
+    this.flash('Exported ' + rows.length + ' entries');
+  }
+  filteredEntries(){
+    const { entries, depot, q, regFilter } = this.state;
+    const ql = q.trim().toLowerCase();
+    return entries.filter(e => e.depot === depot)
+      .filter(e => regFilter === 'all' || e.regId === regFilter)
+      .filter(e => this.inPeriod(e))
+      .filter(e => !ql || JSON.stringify(e.data).toLowerCase().includes(ql) || e.by.toLowerCase().includes(ql))
+      .sort((a,b) => b.date.localeCompare(a.date));
+  }
+  adminVals(){
+    const s = this.state;
+    const uf = s.userForm;
+    const setUf = (k, tx) => (ev) => this.setState(st => ({ userForm: { ...st.userForm, [k]: tx ? tx(ev.target.value) : ev.target.value, err:'' } }));
+    const blank = { id:null, name:'', uid:'', email:'', role:'Executive', depots:[], err:'' };
+    const filteredUsers = s.users.filter(u => s.userFilter === 'all' || (s.userFilter === 'active' ? u.active : !u.active));
+    return {
+      newUser: () => this.setState({ userForm: { ...blank } }),
+      showUserForm: !!uf,
+      userFormTitle: uf && uf.id ? 'Edit user' : 'New user',
+      userFormCta: uf && uf.id ? 'Save changes' : 'Create user',
+      ufName: uf ? uf.name : '', setUfName: setUf('name'),
+      ufId: uf ? uf.uid : '', setUfId: setUf('uid', v => v.toUpperCase()),
+      ufEmail: uf ? uf.email : '', setUfEmail: setUf('email'),
+      ufErr: uf ? (uf.err || false) : false,
+      ufRoles: ROLES.map(r => { const on = uf && uf.role === r; return { label: r, pick: () => this.setState(st => ({ userForm: { ...st.userForm, role: r } })), bg: on ? '#568A37' : '#FFFFFF', col: on ? '#FFFFFF' : '#3C4450', bd: on ? '#568A37' : '#D6D9D2' }; }),
+      ufDepots: DEPOTS.map(d => { const on = uf && uf.depots.includes(d); return { name: d, pick: () => this.setState(st => ({ userForm: { ...st.userForm, depots: st.userForm.depots.includes(d) ? st.userForm.depots.filter(x => x !== d) : st.userForm.depots.concat(d), err:'' } })), bg: on ? '#F0F5EC' : '#FFFFFF', col: on ? '#3E6B26' : '#3C4450', bd: on ? '#568A37' : '#D6D9D2' }; }),
+      cancelUser: () => this.setState({ userForm: null }),
+      saveUser: () => {
+        const f = this.state.userForm;
+        if(!f.name.trim() || !f.uid.trim()){ this.setState(st => ({ userForm: { ...st.userForm, err: 'Name and User ID are required' } })); return; }
+        if(!f.depots.length){ this.setState(st => ({ userForm: { ...st.userForm, err: 'Select at least one depot' } })); return; }
+        if(this.state.users.some(u => u.uid === f.uid.trim() && u.id !== f.id)){ this.setState(st => ({ userForm: { ...st.userForm, err: 'User ID already exists' } })); return; }
+        if(f.id){
+          this.setState(st => ({ users: st.users.map(u => u.id === f.id ? { ...u, name: f.name.trim(), uid: f.uid.trim(), email: f.email.trim(), role: f.role, depots: f.depots } : u), userForm: null }));
+          this.flash('User updated');
+        } else {
+          this.setState(st => ({ users: [{ id: Math.random().toString(36).slice(2), name: f.name.trim(), uid: f.uid.trim(), email: f.email.trim(), role: f.role, depots: f.depots, active: true }, ...st.users], userForm: null }));
+          this.flash('User created — share the User ID and temporary password');
+        }
+      },
+      userChips: [
+        { id:'all', label:'All users (' + s.users.length + ')' },
+        { id:'active', label:'Active (' + s.users.filter(u => u.active).length + ')' },
+        { id:'inactive', label:'Inactive (' + s.users.filter(u => !u.active).length + ')' }
+      ].map(c => { const on = s.userFilter === c.id; return { ...c, pick: () => this.setState({ userFilter: c.id }), bg: on ? '#12161B' : '#FFFFFF', col: on ? '#FFFFFF' : '#3C4450', bd: on ? '#12161B' : '#D6D9D2' }; }),
+      userList: filteredUsers.map(u => ({
+        name: u.name, uid: u.uid, role: u.role, depots: u.depots,
+        emailLabel: u.email ? ' · ' + u.email : ' · No mail ID (User ID login)',
+        initials: u.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase(),
+        avBg: u.active ? '#12161B' : '#E3E6DF', avCol: u.active ? '#FFFFFF' : '#8A93A0',
+        roleBg: ROLE_STYLE[u.role].bg, roleCol: ROLE_STYLE[u.role].col,
+        inactive: !u.active, opacity: u.active ? '1' : '0.62',
+        edit: () => this.setState({ userForm: { id: u.id, name: u.name, uid: u.uid, email: u.email, role: u.role, depots: [...u.depots], err:'' } }),
+        toggle: () => { this.setState(st => ({ users: st.users.map(x => x.id === u.id ? { ...x, active: !x.active } : x) })); this.flash(u.active ? u.name + ' marked inactive — login disabled' : u.name + ' reactivated'); },
+        tglLabel: u.active ? 'Deactivate' : 'Activate',
+        tglBd: u.active ? '#E8C4BB' : '#568A37', tglCol: u.active ? '#A93A24' : '#3E6B26'
+      }))
+    };
+  }
+  renderVals(){
+    const s = this.state;
+    const setF = (k) => (ev) => this.setState(st => ({ form: { ...st.form, [k]: ev.target.value } }));
+    const activeReg = s.activeReg ? this.reg(s.activeReg) : null;
+    const mine = s.entries.filter(e => e.depot === s.depot);
+    const todays = mine.filter(e => e.date === today(0));
+    const openBd = mine.filter(e => e.regId === 'breakdown' && e.status === 'open');
+    const buses = [...new Set(mine.map(e => e.data.bus).filter(Boolean))].slice(0,4);
+    const segCols = (on) => on ? { bg:'#568A37', col:'#FFFFFF', bd:'#568A37' } : { bg:'#FFFFFF', col:'#3C4450', bd:'#D6D9D2' };
+    const isMobile = s.vw < 640;
+    return {
+      isMobile, isDesktop: !isMobile,
+      mainPadBottom: isMobile ? '96px' : '32px',
+      isLogin: s.screen === 'login', isApp: s.screen === 'app',
+      stageSso: s.stage === 'sso', stageDepot: s.stage === 'depot',
+      signing: s.signing, msLabel: s.signing ? 'Connecting to Microsoft…' : 'Sign in with Microsoft',
+      loginId: s.loginId, loginPw: s.loginPw, loginErr: s.loginErr,
+      setLoginId: (ev) => this.setState({ loginId: ev.target.value.toUpperCase(), loginErr:'' }),
+      setLoginPw: (ev) => this.setState({ loginPw: ev.target.value, loginErr:'' }),
+      idSignIn: () => {
+        if(!s.loginId.trim() || !s.loginPw){ this.setState({ loginErr: 'Enter your User ID and password' }); return; }
+        this.setState({ stage:'depot', loginErr:'' });
+      },
+      msSignIn: () => { if(s.signing) return; this.setState({ signing:true }); setTimeout(() => this.setState({ signing:false, stage:'depot' }), 1400); },
+      userName: 'Rahul Sharma', initials: 'RS',
+      depotPicks: DEPOTS.map(d => { const on = d === s.depot; return { name: d, pick: () => this.setState({ depot: d }), bg: on ? '#F0F5EC' : '#FFFFFF', col: on ? '#3E6B26' : '#3C4450', bd: on ? '#568A37' : '#D6D9D2' }; }),
+      enterApp: () => this.setState({ screen:'app', tab:'home' }),
+      signOut: () => this.setState({ screen:'login', stage:'sso' }),
+      depot: s.depot, depots: DEPOTS,
+      setDepot: (ev) => this.setState({ depot: ev.target.value }),
+      tabs: [
+        { id:'home', label:'Home' }, { id:'registers', label:'Registers' }, { id:'breakdowns', label:'Breakdowns', badge: openBd.length || false }, { id:'admin', label:'Admin' }
+      ].map(t => { const on = s.tab === t.id && !s.activeReg; return { ...t, go: () => this.setState({ tab: t.id, activeReg: null }), col: on ? '#12161B' : '#8A93A0', line: on ? '#568A37' : 'transparent', mCol: on ? '#568A37' : '#8A93A0', mWt: on ? '700' : '600' }; }),
+      showForm: !!activeReg,
+      showHome: !activeReg && s.tab === 'home',
+      showRegisters: !activeReg && s.tab === 'registers',
+      showBreakdowns: !activeReg && s.tab === 'breakdowns',
+      showAdmin: !activeReg && s.tab === 'admin',
+      ...this.adminVals(),
+      regName: activeReg ? activeReg.name : '', regCode: activeReg ? activeReg.code : '', regColor: activeReg ? activeReg.color : '#ccc',
+      formMode: s.editingId ? 'Editing entry' : 'New entry',
+      masterBuses: MASTER.buses,
+      closeForm: () => this.setState({ activeReg: null, editingId: null }),
+      saveEntry: () => this.save(),
+      fields: activeReg ? activeReg.fields.map(f => ({
+        ...f, w: isMobile && f.w !== '31%' ? '100%' : (isMobile ? '48%' : f.w),
+        value: s.form[f.key] || '', set: setF(f.key), req: !!f.req, ph: f.ph || '', rows: f.rows || 2,
+        isText: f.type === 'text', isBus: f.type === 'bus', isDate: f.type === 'date', isTime: f.type === 'time',
+        isNum: f.type === 'num', isArea: f.type === 'area', isSelect: f.type === 'select', isSeg: f.type === 'seg',
+        unit: f.unit || false, master: !!f.master || f.type === 'bus',
+        opts: (f.type === 'seg' ? f.options : []).map(o => ({ label: o, pick: () => this.setState(st => ({ form: { ...st.form, [f.key]: o } })), ...segCols(s.form[f.key] === o) }))
+      })) : [],
+      recentBuses: buses.map(b => ({ no: b, pick: () => this.setState(st => ({ form: { ...st.form, bus: b } })) })),
+      togglePhoto: () => this.setState(st => ({ photo: !st.photo })),
+      photoLabel: s.photo ? '1 photo attached ✓ (tap to remove)' : '+ Attach photo (optional)',
+      photoBg: s.photo ? '#F0F5EC' : '#FAFBF8', photoCol: s.photo ? '#3E6B26' : '#5B6470',
+      greeting: (() => { const h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', Rahul'; })(),
+      todayStr: new Date().toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }),
+      openAlert: (this.props.openBreakdownBanner ?? true) && openBd.length ? (openBd.length + ' open breakdown' + (openBd.length > 1 ? 's' : '') + ' at ' + s.depot) : false,
+      goBreakdowns: () => this.setState({ tab:'breakdowns' }),
+      regCards: REGS.map(r => { const c = todays.filter(e => e.regId === r.id).length; return { ...r, open: () => this.openForm(r.id), countLabel: c ? c + ' today' : '—' }; }),
+      todayList: todays.map(e => ({ code: this.reg(e.regId).code, color: this.reg(e.regId).color, bus: e.data.bus, time: e.time, by: e.by, snippet: this.detail(e) })),
+      todayEmpty: todays.length === 0,
+      q: s.q, setQ: (ev) => this.setState({ q: ev.target.value }),
+      exportCsv: () => this.exportCsv(),
+      regChips: [{ id:'all', label:'All registers' }].concat(REGS.map(r => ({ id: r.id, label: r.name }))).map(c => { const on = s.regFilter === c.id; return { ...c, pick: () => this.setState({ regFilter: c.id }), bg: on ? '#12161B' : '#FFFFFF', col: on ? '#FFFFFF' : '#3C4450', bd: on ? '#12161B' : '#D6D9D2' }; }),
+      dateChips: [
+        { id:'today', label:'Today' }, { id:'week', label:'Last 7 days' }, { id:'month', label:'This month' }, { id:'custom', label:'Custom range' }, { id:'all', label:'All' }
+      ].map(c => { const on = s.dateMode === c.id; return { ...c, pick: () => this.setState({ dateMode: c.id }), bg: on ? '#F0F5EC' : '#FFFFFF', col: on ? '#3E6B26' : '#3C4450', bd: on ? '#568A37' : '#D6D9D2' }; }),
+      isCustom: s.dateMode === 'custom',
+      dFrom: s.dFrom, dTo: s.dTo,
+      setFrom: (ev) => this.setState({ dFrom: ev.target.value }),
+      setTo: (ev) => this.setState({ dTo: ev.target.value }),
+      resultCount: (() => { const n = this.filteredEntries().length; return n + (n === 1 ? ' entry' : ' entries') + ' · ' + s.depot; })(),
+      filtered: this.filteredEntries().map(e => ({ code: this.reg(e.regId).code, color: this.reg(e.regId).color, bus: e.data.bus, date: e.date, depot: e.depot, by: e.by, detail: this.detail(e), edit: () => this.openEdit(e) })),
+      filteredEmpty: this.filteredEntries().length === 0,
+      newBreakdown: () => this.openForm('breakdown'),
+      bdList: mine.filter(e => e.regId === 'breakdown').map(e => { const open = e.status === 'open'; return {
+        bus: e.data.bus, date: e.date, loc: e.data.loc || '—', complaint: e.data.complaint || '',
+        status: open ? 'OPEN' : 'RESOLVED', chipBg: open ? '#FBEFEC' : '#F0F5EC', chipCol: open ? '#A93A24' : '#3E6B26',
+        border: open ? '#E8C4BB' : '#E3E6DF', canResolve: open,
+        resolve: () => { this.setState(st => ({ entries: st.entries.map(x => x.id === e.id ? { ...x, status:'done' } : x) })); this.flash('Breakdown marked resolved'); },
+        t1: e.data.t_bd || '—', t2: e.data.t_att || '—', taken: this.taken(e.data), loss: (e.data.loss || '0') + ' km'
+      }; }),
+      bdEmpty: mine.filter(e => e.regId === 'breakdown').length === 0,
+      toast: s.toast, toastBottom: isMobile ? '84px' : '24px'
+    };
+  }
+}
+</script>
+</body>
+</html>

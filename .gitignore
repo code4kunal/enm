@@ -1,0 +1,27 @@
+# Flutter / Dart
+app/build/
+app/.dart_tool/
+app/.flutter-plugins-dependencies
+app/.packages
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/media/
+backend/secrets/*
+!backend/secrets/.gitkeep
+
+# Env and secrets — never commit these
+.env
+backend/.env
+*.pem
+*.key
+
+# Editors and OS
+.DS_Store
+.idea/
+*.iml
+.vscode/

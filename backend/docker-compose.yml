@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: enm
+      POSTGRES_PASSWORD: enm
+      POSTGRES_DB: enm
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enm -d enm"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://enm:enm@db:5432/enm
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      SEED_ON_START: ${SEED_ON_START:-true}
+      ENVIRONMENT: development
+      # Microsoft SSO (leave blank to disable /auth/sso)
+      MS_TENANT_ID: ${MS_TENANT_ID:-}
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      # FCM (leave blank to keep in-app notifications without push)
+      FCM_CREDENTIALS_FILE: ${FCM_CREDENTIALS_FILE:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - media:/srv/media
+      - ./secrets:/srv/secrets:ro
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  pgdata:
+  media:
