@@ -88,6 +88,7 @@ class Checklist {
     required this.workTypeCode,
     required this.workTypeName,
     required this.name,
+    this.variant,
     this.id = '',
     this.items = const <ChecklistItem>[],
     this.isActive = true,
@@ -102,6 +103,10 @@ class Checklist {
   final String workTypeCode;
   final String workTypeName;
   final String name;
+
+  /// Which buses take this one — MBMT runs a 9M, a 12M AC and a 12M non-AC
+  /// daily inspection. Null is the site's unscoped checklist.
+  final String? variant;
   final List<ChecklistItem> items;
   final bool isActive;
   final String? updatedAt;
@@ -139,6 +144,7 @@ class Checklist {
         workTypeCode: json['work_type_code'] as String? ?? '',
         workTypeName: json['work_type_name'] as String? ?? '',
         name: json['name'] as String? ?? '',
+        variant: json['variant'] as String?,
         items: <ChecklistItem>[
           for (final i in (json['items'] as List<dynamic>? ?? <dynamic>[]))
             ChecklistItem.fromJson(i as Map<String, dynamic>),

@@ -35,6 +35,7 @@ def _checklist_out(template: ChecklistTemplate) -> ChecklistOut:
         work_type_code=work_type.code if work_type else "",
         work_type_name=work_type.name if work_type else "",
         name=template.name,
+        variant=template.variant,
         is_active=template.is_active,
         items=[
             ChecklistItemIO(
@@ -104,8 +105,19 @@ async def list_checklists(
     site_code = assert_site_access(user, code)
     out: list[ChecklistOut] = []
     for work_type in await checklists.inspection_work_types(session):
-        template = await checklists.ensure_template(session, site_code, work_type)
-        out.append(_checklist_out(template))
+        # The unscoped one always exists, so a site that has written nothing
+        # still sees the empty form rather than nothing at all.
+        out.append(
+            _checklist_out(
+                await checklists.ensure_template(session, site_code, work_type)
+            )
+        )
+        # Plus any per-variant lists the site keeps. The client picks between
+        # them by the bus in front of the mechanic.
+        for template in await checklists.variants_of(
+            session, site_code, work_type.id
+        ):
+            out.append(_checklist_out(template))
     await session.commit()
     return ChecklistList(items=out)
 
@@ -128,7 +140,9 @@ async def replace_checklist(
     if work_type is None or not work_type.is_inspection:
         raise NotFound("Inspection type not found")
 
-    template = await checklists.ensure_template(session, site_code, work_type)
+    template = await checklists.ensure_template(
+        session, site_code, work_type, variant=payload.variant
+    )
     if payload.name is not None:
         template.name = payload.name
     if payload.is_active is not None:

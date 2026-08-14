@@ -92,6 +92,7 @@ class Vehicle {
     required this.isActive,
     this.make = '',
     this.model = '',
+    this.checklistVariant,
     this.batteryCapacityKwh,
     this.odometerKm = 0,
     this.odometerUpdatedAt,
@@ -110,6 +111,10 @@ class Vehicle {
   final bool isActive;
   final String make;
   final String model;
+
+  /// Which inspection checklist this bus takes, when a work type has more
+  /// than one.
+  final String? checklistVariant;
 
   /// Usable pack energy.
   final double? batteryCapacityKwh;
@@ -194,6 +199,7 @@ class Vehicle {
         isActive: json['is_active'] as bool? ?? true,
         make: json['make'] as String? ?? '',
         model: json['model'] as String? ?? '',
+        checklistVariant: json['checklist_variant'] as String?,
         batteryCapacityKwh: (json['battery_capacity_kwh'] as num?)?.toDouble(),
         odometerKm: (json['odometer_km'] as num?)?.round() ?? 0,
         odometerUpdatedAt: json['odometer_updated_at'] as String?,

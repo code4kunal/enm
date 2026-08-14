@@ -43,6 +43,9 @@ class ChecklistOut(BaseModel):
     work_type_code: str
     work_type_name: str
     name: str
+    #: Which buses take this one. Null is the site's unscoped checklist, used
+    #: by any bus that names no variant.
+    variant: str | None = None
     is_active: bool = True
     items: list[ChecklistItemIO] = Field(default_factory=list)
     updated_at: ISTDateTime | None = None
@@ -58,6 +61,7 @@ class ChecklistList(BaseModel):
 
 class ChecklistUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=160)
+    variant: str | None = Field(default=None, max_length=40)
     is_active: bool | None = None
     items: list[ChecklistItemIO] = Field(default_factory=list)
 

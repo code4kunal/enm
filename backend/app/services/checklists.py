@@ -45,28 +45,75 @@ async def inspection_work_types(session: AsyncSession) -> list[WorkType]:
 
 
 async def get_template(
-    session: AsyncSession, site_code: str, work_type_id: int
+    session: AsyncSession,
+    site_code: str,
+    work_type_id: int,
+    variant: str | None = None,
 ) -> ChecklistTemplate | None:
     return await session.scalar(
         select(ChecklistTemplate).where(
             ChecklistTemplate.site_code == site_code,
             ChecklistTemplate.work_type_id == work_type_id,
+            ChecklistTemplate.variant.is_(None)
+            if variant is None
+            else ChecklistTemplate.variant == variant,
         )
     )
 
 
+async def template_for(
+    session: AsyncSession,
+    site_code: str,
+    work_type_id: int,
+    vehicle: Vehicle | None,
+) -> ChecklistTemplate | None:
+    """The checklist this bus takes for this inspection.
+
+    Its own variant first, then the unscoped one. A site that runs a single
+    checklist never sets a variant and always lands on the fallback; a site
+    like MBMT, whose 9M and 12M buses are inspected differently, gets the sheet
+    that matches the bus in front of the mechanic.
+    """
+    variant = vehicle.checklist_variant if vehicle else None
+    if variant:
+        scoped = await get_template(session, site_code, work_type_id, variant)
+        if scoped is not None:
+            return scoped
+    return await get_template(session, site_code, work_type_id)
+
+
+async def variants_of(
+    session: AsyncSession, site_code: str, work_type_id: int
+) -> list[ChecklistTemplate]:
+    """Every variant-scoped checklist for this inspection, in name order."""
+    rows = await session.scalars(
+        select(ChecklistTemplate)
+        .where(
+            ChecklistTemplate.site_code == site_code,
+            ChecklistTemplate.work_type_id == work_type_id,
+            ChecklistTemplate.variant.is_not(None),
+        )
+        .order_by(ChecklistTemplate.variant)
+    )
+    return list(rows.unique().all())
+
+
 async def ensure_template(
-    session: AsyncSession, site_code: str, work_type: WorkType
+    session: AsyncSession,
+    site_code: str,
+    work_type: WorkType,
+    variant: str | None = None,
 ) -> ChecklistTemplate:
     """A site always has a template per inspection type, even an empty one.
 
     Empty is a legitimate state and says so on the form — better than pretending
     a checklist exists by inventing lines the depot never wrote.
     """
-    template = await get_template(session, site_code, work_type.id)
+    template = await get_template(session, site_code, work_type.id, variant)
     if template is None:
         template = ChecklistTemplate(
             site_code=site_code,
+            variant=variant,
             # Assigned as the object, not the id: a freshly added row would
             # otherwise lazy-load `work_type` during serialization, outside the
             # async context that is allowed to do IO.

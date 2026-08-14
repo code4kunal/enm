@@ -328,3 +328,108 @@ async def test_todays_inspections_feed(client: AsyncClient) -> None:
     feed = await client.get("/sites/MBMT/inspections/today", headers=h)
     assert feed.json()["total"] == 1
     assert feed.json()["items"][0]["work_type_code"] == "D.I"
+
+
+# --- one checklist per bus model ---------------------------------------------
+
+
+async def _variant_templates(client: AsyncClient, h: dict, work_type_id: int):
+    """MBMT runs three daily inspections; the 12M AC one asks about cooling."""
+    for variant, labels in (
+        ("9M", ["Steering oil level", "Driver fan check"]),
+        ("12M AC", ["Steering oil level", "Check AC Cooling"]),
+    ):
+        r = await client.put(
+            f"/sites/MBMT/checklists/{work_type_id}",
+            json={
+                "name": f"Daily inspection — {variant}",
+                "variant": variant,
+                "items": [{"section": "", "label": x} for x in labels],
+            },
+            headers=h,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["variant"] == variant
+
+
+async def _set_variant(reg: str, variant: str | None) -> str:
+    async with SessionLocal() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == reg)
+        )
+        vehicle.checklist_variant = variant
+        await session.commit()
+        return vehicle.id
+
+
+async def test_a_work_type_can_hold_a_checklist_per_variant(
+    client: AsyncClient,
+) -> None:
+    """One template per work type could only be the union of the three, and a
+    mechanic would be asked about AC cooling on a bus that has none."""
+    ids = await _work_types()
+    h = await auth_headers(client)
+    await _variant_templates(client, h, ids["D.I"])
+
+    lists = (await client.get("/sites/MBMT/checklists", headers=h)).json()["items"]
+    di = [c for c in lists if c["work_type_id"] == ids["D.I"]]
+    assert {c["variant"] for c in di} == {"9M", "12M AC", None}
+
+    ac = next(c for c in di if c["variant"] == "12M AC")
+    assert any("AC Cooling" in i["label"] for i in ac["items"])
+    nine = next(c for c in di if c["variant"] == "9M")
+    assert not any("AC" in i["label"] for i in nine["items"])
+
+
+async def test_a_bus_names_the_checklist_it_takes(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    await _set_variant("MH40LY1894", "12M AC")
+
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    bus = next(v for v in fleet if v["registration_no"] == "MH40LY1894")
+    assert bus["checklist_variant"] == "12M AC"
+
+
+async def test_a_bus_with_no_variant_falls_back_to_the_unscoped_list(
+    client: AsyncClient,
+) -> None:
+    """A site running a single checklist never sets a variant, and must still
+    get its checklist."""
+    from app.db import SessionLocal as _S
+    from app.services import checklists as service
+
+    ids = await _work_types()
+    h = await auth_headers(client)
+    await _save_checklist(client, h, ids["D.I"])  # unscoped
+    await _variant_templates(client, h, ids["D.I"])
+    await _set_variant("MH40LY1895", None)
+
+    async with _S() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1895")
+        )
+        chosen = await service.template_for(session, "MBMT", ids["D.I"], vehicle)
+        assert chosen is not None
+        assert chosen.variant is None
+
+
+async def test_the_variant_template_wins_when_the_bus_names_one(
+    client: AsyncClient,
+) -> None:
+    from app.db import SessionLocal as _S
+    from app.services import checklists as service
+
+    ids = await _work_types()
+    h = await auth_headers(client)
+    await _save_checklist(client, h, ids["D.I"])
+    await _variant_templates(client, h, ids["D.I"])
+    await _set_variant("MH40LY1894", "9M")
+
+    async with _S() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+        )
+        chosen = await service.template_for(session, "MBMT", ids["D.I"], vehicle)
+        assert chosen is not None
+        assert chosen.variant == "9M"
+        assert any("Driver fan" in i.label for i in chosen.items)

@@ -42,7 +42,9 @@ class ChecklistTemplate(Base):
         UniqueConstraint(
             "site_code",
             "work_type_id",
-            name="uq_checklist_templates_site_code_work_type_id",
+            "variant",
+            name="uq_checklist_templates_site_work_type_variant",
+            postgresql_nulls_not_distinct=True,
         ),
     )
 
@@ -54,6 +56,9 @@ class ChecklistTemplate(Base):
         Integer, ForeignKey("work_types.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: Which buses take this one — MBMT runs "9M", "12M AC" and "12M Non-AC"
+    #: daily inspections. Null is the fallback for a bus that names no variant.
+    variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

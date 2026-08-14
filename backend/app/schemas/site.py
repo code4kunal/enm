@@ -80,6 +80,10 @@ class VehicleOut(BaseModel):
     is_active: bool
     make: str
     model: str
+    #: Which inspection checklist this bus takes, when a work type has more
+    #: than one. Its own field rather than `model`, which the snag import
+    #: rewrites and which does not tell an AC 12M from a non-AC one.
+    checklist_variant: str | None = None
     battery_capacity_kwh: DecimalOut = None
     odometer_km: int
     #: null means never synced — treat the reading as unknown, not as 0 km

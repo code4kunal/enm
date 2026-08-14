@@ -95,6 +95,10 @@ class Vehicle(Base):
     odometer_updated_at: Mapped[datetime | None] = mapped_column(
         TZDateTime, nullable=True
     )
+    #: Which checklist this bus takes, when a work type has more than one. Its
+    #: own column rather than `model`, which the snag import rewrites on every
+    #: run and which does not distinguish an AC 12M from a non-AC one.
+    checklist_variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
     last_service_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_service_on: Mapped[date_t | None] = mapped_column(Date, nullable=True)
     last_service_code: Mapped[str] = mapped_column(

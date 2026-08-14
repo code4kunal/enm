@@ -323,8 +323,7 @@ class _InspectionCardGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final checklists =
-        ref.watch(checklistsProvider).valueOrNull ?? const <Checklist>[];
+    final checklists = ref.watch(inspectionTypesProvider);
     if (checklists.isEmpty) return const SizedBox.shrink();
 
     final done = ref.watch(todaysInspectionsProvider).valueOrNull ??
@@ -418,15 +417,27 @@ class _InspectionCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  checklist.isEmpty
-                      ? 'Checklist not written yet'
-                      : '${checklist.items.length} checks',
-                  style: AppText.sans(
-                    size: 13,
-                    weight: FontWeight.w600,
-                    color: checklist.isEmpty ? T.amber : T.green,
-                  ),
+                Consumer(
+                  builder: (context, ref, _) {
+                    // A work type can keep a list per bus model. The count on
+                    // its own would describe only one of them, so say how many
+                    // there are and let the bus pick.
+                    final variants =
+                        ref.watch(variantCountProvider(checklist.workTypeId));
+                    final label = checklist.isEmpty
+                        ? 'Checklist not written yet'
+                        : variants > 1
+                            ? '$variants checklists by bus model'
+                            : '${checklist.items.length} checks';
+                    return Text(
+                      label,
+                      style: AppText.sans(
+                        size: 13,
+                        weight: FontWeight.w600,
+                        color: checklist.isEmpty ? T.amber : T.green,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

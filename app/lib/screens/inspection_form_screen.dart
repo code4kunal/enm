@@ -119,10 +119,20 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final checklist = ref.watch(checklistProvider(widget.workTypeId));
     final master = ref.watch(masterDataProvider).valueOrNull;
     final fleet = ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
     final active = fleet.where((v) => v.isActive).toList();
+
+    // The checklist follows the bus, so it changes the moment one is picked.
+    final variant = fleet
+        .where((v) => v.id == _vehicleId)
+        .map((v) => v.checklistVariant)
+        .firstOrNull;
+    final checklist = ref.watch(
+      checklistForProvider(
+        (workTypeId: widget.workTypeId, variant: variant),
+      ),
+    );
 
     if (checklist == null) {
       return const EmptyState(message: 'Loading the checklist…');

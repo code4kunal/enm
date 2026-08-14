@@ -77,6 +77,7 @@ def vehicle_out(vehicle: Vehicle) -> VehicleOut:
         is_active=vehicle.is_active,
         make=vehicle.make,
         model=vehicle.model,
+        checklist_variant=vehicle.checklist_variant,
         battery_capacity_kwh=vehicle.battery_capacity_kwh,
         odometer_km=vehicle.odometer_km,
         odometer_updated_at=vehicle.odometer_updated_at,
