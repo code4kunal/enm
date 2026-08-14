@@ -55,8 +55,13 @@ lint-app:
 .PHONY: test
 test: test-backend test-app ## Test both halves
 
+# Locally the database comes from docker compose and is worth provisioning
+# first; on CI it is a service container and there is no compose stack to talk
+# to. GitHub sets CI=true.
+DB_DEP := $(if $(CI),,db)
+
 .PHONY: test-backend
-test-backend: db ## Postgres is provisioned first, so this never fails on a wipe
+test-backend: $(DB_DEP) ## Provisions Postgres first, unless CI already has it
 	@cd $(BACKEND) && .venv/bin/python -m pytest -q
 
 .PHONY: test-app
