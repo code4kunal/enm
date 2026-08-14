@@ -10,7 +10,16 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ARG"]
-ignore = ["B008", "E501"]
+ignore = [
+    "B008",
+    "E501",
+    # `StrEnum(str, Enum)` rather than `enum.StrEnum`: the two differ in what
+    # `str()` returns, and every enum on the wire is serialised through it.
+    # Worth changing deliberately, not because a linter grew a new rule.
+    "UP042",
+    # PEP 695 type parameters are 3.12; this package supports 3.11.
+    "UP046",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/*" = ["ARG", "I"]

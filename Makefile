@@ -30,7 +30,7 @@ install-backend: ## Create the venv and install requirements
 	@test -d $(BACKEND)/.venv || python3 -m venv $(BACKEND)/.venv
 	@$(PY) -m pip install --quiet --upgrade pip
 	@$(PY) -m pip install --quiet -r $(BACKEND)/requirements.txt
-	@$(PY) -m pip install --quiet pytest pytest-asyncio ruff pypdf
+	@$(PY) -m pip install --quiet -r $(BACKEND)/requirements-dev.txt
 
 .PHONY: install-app
 install-app: ## Fetch Dart packages

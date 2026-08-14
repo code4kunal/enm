@@ -1,4 +1,11 @@
--r requirements.txt
+# Pinned on purpose. An unpinned linter means CI fails on a morning when
+# nobody changed anything — which is how a green build stops meaning
+# anything. Bump these deliberately, with the findings fixed in the same
+# commit.
+ruff==0.16.3
 pytest==8.3.4
-pytest-asyncio==1.2.0
-ruff==0.8.6
+# 0.26 is the floor: `asyncio_default_test_loop_scope` in pyproject.toml
+# arrived there, and without it the session-scoped engine and the tests end
+# up on different event loops — 96 failures that look like database errors.
+pytest-asyncio==0.26.0
+pypdf==5.1.0
