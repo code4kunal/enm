@@ -4,16 +4,19 @@ State after the site-management, snag-import and inspection-schedule work.
 
 ## Verified at this commit
 
-- `make check` — 211 backend tests, 216 app tests, both linters, and 294
+- `make check` — 229 backend tests, 221 app tests, both linters, and 296
   client-to-schema assumptions. Runs in about four minutes.
-- `make migrate-check` — 0001 → 0009 → base → 0009 on a throwaway database.
+- `make migrate-check` — 0001 → 0012 → base → 0012 on a throwaway database.
 - CI runs all of it on every push and pull request.
-- Driven in Chrome against the live API on `:8123`: sign in as the seeded super
-  admin, site picker, home, Schedule → Calendar and Alerts, all reading the
-  real database.
-- MBMT's own August snag report imported end to end: 57 vehicles, 288 register
-  entries routed across five registers by TYPE OF WORK, 611 inspection slots
-  generated, 24 open-breakdown alerts raised.
+- MBMT's August snag report imported end to end from a cold database: 57
+  vehicles, 201 entries routed across five registers by TYPE OF WORK, 89
+  inspections. Re-importing it is a no-op, which is what makes backfill safe.
+- The fleet's models and odometers loaded from the depot's VehicleStatus
+  export, which is also what the nightly sync reads.
+- Inspection checklists live: D.I 14/14/12 checks by bus model, ten-day 57
+  each. Driven in Chrome — picking a bus loads its variant, everything
+  defaulted to OK.
+- Docking scheduled off the odometer ladder: 13 rungs, 4 buses due.
 
 ## 1. Reports: all six are built
 
@@ -61,15 +64,23 @@ manager at 22:00 and pushes through FCM **only if** `FCM_CREDENTIALS_FILE` and
 `FCM_PROJECT_ID` are set. Without them the alert is in the app and nowhere
 else. Set both to get the push.
 
-## 5. The checklists are empty and waiting
+## 5. Docking has a schedule but no checklist
 
-`D.I`, `10 DAYS SERVICE` and `P.M` each have a checklist under
-**Site → Master data → Checklists**, and all three are empty. Nothing was
-invented: the lines have to be the depot's own. Type them there, or send the
-checklist documents and they can be seeded the way the snag report was.
+The daily and ten-day checklists are seeded from the depot's own sheets. The
+docking ones are not: they exist only as 26 PDFs, and the layout does not
+survive text extraction. Measured across all of them, 32% of what a parser
+reads as a section heading is really wrapped item text, and items truncate with
+it — `Check whether the controller high voltage connector` loses `is connected
+firmly`.
 
-Until a checklist has lines, its Home card says "Checklist not written yet" and
-its form refuses to save.
+A one-in-three structural error rate is worse than nothing for a permanent
+maintenance record, so nothing was shipped. **Deliberately parked** — a docking
+is scheduled and recorded, it just has no lines to tick.
+
+To pick it up later: ask the depot for the source files. The same folder holds
+PDF copies of the daily and ten-day sheets that arrived separately as .xlsx and
+parsed perfectly, so the docking schedules very likely exist as Excel too. That
+turns this into an afternoon with `scripts/seed_checklists.py`.
 
 ## 6. `C/F` is routed on an assumption
 
