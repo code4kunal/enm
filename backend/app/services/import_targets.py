@@ -166,6 +166,12 @@ SNAG_FIELDS: list[TargetField] = [
     TargetField("remarks", "Remarks"),
 ]
 
+#: Required on a row that becomes a register entry, and meaningless on one that
+#: TYPE OF WORK routes to an inspection — a checklist sweep has no driver
+#: complaint. MBMT's sheet happens to fill the column on those rows anyway
+#: ("DAILY INSPECTION"), which is the only reason this never bit.
+SNAG_REGISTER_ONLY_REQUIRED = frozenset({"complaint"})
+
 #: Snag key -> the register field key it becomes, per register. Anything absent
 #: from a register's map is simply not carried onto that register.
 SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {

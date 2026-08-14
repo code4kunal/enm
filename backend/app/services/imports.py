@@ -32,6 +32,7 @@ from app.services import odometer as odometer_service
 from app.services.import_targets import (
     NUMERIC_WIRE_KEYS,
     REGISTER_FIELD_MAP,
+    SNAG_REGISTER_ONLY_REQUIRED,
     SNAG_TO_REGISTER,
     TIME_WIRE_KEYS,
     fields_for,
@@ -236,8 +237,24 @@ def _validate_row(
     work_types: dict[str, WorkType] | None = None,
 ) -> RowResult:
     result = RowResult(values=dict(values))
+    register = target.register
+    is_snag = target is ImportTarget.snag_report
+
+    # On a snag sheet the row's own TYPE OF WORK decides what it is, and that
+    # changes which fields it owes — so resolve it before judging any of them.
+    work_type: WorkType | None = None
+    if is_snag:
+        code = normalize_work_type(result.values.get("work_type", ""))
+        result.values["work_type"] = code
+        work_type = (work_types or {}).get(code)
+
+    exempt: frozenset[str] = frozenset()
+    if work_type is not None and work_type.is_inspection:
+        exempt = SNAG_REGISTER_ONLY_REQUIRED
 
     for spec in fields_for(target):
+        if spec.key in exempt:
+            continue
         if spec.required and not values.get(spec.key, "").strip():
             result.errors.append(
                 RowErrorOut(
@@ -247,18 +264,11 @@ def _validate_row(
                 )
             )
 
-    if not result.ok:
-        return result
-
-    register = target.register
-    is_snag = target is ImportTarget.snag_report
-
+    # Reported alongside the blank fields rather than after them: this check
+    # needs nothing else on the row, and the error report is a fix-list. Making
+    # a manager correct one column, re-upload, and only then hear about the
+    # next is two round trips for one bad row.
     if is_snag:
-        # The row's own TYPE OF WORK decides which register it lands in, so an
-        # unknown or unrouted code is fatal for that row — never a silent drop.
-        code = normalize_work_type(result.values.get("work_type", ""))
-        result.values["work_type"] = code
-        work_type = (work_types or {}).get(code)
         if work_type is None:
             result.errors.append(
                 RowErrorOut(
@@ -275,6 +285,11 @@ def _validate_row(
                     message=f'"{code}" is not routed to a register yet',
                 )
             )
+
+    # Everything past here reads values the checks above may have found
+    # missing, so a failed row stops now.
+    if not result.ok:
+        return result
 
     # Registration numbers are normalised before any comparison.
     reg_key = "bus" if (register is not None or is_snag) else "registration_no"

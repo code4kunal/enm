@@ -670,3 +670,82 @@ async def test_the_run_report_says_a_re_run_changed_nothing(
     # Rows read is the same both times, which is exactly why it cannot be the
     # number a manager reads to see whether anything happened.
     assert len({r["rows_accepted"] for r in runs}) == 1
+
+
+async def test_an_inspection_row_needs_no_driver_complaint(
+    client: AsyncClient,
+) -> None:
+    """A checklist sweep has nothing a driver complained about.
+
+    The column is required on rows that become register entries, and MBMT's
+    sheet fills it on inspection rows too — which is the only reason this went
+    unnoticed. A blank one is not a broken row.
+    """
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    preview = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+            "2026-08-02,MH40LY1895,D.I,,Checked and cleared,Tushar\n"
+        ),
+        mappings=_mappings(SNAG_MAP),
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["errors"] == []
+
+    await _commit(client, h, preview.json()["token"])
+    counts = await _counts()
+    assert counts["inspections"] == 1
+    assert counts["entries"] == 0
+
+
+async def test_a_register_row_still_owes_its_driver_complaint(
+    client: AsyncClient,
+) -> None:
+    """The exemption is for inspections only — a breakdown with no complaint is
+    still a row nobody can act on."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+            "2026-08-02,MH40LY1895,B.D,,Towed in,Tushar\n"
+        ),
+        mappings=_mappings(SNAG_MAP),
+    )
+    errors = r.json()["errors"]
+    assert len(errors) == 1
+    assert errors[0]["field"] == "Driver Complaint"
+
+
+async def test_an_unknown_work_type_is_still_fatal_when_the_row_is_thin(
+    client: AsyncClient,
+) -> None:
+    """Resolving the work type first must not let an unroutable row through on
+    the grounds that it might be an inspection."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+            "2026-08-02,MH40LY1895,INVENTED,,Nothing,Tushar\n"
+        ),
+        mappings=_mappings(SNAG_MAP),
+    )
+    fields = {e["field"] for e in r.json()["errors"]}
+    # Both complaints hold: the code is unknown *and* the complaint is blank on
+    # a row that is not an inspection.
+    assert "Type of Work" in fields
+    assert "Driver Complaint" in fields
