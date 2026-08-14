@@ -207,7 +207,7 @@ async def _mark_missed(
     return stale
 
 
-# --- planning ---------------------------------------------------------------
+# --- planning by date --------------------------------------------------------
 
 
 @dataclass(slots=True)
@@ -352,6 +352,176 @@ async def _plan_one(
 
     await session.flush()
     return created
+
+
+# --- planning by distance ----------------------------------------------------
+#
+# The rotation above comes round on the calendar. A docking does not: it is due
+# when the bus has run the kilometres, so it is planned from odometers rather
+# than from a queue. Same output — a booked slot — reached a different way.
+
+#: How far ahead of a rung a bus is booked in. A depot needs the bus on the
+#: floor at roughly the right reading, not the exact one — and an odometer that
+#: is a day stale must not push the job past its mark.
+DOCKING_LEAD_KM = 500
+
+
+
+
+async def docking_plans(
+    session: AsyncSession, site_code: str
+) -> list[ServicePlan]:
+    """The site's docking ladder, lowest rung first."""
+    rows = await session.scalars(
+        select(ServicePlan)
+        .where(
+            ServicePlan.site_code == site_code,
+            ServicePlan.is_active.is_(True),
+            ServicePlan.milestone_km.is_not(None),
+        )
+        .order_by(ServicePlan.milestone_km)
+    )
+    return list(rows.unique().all())
+
+
+async def _dockings_done(
+    session: AsyncSession, site_code: str
+) -> dict[tuple[str, str], bool]:
+    """(vehicle, plan) pairs already recorded, so a rung is climbed once."""
+    rows = await session.execute(
+        select(InspectionEntry.vehicle_id, InspectionEntry.service_plan_id).where(
+            InspectionEntry.site_code == site_code,
+            InspectionEntry.service_plan_id.is_not(None),
+        )
+    )
+    return dict.fromkeys(rows.all(), True)
+
+
+def next_rung(
+    plans: list[ServicePlan],
+    *,
+    odometer_km: int,
+    done: set[str],
+    last_done_km: int | None = None,
+) -> ServicePlan | None:
+    """The docking a bus owes next, or None if it owes none yet.
+
+    A rung is owed once the bus is within `DOCKING_LEAD_KM` of the mark, so it
+    is booked before it sails past rather than after.
+
+    What a rung is *not* is owed retrospectively for distance run before this
+    system existed. MBMT's fleet arrived at 72,000 to 124,000 km with no
+    docking recorded here at all; treating "never recorded" as "never done"
+    put all 57 buses on the floor for a 3,000 km docking they had years ago.
+    A bus with no history therefore starts from where it is now — its record
+    began when ours did.
+
+    Once one docking *is* recorded we were watching, so the next rung above it
+    is owed even if the odometer has run past: that one really was missed.
+    """
+    unclimbed = [
+        plan
+        for plan in plans
+        if plan.id not in done and plan.milestone_km is not None
+    ]
+    if not unclimbed:
+        return None
+
+    if last_done_km is None:
+        # Nothing recorded: the rung ahead, not the ladder's foot. Anything
+        # behind belongs to a life this system did not observe.
+        ahead = [
+            plan
+            for plan in unclimbed
+            if plan.milestone_km + DOCKING_LEAD_KM > odometer_km
+        ]
+        if not ahead:
+            return None
+        plan = ahead[0]
+    else:
+        above = [
+            plan for plan in unclimbed if plan.milestone_km > last_done_km
+        ]
+        if not above:
+            return None
+        plan = above[0]
+
+    return plan if odometer_km + DOCKING_LEAD_KM >= plan.milestone_km else None
+
+
+async def _plan_dockings(
+    session: AsyncSession,
+    *,
+    site_code: str,
+    vehicles: list[Vehicle],
+    today: date_t,
+) -> int:
+    """Book the dockings the fleet's odometers say are due.
+
+    Unlike the daily and ten-day rotations this is not a queue: a bus is due
+    when it has run the distance, and no amount of shuffling changes that. The
+    only thing rationed is how many land on one night.
+    """
+    plans = await docking_plans(session, site_code)
+    if not plans:
+        return 0
+
+    work_type_id = next(
+        (p.work_type_id for p in plans if p.work_type_id is not None), None
+    )
+    if work_type_id is None:
+        return 0
+
+    done = await _dockings_done(session, site_code)
+    booked = 0
+
+    for vehicle in vehicles:
+        # An odometer that has never been read is unknown, not zero — booking
+        # a docking off it would put every unsynced bus on the floor at once.
+        if vehicle.odometer_updated_at is None:
+            continue
+
+        already = {
+            plan.id for plan in plans if (vehicle.id, plan.id) in done
+        }
+        climbed = [p.milestone_km for p in plans if p.id in already]
+        plan = next_rung(
+            plans,
+            odometer_km=vehicle.odometer_km,
+            done=already,
+            last_done_km=max(climbed) if climbed else None,
+        )
+        if plan is None:
+            continue
+
+        existing = await session.scalar(
+            select(InspectionSlot.id).where(
+                InspectionSlot.site_code == site_code,
+                InspectionSlot.vehicle_id == vehicle.id,
+                InspectionSlot.service_plan_id == plan.id,
+                InspectionSlot.status.in_(
+                    (SlotStatus.scheduled, SlotStatus.done)
+                ),
+            )
+        )
+        if existing:
+            continue
+
+        session.add(
+            InspectionSlot(
+                site_code=site_code,
+                vehicle_id=vehicle.id,
+                work_type_id=work_type_id,
+                service_plan_id=plan.id,
+                scheduled_on=today,
+                status=SlotStatus.scheduled,
+                notes=f"{plan.name} — due at {plan.milestone_km:,} km",
+            )
+        )
+        booked += 1
+
+    await session.flush()
+    return booked
 
 
 # --- alerts -----------------------------------------------------------------
@@ -624,169 +794,3 @@ async def run_nightly() -> list[GenerationResult]:
                 await session.rollback()
                 logger.exception("Schedule notification failed for %s", code)
     return results
-
-
-# --- docking: due by distance, not by date ---------------------------------
-
-#: How far ahead of a rung a bus is booked in. A depot needs the bus on the
-#: floor at roughly the right reading, not the exact one — and an odometer that
-#: is a day stale must not push the job past its mark.
-DOCKING_LEAD_KM = 500
-
-
-
-
-async def docking_plans(
-    session: AsyncSession, site_code: str
-) -> list[ServicePlan]:
-    """The site's docking ladder, lowest rung first."""
-    rows = await session.scalars(
-        select(ServicePlan)
-        .where(
-            ServicePlan.site_code == site_code,
-            ServicePlan.is_active.is_(True),
-            ServicePlan.milestone_km.is_not(None),
-        )
-        .order_by(ServicePlan.milestone_km)
-    )
-    return list(rows.unique().all())
-
-
-async def _dockings_done(
-    session: AsyncSession, site_code: str
-) -> dict[tuple[str, str], bool]:
-    """(vehicle, plan) pairs already recorded, so a rung is climbed once."""
-    rows = await session.execute(
-        select(InspectionEntry.vehicle_id, InspectionEntry.service_plan_id).where(
-            InspectionEntry.site_code == site_code,
-            InspectionEntry.service_plan_id.is_not(None),
-        )
-    )
-    return dict.fromkeys(rows.all(), True)
-
-
-def next_rung(
-    plans: list[ServicePlan],
-    *,
-    odometer_km: int,
-    done: set[str],
-    last_done_km: int | None = None,
-) -> ServicePlan | None:
-    """The docking a bus owes next, or None if it owes none yet.
-
-    A rung is owed once the bus is within `DOCKING_LEAD_KM` of the mark, so it
-    is booked before it sails past rather than after.
-
-    What a rung is *not* is owed retrospectively for distance run before this
-    system existed. MBMT's fleet arrived at 72,000 to 124,000 km with no
-    docking recorded here at all; treating "never recorded" as "never done"
-    put all 57 buses on the floor for a 3,000 km docking they had years ago.
-    A bus with no history therefore starts from where it is now — its record
-    began when ours did.
-
-    Once one docking *is* recorded we were watching, so the next rung above it
-    is owed even if the odometer has run past: that one really was missed.
-    """
-    unclimbed = [
-        plan
-        for plan in plans
-        if plan.id not in done and plan.milestone_km is not None
-    ]
-    if not unclimbed:
-        return None
-
-    if last_done_km is None:
-        # Nothing recorded: the rung ahead, not the ladder's foot. Anything
-        # behind belongs to a life this system did not observe.
-        ahead = [
-            plan
-            for plan in unclimbed
-            if plan.milestone_km + DOCKING_LEAD_KM > odometer_km
-        ]
-        if not ahead:
-            return None
-        plan = ahead[0]
-    else:
-        above = [
-            plan for plan in unclimbed if plan.milestone_km > last_done_km
-        ]
-        if not above:
-            return None
-        plan = above[0]
-
-    return plan if odometer_km + DOCKING_LEAD_KM >= plan.milestone_km else None
-
-
-async def _plan_dockings(
-    session: AsyncSession,
-    *,
-    site_code: str,
-    vehicles: list[Vehicle],
-    today: date_t,
-) -> int:
-    """Book the dockings the fleet's odometers say are due.
-
-    Unlike the daily and ten-day rotations this is not a queue: a bus is due
-    when it has run the distance, and no amount of shuffling changes that. The
-    only thing rationed is how many land on one night.
-    """
-    plans = await docking_plans(session, site_code)
-    if not plans:
-        return 0
-
-    work_type_id = next(
-        (p.work_type_id for p in plans if p.work_type_id is not None), None
-    )
-    if work_type_id is None:
-        return 0
-
-    done = await _dockings_done(session, site_code)
-    booked = 0
-
-    for vehicle in vehicles:
-        # An odometer that has never been read is unknown, not zero — booking
-        # a docking off it would put every unsynced bus on the floor at once.
-        if vehicle.odometer_updated_at is None:
-            continue
-
-        already = {
-            plan.id for plan in plans if (vehicle.id, plan.id) in done
-        }
-        climbed = [p.milestone_km for p in plans if p.id in already]
-        plan = next_rung(
-            plans,
-            odometer_km=vehicle.odometer_km,
-            done=already,
-            last_done_km=max(climbed) if climbed else None,
-        )
-        if plan is None:
-            continue
-
-        existing = await session.scalar(
-            select(InspectionSlot.id).where(
-                InspectionSlot.site_code == site_code,
-                InspectionSlot.vehicle_id == vehicle.id,
-                InspectionSlot.service_plan_id == plan.id,
-                InspectionSlot.status.in_(
-                    (SlotStatus.scheduled, SlotStatus.done)
-                ),
-            )
-        )
-        if existing:
-            continue
-
-        session.add(
-            InspectionSlot(
-                site_code=site_code,
-                vehicle_id=vehicle.id,
-                work_type_id=work_type_id,
-                service_plan_id=plan.id,
-                scheduled_on=today,
-                status=SlotStatus.scheduled,
-                notes=f"{plan.name} — due at {plan.milestone_km:,} km",
-            )
-        )
-        booked += 1
-
-    await session.flush()
-    return booked
