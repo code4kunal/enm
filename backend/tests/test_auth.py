@@ -97,21 +97,38 @@ async def test_sso_without_config_is_rejected(client: AsyncClient) -> None:
 # --- refusing to start with an unsafe configuration --------------------------
 
 
+def _settings(**overrides):
+    """A Settings built only from what the test states.
+
+    Every field is passed explicitly because BaseSettings otherwise falls back
+    to the ambient environment — which is how these passed locally and failed
+    on CI, where JWT_SECRET happens to be set to something long enough.
+    """
+    from app.config import INSECURE_JWT_SECRET, Settings
+
+    return Settings(
+        **{
+            "environment": "production",
+            "jwt_secret": INSECURE_JWT_SECRET,
+            "cors_origins": ["https://em.transvolt.in"],
+            "debug": False,
+            "public_base_url": "https://em.transvolt.in",
+            **overrides,
+        }
+    )
+
+
 def test_development_boots_with_the_shipped_defaults() -> None:
     """Otherwise nobody can run the thing locally."""
-    from app.config import Settings
-
-    assert Settings(environment="development").problems() == []
+    assert _settings(environment="development").problems() == []
 
 
 def test_production_refuses_the_placeholder_secret() -> None:
     """The one that matters: a forged token is indistinguishable from a real
     one, so a placeholder secret is a silent total compromise."""
-    from app.config import ConfigurationError, Settings
+    from app.config import ConfigurationError
 
-    settings = Settings(
-        environment="production", cors_origins=["https://em.transvolt.in"]
-    )
+    settings = _settings()
     problems = " ".join(settings.problems())
     assert "JWT_SECRET" in problems
 
@@ -121,46 +138,32 @@ def test_production_refuses_the_placeholder_secret() -> None:
 
 
 def test_production_refuses_a_short_secret() -> None:
-    from app.config import Settings
-
-    settings = Settings(environment="production", jwt_secret="tooshort")
-    assert any("shorter than" in p for p in settings.problems())
+    assert any(
+        "shorter than" in p for p in _settings(jwt_secret="tooshort").problems()
+    )
 
 
 def test_production_refuses_wildcard_cors_and_debug_and_http() -> None:
-    from app.config import Settings
-
-    settings = Settings(
-        environment="production",
+    problems = _settings(
         jwt_secret="x" * 48,
         cors_origins=["*"],
         debug=True,
         public_base_url="http://em.transvolt.in",
-    )
-    problems = settings.problems()
+    ).problems()
     assert any("CORS_ORIGINS" in p for p in problems)
     assert any("DEBUG" in p for p in problems)
     assert any("https" in p for p in problems)
 
 
 def test_a_fully_configured_production_starts() -> None:
-    from app.config import Settings
-
-    settings = Settings(
-        environment="production",
-        jwt_secret="x" * 48,
-        cors_origins=["https://em.transvolt.in"],
-        public_base_url="https://em.transvolt.in",
-    )
+    settings = _settings(jwt_secret="x" * 48)
     assert settings.problems() == []
     settings.assert_production_ready()
 
 
 def test_staging_is_held_to_the_same_bar() -> None:
     """Staging holds real data and real credentials."""
-    from app.config import Settings
-
-    assert Settings(environment="staging").problems()
+    assert _settings(environment="staging").problems()
 
 
 # --- Microsoft sign-in -------------------------------------------------------
