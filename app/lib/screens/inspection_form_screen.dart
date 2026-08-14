@@ -133,6 +133,10 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
         (workTypeId: widget.workTypeId, variant: variant),
       ),
     );
+    // Whether this inspection keeps a list per bus model at all — which is
+    // what makes "no bus picked" different from "nobody has written one".
+    final hasVariants =
+        ref.watch(variantCountProvider(widget.workTypeId)) > 0;
 
     if (checklist == null) {
       return const EmptyState(message: 'Loading the checklist…');
@@ -253,7 +257,10 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
               ),
               const SizedBox(height: 16),
               if (checklist.isEmpty)
-                _NoChecklistYet(checklist: checklist)
+                _NoChecklistYet(
+                  checklist: checklist,
+                  waitingForBus: _vehicleId.isEmpty && hasVariants,
+                )
               else
                 ..._sections(checklist),
               const SizedBox(height: 16),
@@ -406,9 +413,10 @@ class _Heading extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 checklist.isEmpty
-                    ? 'No checklist written for this site yet'
+                    ? 'The checklist depends on the bus'
                     : '${checklist.items.length} checks · '
-                        '${checklist.required.length} required',
+                        '${checklist.required.length} required'
+                        '${checklist.variant == null ? '' : ' · ${checklist.variant}'}',
                 style: AppText.meta,
               ),
             ],
@@ -419,14 +427,42 @@ class _Heading extends StatelessWidget {
   }
 }
 
+/// Why there are no checks on screen.
+///
+/// Two very different reasons, and telling them apart matters: a site that has
+/// written no checklist needs someone to write one, while a form waiting for a
+/// bus needs nothing but the bus. Saying "this site has no checklist" in the
+/// second case is untrue and reads as "not set up yet".
 class _NoChecklistYet extends ConsumerWidget {
-  const _NoChecklistYet({required this.checklist});
+  const _NoChecklistYet({
+    required this.checklist,
+    this.waitingForBus = false,
+  });
 
   final Checklist checklist;
+
+  /// The site keeps a checklist per bus model, and no bus is picked yet.
+  final bool waitingForBus;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(sessionProvider).canManageSites;
+    if (waitingForBus) {
+      return Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('Pick a bus to load its checklist', style: AppText.cardTitle),
+            const SizedBox(height: 6),
+            Text(
+              'This site checks each model differently, so the list arrives '
+              'with the bus.',
+              style: AppText.bodyText,
+            ),
+          ],
+        ),
+      );
+    }
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
