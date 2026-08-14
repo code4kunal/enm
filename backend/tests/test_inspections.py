@@ -465,3 +465,217 @@ async def test_plans_can_be_edited(client: AsyncClient) -> None:
     assert items[0]["cycle_days"] == 14
     assert items[0]["slots_per_day"] == 3
     assert items[0]["work_type_code"] == "10 DAYS SERVICE"
+
+
+# --- docking: due by distance ------------------------------------------------
+
+from app.models.site_config import ServicePlan  # noqa: E402
+from app.services.inspections import (  # noqa: E402
+    DOCKING_LEAD_KM,
+    next_rung,
+)
+
+
+def _ladder() -> list[ServicePlan]:
+    """MBMT's own: 3k, then every 10k."""
+    rungs = [3_000] + [n * 10_000 for n in range(1, 13)]
+    return [
+        ServicePlan(
+            id=f"p{km}",
+            site_code="MBMT",
+            code=f"D{km // 1000}K",
+            name=f"{km // 1000}k docking",
+            milestone_km=km,
+            sort_order=i,
+        )
+        for i, km in enumerate(rungs)
+    ]
+
+
+def test_a_new_bus_owes_the_first_rung_only_once_it_is_near() -> None:
+    plans = _ladder()
+    assert next_rung(plans, odometer_km=0, done=set()) is None
+    assert next_rung(plans, odometer_km=1_000, done=set()) is None
+
+    # Booked before it sails past the mark, not after.
+    due = next_rung(
+        plans, odometer_km=3_000 - DOCKING_LEAD_KM, done=set()
+    )
+    assert due is not None and due.milestone_km == 3_000
+
+
+def test_the_ladder_is_climbed_one_rung_at_a_time() -> None:
+    plans = _ladder()
+    done: set[str] = set()
+
+    first = next_rung(plans, odometer_km=3_100, done=done)
+    assert first.milestone_km == 3_000
+    done.add(first.id)
+
+    # Still on 3,100 km: the next rung is 10,000 and is not owed yet.
+    assert (
+        next_rung(plans, odometer_km=3_100, done=done, last_done_km=3_000)
+        is None
+    )
+
+    second = next_rung(
+        plans, odometer_km=10_000, done=done, last_done_km=3_000
+    )
+    assert second.milestone_km == 10_000
+
+
+def test_a_fleet_with_no_history_is_not_booked_for_rungs_it_passed_years_ago(
+) -> None:
+    """The one that caught this.
+
+    MBMT's buses arrived at 72,000 to 124,000 km with no docking recorded in
+    the system at all. Treating "never recorded" as "never done" put all 57 on
+    the floor for a 3,000 km docking they had years ago. A bus with no history
+    starts from where it is now.
+    """
+    plans = _ladder()
+
+    # The lowest bus in the fleet. Nothing is due: the rung it is walking
+    # toward is 80,000 and it is 7,307 km short. Before the fix this returned
+    # the 3,000 km rung.
+    assert next_rung(plans, odometer_km=72_693, done=set()) is None
+
+    # It becomes due as the bus approaches that mark, not the ladder's foot.
+    due = next_rung(plans, odometer_km=79_600, done=set())
+    assert due is not None and due.milestone_km == 80_000
+
+    # And the highest bus in the fleet owes nothing either — 124,810 km is
+    # past the top of the ladder.
+    assert next_rung(plans, odometer_km=124_810, done=set()) is None
+
+
+def test_once_a_docking_is_recorded_a_missed_rung_is_owed() -> None:
+    """From then on we were watching, so a rung the bus ran past really was
+    missed rather than predating us."""
+    plans = _ladder()
+    done = {"p80000"}
+    due = next_rung(
+        plans, odometer_km=104_000, done=done, last_done_km=80_000
+    )
+    assert due is not None and due.milestone_km == 90_000
+
+
+def test_a_fully_docked_bus_owes_nothing() -> None:
+    plans = _ladder()
+    done = {p.id for p in plans}
+    assert next_rung(plans, odometer_km=200_000, done=done) is None
+
+
+async def test_the_generator_books_dockings_from_the_odometer(
+    client: AsyncClient,
+) -> None:
+    """The whole point: a bus is booked because it has run the distance."""
+    from datetime import UTC, datetime
+
+    from app.db import SessionLocal
+    from app.models.inspection import InspectionSlot
+    from app.models.master import Vehicle, WorkType
+
+    h = await auth_headers(client)
+    async with SessionLocal() as session:
+        pm = WorkType(code="P.M", name="Docking", is_inspection=True)
+        session.add(pm)
+        await session.flush()
+        session.add_all(
+            [
+                ServicePlan(
+                    site_code="MBMT",
+                    code="D3K",
+                    name="3k docking",
+                    milestone_km=3_000,
+                    sort_order=0,
+                    work_type_id=pm.id,
+                ),
+                ServicePlan(
+                    site_code="MBMT",
+                    code="D10K",
+                    name="10k docking",
+                    milestone_km=10_000,
+                    sort_order=1,
+                    work_type_id=pm.id,
+                ),
+            ]
+        )
+        # One bus has run far enough; the other has never been read, and an
+        # unread odometer is unknown rather than zero.
+        near = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+        )
+        near.odometer_km = 3_200
+        near.odometer_updated_at = datetime.now(UTC)
+        unread = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1895")
+        )
+        unread.odometer_km = 50_000
+        unread.odometer_updated_at = None
+        await session.commit()
+
+    r = await client.post("/sites/MBMT/inspections/generate", headers=h)
+    assert r.status_code == 200, r.text
+
+    async with SessionLocal() as session:
+        slots = list(
+            (
+                await session.scalars(
+                    select(InspectionSlot).where(
+                        InspectionSlot.service_plan_id.is_not(None)
+                    )
+                )
+            ).all()
+        )
+    assert len(slots) == 1
+    assert slots[0].vehicle_id == near.id
+    assert "3k docking" in slots[0].notes
+
+
+async def test_a_docking_is_not_booked_twice(client: AsyncClient) -> None:
+    from datetime import UTC, datetime
+
+    from app.db import SessionLocal
+    from app.models.inspection import InspectionSlot
+    from app.models.master import Vehicle, WorkType
+
+    h = await auth_headers(client)
+    async with SessionLocal() as session:
+        pm = WorkType(code="P.M", name="Docking", is_inspection=True)
+        session.add(pm)
+        await session.flush()
+        session.add(
+            ServicePlan(
+                site_code="MBMT",
+                code="D3K",
+                name="3k docking",
+                milestone_km=3_000,
+                work_type_id=pm.id,
+            )
+        )
+        bus = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+        )
+        # Approaching the 3k rung, so it is genuinely due — 5,000 km would
+        # be past it, and a rung this system never watched is not owed.
+        bus.odometer_km = 2_900
+        bus.odometer_updated_at = datetime.now(UTC)
+        await session.commit()
+
+    for _ in range(3):
+        await client.post("/sites/MBMT/inspections/generate", headers=h)
+
+    async with SessionLocal() as session:
+        count = len(
+            list(
+                (
+                    await session.scalars(
+                        select(InspectionSlot).where(
+                            InspectionSlot.service_plan_id.is_not(None)
+                        )
+                    )
+                ).all()
+            )
+        )
+    assert count == 1

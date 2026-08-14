@@ -77,9 +77,12 @@ class SiteConfig(Base):
 
 
 class ServicePlan(Base):
-    """One rung of a site's service ladder: minor 10,000 km, major 40,000 km.
+    """One rung of a site's service ladder.
 
-    `interval_km = 0` means time-driven only, and vice versa.
+    Two kinds live here. A recurring plan repeats on `interval_km` or
+    `interval_days`. A docking is a milestone: MBMT's ladder is 3,000 km then
+    every 10,000, and each rung is a different job, so each is its own row with
+    its own `milestone_km`.
     """
 
     __tablename__ = "service_plans"
@@ -95,6 +98,18 @@ class ServicePlan(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     interval_km: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    #: The odometer mark this docking is due at — one rung of the ladder, not a
+    #: repeat. Null for a plan that recurs on `interval_km` or `interval_days`.
+    milestone_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The order the depot climbs them in, which is not always km order once a
+    #: site adds one of its own.
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    #: Which inspection this plan books — a docking is a P.M.
+    work_type_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("work_types.id", ondelete="SET NULL"), nullable=True
     )
     interval_days: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"

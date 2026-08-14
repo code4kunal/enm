@@ -97,6 +97,10 @@ class InspectionSlot(Base):
     work_type_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("work_types.id", ondelete="CASCADE"), nullable=False
     )
+    #: Which rung of the docking ladder this books, when it books one.
+    service_plan_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("service_plans.id", ondelete="SET NULL"), nullable=True
+    )
     scheduled_on: Mapped[date_t] = mapped_column(Date, nullable=False)
     status: Mapped[SlotStatus] = mapped_column(
         Enum(

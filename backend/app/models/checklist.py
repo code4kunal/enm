@@ -155,6 +155,11 @@ class InspectionEntry(Base):
     work_type_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("work_types.id", ondelete="RESTRICT"), nullable=False
     )
+    #: Which rung of the docking ladder this was, when it was one — so "which
+    #: docking?" is answerable from the row rather than from a typed remark.
+    service_plan_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("service_plans.id", ondelete="SET NULL"), nullable=True
+    )
     inspected_on: Mapped[date_t] = mapped_column(Date, nullable=False)
     entry_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     #: Names, not FKs: the mechanic on a 2024 inspection must still read
