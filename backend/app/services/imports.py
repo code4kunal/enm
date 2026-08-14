@@ -6,6 +6,8 @@ user approved is what lands.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, ValidationError
 from app.models.checklist import InspectionEntry
+from app.models.entry import Entry
 from app.models.enums import EntryStatus, ImportTarget, Register, Shift
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
 from app.models.site_config import ServicePlan
@@ -547,12 +550,21 @@ async def _existing_keys(
 
 
 async def commit(
-    session: AsyncSession, staged: StagedPreview, actor: User
-) -> tuple[int, int]:
-    """Apply exactly what was previewed. Returns (accepted, rejected)."""
+    session: AsyncSession,
+    staged: StagedPreview,
+    actor: User,
+    run_id: str | None = None,
+) -> tuple[int, int, int]:
+    """Apply exactly what was previewed. Returns (accepted, unchanged, rejected).
+
+    `run_id` is stamped on every row written, so a month can be traced back to
+    the upload it came from — and so re-running one is visibly a no-op rather
+    than silently doing nothing.
+    """
     target = staged.target
     site_code = staged.site_code
 
+    unchanged = 0
     if target is ImportTarget.vehicles:
         await _commit_vehicles(session, site_code, staged.rows)
     elif target in (ImportTarget.defect_sources, ImportTarget.defect_types):
@@ -562,12 +574,16 @@ async def commit(
     elif target is ImportTarget.odometers:
         await _commit_odometers(session, site_code, staged.rows)
     elif target is ImportTarget.snag_report:
-        await _commit_snag_report(session, site_code, staged.rows, actor)
+        unchanged = await _commit_snag_report(
+            session, site_code, staged.rows, actor, run_id=run_id
+        )
     else:
-        await _commit_register(session, site_code, staged, actor)
+        unchanged = await _commit_register(
+            session, site_code, staged, actor, run_id=run_id
+        )
 
     rejected = len({e.row_number for e in staged.errors})
-    return len(staged.rows), rejected
+    return len(staged.rows), unchanged, rejected
 
 
 async def _commit_vehicles(
@@ -678,13 +694,30 @@ async def _commit_odometers(
 
 
 async def _commit_register(
-    session: AsyncSession, site_code: str, staged: StagedPreview, actor: User
-) -> None:
+    session: AsyncSession,
+    site_code: str,
+    staged: StagedPreview,
+    actor: User,
+    run_id: str | None = None,
+) -> int:
     register = staged.target.register
     assert register is not None
     field_map = REGISTER_FIELD_MAP[register]
 
+    # A register sheet re-imports as readily as a snag report does, and used to
+    # duplicate just the same.
+    marks = {
+        id(values): fingerprint(site_code, staged.target.value, values)
+        for values in staged.rows
+    }
+    already = await _seen_fingerprints(session, site_code, set(marks.values()))
+
+    unchanged = 0
     for values in staged.rows:
+        mark = marks[id(values)]
+        if mark in already:
+            unchanged += 1
+            continue
         entry_date = parse_date(values.get("date", ""), None)
         if entry_date is None:
             continue
@@ -720,6 +753,9 @@ async def _commit_register(
             raw_data=data,
             creator=actor,
         )
+        entry.source_fingerprint = mark
+        entry.import_run_id = run_id
+        already.add(mark)
         # A 2024 breakdown must not light up today's open-breakdown banner.
         if register is Register.breakdown:
             entry.status = EntryStatus.resolved
@@ -727,6 +763,47 @@ async def _commit_register(
                 entry.breakdown.resolved_at = datetime.now(UTC)
         await session.flush()
 
+    return unchanged
+
+
+def fingerprint(site_code: str, target: str, values: dict[str, str]) -> str:
+    """A stable name for one row of one sheet.
+
+    Re-running a month has to recognise what it already wrote, and a sheet row
+    carries no id of its own — so the row's own content is the identity. Keys
+    are sorted and values whitespace-collapsed, so a re-export that reorders
+    columns or re-wraps a cell still hashes the same.
+
+    Deliberately not the business key (bus + date + register): two genuinely
+    different complaints against one bus on one day are two rows, and collapsing
+    them would lose one.
+    """
+    normalised = {
+        key: " ".join(str(value).split())
+        for key, value in sorted(values.items())
+        if str(value).strip()
+    }
+    payload = json.dumps(
+        {"site": site_code, "target": target, "row": normalised},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+async def _seen_fingerprints(
+    session: AsyncSession, site_code: str, marks: set[str]
+) -> set[str]:
+    """Which of these rows this site already holds."""
+    if not marks:
+        return set()
+    rows = await session.scalars(
+        select(Entry.source_fingerprint).where(
+            Entry.site_code == site_code,
+            Entry.source_fingerprint.in_(marks),
+        )
+    )
+    return {mark for mark in rows.all() if mark}
 
 
 async def _commit_snag_report(
@@ -734,8 +811,9 @@ async def _commit_snag_report(
     site_code: str,
     rows: list[dict[str, str]],
     actor: User,
-) -> None:
-    """One sheet, five registers.
+    run_id: str | None = None,
+) -> int:
+    """One sheet, five registers. Returns how many rows were already held.
 
     Each row's TYPE OF WORK names a work type, and the work type says which
     register the row belongs in — so the routing is whatever the master list
@@ -745,7 +823,21 @@ async def _commit_snag_report(
     work_types = await _work_types(session)
     fleet = await _fleet(session, site_code)
 
+    # Everything this sheet would write, checked against what the site already
+    # has, in one query rather than one per row.
+    marks = {
+        id(values): fingerprint(site_code, "snagReport", values) for values in rows
+    }
+    already = await _seen_fingerprints(session, site_code, set(marks.values()))
+
+    unchanged = 0
     for values in rows:
+        mark = marks[id(values)]
+        if mark in already:
+            # A previous run wrote this exact row. Re-importing a month must
+            # leave the figures where they are.
+            unchanged += 1
+            continue
         work_type = work_types.get(values.get("work_type", ""))
         if work_type is None:
             continue
@@ -794,6 +886,11 @@ async def _commit_snag_report(
             creator=actor,
             work_type_id=work_type.id,
         )
+        entry.source_fingerprint = mark
+        entry.import_run_id = run_id
+        # Two identical rows in one sheet hash alike; the first wins and the
+        # second would otherwise violate the index on flush.
+        already.add(mark)
 
         # "CLOSE" on the sheet means the job is finished. Only the breakdown
         # register has an open/resolved lifecycle to reflect it in.
@@ -819,6 +916,7 @@ async def _commit_snag_report(
                 )
         await session.flush()
 
+    return unchanged
 
 async def _commit_inspection_row(
     session: AsyncSession,

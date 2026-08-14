@@ -419,3 +419,254 @@ async def test_importing_is_manager_only(client: AsyncClient) -> None:
         mappings=_mappings({"registration_no": "Registration No"}),
     )
     assert r.status_code == 403
+
+
+# --- the MBMT snag report, and re-importing it -------------------------------
+
+SNAG_MAP = {
+    "work_type": "TYPE OF WORK",
+    "bus": "VEHICLE NO",
+    "date": "DATE",
+    "complaint": "DRIVER COMPLAINT",
+    "action": "ACTION TAKEN",
+    "employee": "ATTEND BY",
+}
+
+SNAG_SHEET = (
+    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+    "2026-08-01,MH40LY1894,B.D,No traction,Contactor replaced,Tushar\n"
+    "2026-08-01,MH40LY1895,D.C,AC not cooling,Gas topped,Nilesh\n"
+    "2026-08-02,MH40LY1894,Depot,Routine check,Cleaned,Tushar\n"
+    # The real sheet fills this column on inspection rows too — "DAILY
+    # INSPECTION" or similar. A blank one is rejected, which is worth
+    # knowing: the preview requires a complaint on every row, including the
+    # ones TYPE OF WORK routes to an inspection rather than a register.
+    "2026-08-02,MH40LY1895,D.I,DAILY INSPECTION,Checked and cleared,Tushar\n"
+)
+
+
+async def _snag_work_types() -> None:
+    """The vocabulary the sheet's TYPE OF WORK column names."""
+    from app.db import SessionLocal
+    from app.models.enums import Register as R
+    from app.models.master import WorkType
+
+    async with SessionLocal() as session:
+        session.add_all(
+            [
+                WorkType(code="B.D", name="Breakdown", register=R.breakdown),
+                WorkType(
+                    code="D.C", name="Driver complaint", register=R.driver_complaint
+                ),
+                WorkType(code="Depot", name="Daily work", register=R.work_done),
+                WorkType(code="D.I", name="Daily inspection", is_inspection=True),
+            ]
+        )
+        await session.commit()
+
+
+async def _counts() -> dict[str, int]:
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models.checklist import InspectionEntry
+    from app.models.entry import Entry
+
+    async with SessionLocal() as session:
+        return {
+            "entries": await session.scalar(select(func.count()).select_from(Entry)),
+            "inspections": await session.scalar(
+                select(func.count()).select_from(InspectionEntry)
+            ),
+        }
+
+
+async def _import_snag(client: AsyncClient, h: dict, body: str = SNAG_SHEET):
+    preview = await _preview(
+        client, h, target="snagReport", body=body, mappings=_mappings(SNAG_MAP)
+    )
+    assert preview.status_code == 200, preview.text
+    return await _commit(client, h, preview.json()["token"])
+
+
+async def test_type_of_work_routes_the_sheet_to_its_registers(
+    client: AsyncClient,
+) -> None:
+    """One sheet, five registers, routed by a master the depot controls."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    assert (await _import_snag(client, h)).status_code == 200
+    counts = await _counts()
+    assert counts["entries"] == 3
+    assert counts["inspections"] == 1
+
+    registers = {
+        e["register"]
+        for e in (await client.get("/entries?site=MBMT", headers=h)).json()["items"]
+    }
+    assert registers == {"breakdown", "driver_complaint", "work_done"}
+
+
+async def test_re_importing_the_same_month_changes_nothing(
+    client: AsyncClient,
+) -> None:
+    """The one that makes backfill safe.
+
+    Re-running a corrected sheet, or loading a month that was loaded before,
+    used to double every register entry — and with it every figure the DMR and
+    the control charts derive.
+    """
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    await _import_snag(client, h)
+    first = await _counts()
+
+    await _import_snag(client, h)
+    assert await _counts() == first
+
+    # And a third time, in case the second merely deduped against itself.
+    await _import_snag(client, h)
+    assert await _counts() == first
+
+
+async def test_a_re_import_never_touches_hand_entered_work(
+    client: AsyncClient,
+) -> None:
+    """An import matches only rows it wrote. What a supervisor typed has no
+    fingerprint, so it can never be matched, updated or counted as seen."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+    await _import_snag(client, h)
+
+    typed = await client.post(
+        "/entries",
+        json={
+            "register": "breakdown",
+            "site": "MBMT",
+            "date": "2026-08-01",
+            "data": {"bus_no": "MH40LY1894", "complaint": "No traction"},
+        },
+        headers=h,
+    )
+    assert typed.status_code == 201, typed.text
+    before = await _counts()
+
+    await _import_snag(client, h)
+    assert await _counts() == before
+
+    still_there = await client.get(f"/entries/{typed.json()['id']}", headers=h)
+    assert still_there.status_code == 200
+
+
+async def test_a_second_month_backfills_alongside_the_first(
+    client: AsyncClient,
+) -> None:
+    """Backfill is the point: an older sheet loads without disturbing what is
+    already there."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+    await _import_snag(client, h)
+    august = await _counts()
+
+    july = SNAG_SHEET.replace("2026-08-0", "2026-07-0")
+    await _import_snag(client, h, july)
+
+    both = await _counts()
+    assert both["entries"] == august["entries"] * 2
+    assert both["inspections"] == august["inspections"] * 2
+
+    # And re-running July is still a no-op.
+    await _import_snag(client, h, july)
+    assert await _counts() == both
+
+
+async def test_a_corrected_row_arrives_as_a_new_entry(
+    client: AsyncClient,
+) -> None:
+    """Documenting the edge rather than claiming it is solved: the fingerprint
+    is the row's content, so an edited row is a different row. The correction
+    lands; the superseded entry stays until someone removes it."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+    await _import_snag(client, h)
+    before = await _counts()
+
+    corrected = SNAG_SHEET.replace("Contactor replaced", "Contactor and relay replaced")
+    await _import_snag(client, h, corrected)
+
+    after = await _counts()
+    assert after["entries"] == before["entries"] + 1
+
+
+async def test_every_imported_row_names_the_upload_that_wrote_it(
+    client: AsyncClient,
+) -> None:
+    """"Where did this figure come from?" is a question a depot asks a month
+    later, and the answer has to be in the row."""
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models.entry import Entry
+
+    h = await auth_headers(client)
+    await _snag_work_types()
+    await _import_snag(client, h)
+
+    runs = (await client.get("/sites/MBMT/imports", headers=h)).json()["items"]
+    assert len(runs) == 1
+    run_id = runs[0]["id"]
+
+    async with SessionLocal() as session:
+        linked = await session.scalar(
+            select(func.count())
+            .select_from(Entry)
+            .where(Entry.import_run_id == run_id)
+        )
+        total = await session.scalar(select(func.count()).select_from(Entry))
+    assert linked == total > 0
+
+
+async def test_a_register_sheet_re_imports_without_duplicating(
+    client: AsyncClient,
+) -> None:
+    """The snag report is not the only sheet that gets re-run."""
+    h = await auth_headers(client)
+    sheet = (
+        "Date,Bus,Defect,Source\n"
+        "2026-08-13,MH40LY1895,AC fault,Driver report\n"
+    )
+    mappings = _mappings(
+        {"date": "Date", "bus": "Bus", "defects": "Defect", "source": "Source"}
+    )
+
+    for _ in range(3):
+        preview = await _preview(
+            client, h, target="workDone", body=sheet, mappings=mappings
+        )
+        await _commit(client, h, preview.json()["token"])
+
+    assert (await _counts())["entries"] == 1
+
+
+async def test_the_run_report_says_a_re_run_changed_nothing(
+    client: AsyncClient,
+) -> None:
+    """`rows_accepted` counts what the sheet held, which on a repeat is all of
+    it — so on its own it reads as a full reload. `rows_unchanged` is what
+    tells a manager the second upload was a no-op."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    await _import_snag(client, h)
+    await _import_snag(client, h)
+
+    runs = (await client.get("/sites/MBMT/imports", headers=h)).json()["items"]
+    assert len(runs) == 2
+    # Both uploads land in the same second, so run_at cannot order them —
+    # compare the pair rather than assume which came back first.
+    assert sorted(r["rows_unchanged"] for r in runs) == [0, 3]
+    # Rows read is the same both times, which is exactly why it cannot be the
+    # number a manager reads to see whether anything happened.
+    assert len({r["rows_accepted"] for r in runs}) == 1

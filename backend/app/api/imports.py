@@ -259,18 +259,26 @@ async def commit(
     site_code = assert_site_admin(user, code)
     staged = imports.previews.take(payload.token, site_code)
 
-    accepted, rejected = await imports.commit(session, staged, user)
-
+    # Built before the rows so every one of them can carry its id — that is
+    # what makes "which upload wrote this?" answerable a month later.
     run = SiteImportRun(
         site_code=site_code,
         profile_name=staged.file_name,
         target=staged.target,
         file_name=staged.file_name,
-        rows_accepted=accepted,
-        rows_rejected=rejected,
+        rows_accepted=0,
+        rows_rejected=0,
         run_by_id=user.id,
     )
     session.add(run)
+    await session.flush()
+
+    accepted, unchanged, rejected = await imports.commit(
+        session, staged, user, run_id=run.id
+    )
+    run.rows_accepted = accepted
+    run.rows_unchanged = unchanged
+    run.rows_rejected = rejected
     await audit.record(
         session,
         actor_id=user.id,
@@ -318,6 +326,7 @@ def _run_out(run: SiteImportRun, run_by: str) -> ImportRunOut:
         target=run.target,
         file_name=run.file_name,
         rows_accepted=run.rows_accepted,
+        rows_unchanged=run.rows_unchanged,
         rows_rejected=run.rows_rejected,
         run_at=run.run_at or datetime.now(UTC),
         run_by=run_by,

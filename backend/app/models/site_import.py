@@ -107,6 +107,11 @@ class SiteImportRun(Base):
     rows_accepted: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    #: Rows the sheet held that this site already had. On a re-run this is
+    #: everything, and that is the point.
+    rows_unchanged: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     rows_rejected: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

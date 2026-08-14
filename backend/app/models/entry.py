@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,6 +69,13 @@ class Entry(Base):
         Index("ix_entries_site_code_unit_status", "site_code", "unit_status"),
         Index("ix_entries_created_by_id", "created_by_id"),
         Index("ix_entries_entry_date_created_at", "entry_date", "created_at"),
+        Index(
+            "uq_entries_site_code_source_fingerprint",
+            "site_code",
+            "source_fingerprint",
+            unique=True,
+            postgresql_where=text("source_fingerprint IS NOT NULL"),
+        ),
         # backs the `q` free-text filter without fanning out over five joins
         Index(
             "ix_entries_search_text_trgm",
@@ -78,6 +86,14 @@ class Entry(Base):
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    #: The sheet row this was built from, hashed. Null for anything a person
+    #: typed — which is what keeps an import from ever overwriting hand-entered
+    #: work. See `imports.fingerprint`.
+    source_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Which import run wrote it, for provenance.
+    import_run_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("site_import_runs.id", ondelete="SET NULL"), nullable=True
+    )
     register: Mapped[Register] = mapped_column(
         Enum(
             Register,

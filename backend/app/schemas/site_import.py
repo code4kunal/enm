@@ -76,6 +76,8 @@ class ImportRunOut(BaseModel):
     target: ImportTarget
     file_name: str
     rows_accepted: int
+    #: Already present, so nothing was written for them.
+    rows_unchanged: int = 0
     rows_rejected: int
     run_at: ISTDateTime
     run_by: str = ""
