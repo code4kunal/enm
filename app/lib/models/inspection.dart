@@ -33,6 +33,8 @@ class InspectionSlot {
     required this.scheduledOn,
     required this.status,
     this.isPinned = false,
+    this.servicePlanName,
+    this.servicePlanKm,
     this.completedOn,
     this.notes = '',
   });
@@ -53,6 +55,14 @@ class InspectionSlot {
 
   /// A slot a person moved by hand. The generator leaves these alone.
   final bool isPinned;
+
+  /// The docking rung this books — "1.1 lakh docking" — or null for the
+  /// calendar rotations. A docking takes a bus off the road for a major
+  /// service, so it is worth telling apart at a glance.
+  final String? servicePlanName;
+  final int? servicePlanKm;
+
+  bool get isDocking => servicePlanName != null;
   final String? completedOn;
   final String notes;
 
@@ -88,6 +98,8 @@ class InspectionSlot {
         scheduledOn: json['scheduled_on'] as String,
         status: SlotStatus.fromWire(json['status'] as String?),
         isPinned: json['is_pinned'] as bool? ?? false,
+        servicePlanName: json['service_plan_name'] as String?,
+        servicePlanKm: (json['service_plan_km'] as num?)?.toInt(),
         completedOn: json['completed_on'] as String?,
         notes: json['notes'] as String? ?? '',
       );
@@ -109,13 +121,25 @@ class CalendarDay {
   int countOf(SlotStatus status) =>
       slots.where((s) => s.status == status).length;
 
-  /// Slots grouped by inspection type, in the order the day shows them.
+  /// True when any bus is booked for a docking that day.
+  bool get hasDocking => slots.any((s) => s.isDocking);
+
+  /// Slots grouped by inspection type, smallest group first.
+  ///
+  /// On a night with 57 daily inspections, 5 ten-day services and 4 dockings,
+  /// listing them in any other order buries the dockings — and a docking is
+  /// the one that takes a bus off the road. The exceptional work rises, the
+  /// routine bulk sinks.
   Map<String, List<InspectionSlot>> get byWorkType {
     final out = <String, List<InspectionSlot>>{};
     for (final slot in slots) {
       out.putIfAbsent(slot.workTypeCode, () => <InspectionSlot>[]).add(slot);
     }
-    return out;
+    final ordered = out.entries.toList()
+      ..sort((a, b) => a.value.length.compareTo(b.value.length));
+    return <String, List<InspectionSlot>>{
+      for (final e in ordered) e.key: e.value,
+    };
   }
 
   factory CalendarDay.fromJson(Map<String, dynamic> json) => CalendarDay(

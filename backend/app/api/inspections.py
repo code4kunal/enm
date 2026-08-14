@@ -44,6 +44,10 @@ def _slot_out(slot: InspectionSlot) -> SlotOut:
         scheduled_on=slot.scheduled_on,
         status=slot.status,
         is_pinned=slot.is_pinned,
+        service_plan_name=slot.service_plan.name if slot.service_plan else None,
+        service_plan_km=(
+            slot.service_plan.milestone_km if slot.service_plan else None
+        ),
         completed_on=slot.completed_on,
         completed_entry_id=slot.completed_entry_id,
         notes=slot.notes,

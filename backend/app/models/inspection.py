@@ -26,6 +26,7 @@ from app.models.enums import (
     SlotStatus,
 )
 from app.models.master import Vehicle, WorkType
+from app.models.site_config import ServicePlan
 
 
 class InspectionPlan(Base):
@@ -127,6 +128,7 @@ class InspectionSlot(Base):
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
     vehicle: Mapped[Vehicle] = relationship(lazy="joined")
+    service_plan: Mapped[ServicePlan | None] = relationship(lazy="joined")
     work_type: Mapped[WorkType] = relationship(lazy="joined")
 
 

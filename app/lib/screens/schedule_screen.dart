@@ -428,13 +428,40 @@ class _DayCell extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(
-                Dates.dayOfMonth(day.date),
-                style: AppText.mono(
-                  size: 12.5,
-                  weight: isToday ? FontWeight.w700 : FontWeight.w600,
-                  color: day.isEmpty ? T.muted : T.ink,
-                ),
+              Row(
+                children: <Widget>[
+                  Text(
+                    Dates.dayOfMonth(day.date),
+                    style: AppText.mono(
+                      size: 12.5,
+                      weight: isToday ? FontWeight.w700 : FontWeight.w600,
+                      color: day.isEmpty ? T.muted : T.ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  // A docking takes a bus off the road for a major service, so
+                  // it is worth seeing without opening the day. The status
+                  // dots below cannot say it — they count, they do not name.
+                  if (day.hasDocking)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: T.amberTint,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        'PM',
+                        style: AppText.mono(
+                          size: 8.5,
+                          weight: FontWeight.w700,
+                          color: T.amber,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const Spacer(),
               if (!day.isEmpty)

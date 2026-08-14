@@ -37,6 +37,10 @@ class SlotOut(BaseModel):
     scheduled_on: date_t
     status: SlotStatus
     is_pinned: bool
+    #: The docking rung this books, when it books one — "1.1 lakh docking".
+    #: Null for the calendar rotations, which is what tells the two apart.
+    service_plan_name: str | None = None
+    service_plan_km: int | None = None
     completed_on: date_t | None = None
     completed_entry_id: str | None = None
     notes: str = ""
