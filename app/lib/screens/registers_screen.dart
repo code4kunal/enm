@@ -17,6 +17,10 @@ import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../models/checklist.dart';
+import '../utils/dates.dart';
+import '../state/inspections.dart';
+import '../widgets/sub_tabs.dart';
 
 class RegistersScreen extends ConsumerStatefulWidget {
   const RegistersScreen({super.key});
@@ -64,6 +68,8 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
     final filters = ref.watch(entryFiltersProvider);
     final controller = ref.read(entryFiltersProvider.notifier);
     final results = ref.watch(filteredEntriesProvider);
+    final inspections = ref.watch(filteredInspectionsProvider);
+    final showingInspections = filters.registerId == kInspectionsFilter;
     final site = ref.watch(sessionProvider.select((s) => s.site));
 
     return FadeUp(
@@ -119,6 +125,14 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                 selected: filters.registerId == 'all',
                 onTap: () => controller.setRegister('all'),
               ),
+              // Inspections sit beside the registers rather than in them: a
+              // checklist sweep is not a defect noticed, and its row says
+              // different things. But it is still what the depot did that day.
+              PillChip(
+                label: 'Inspections',
+                selected: filters.registerId == kInspectionsFilter,
+                onTap: () => controller.setRegister(kInspectionsFilter),
+              ),
               for (final r in kRegisters)
                 PillChip(
                   label: r.name,
@@ -169,6 +183,27 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
           ),
           const SizedBox(height: 14),
 
+          if (showingInspections) ...<Widget>[
+            Text(
+              '${inspections.length} '
+              '${inspections.length == 1 ? 'inspection' : 'inspections'} · $site',
+              style: AppText.sans(size: 13, color: T.secondary),
+            ),
+            const SizedBox(height: 10),
+            if (inspections.isEmpty)
+              const EmptyState(message: 'No matching inspections.')
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (final i in inspections) ...<Widget>[
+                    _InspectionRow(entry: i),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            const SizedBox(height: 32),
+          ] else ...<Widget>[
           Text(
             '${results.length} ${results.length == 1 ? 'entry' : 'entries'} · $site',
             style: AppText.sans(size: 13, color: T.secondary),
@@ -187,6 +222,69 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                 ],
               ],
             ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One inspection, as the register list shows it.
+///
+/// Reads differently from a register row on purpose: an inspection has no
+/// defect and no source, it has a bus, a sweep, and how many lines came back
+/// not OK — which is the only part a supervisor scans for.
+class _InspectionRow extends StatelessWidget {
+  const _InspectionRow({required this.entry});
+
+  final InspectionEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = entry.failedCount;
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              TagBadge(
+                label: entry.workTypeCode,
+                background: T.subtleFill,
+                foreground: T.secondary,
+              ),
+              const SizedBox(width: 8),
+              Text(entry.registrationNo, style: AppText.mono(size: 13.5)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${Dates.dayLabel(entry.inspectedOn)}'
+                  '${entry.doneBy == null || entry.doneBy!.isEmpty ? '' : ' · ${entry.doneBy}'}',
+                  style: AppText.meta,
+                ),
+              ),
+              TagBadge(
+                label: failed == 0 ? 'ALL OK' : '$failed NOT OK',
+                background: failed == 0 ? T.greenTint : T.redTint,
+                foreground: failed == 0 ? T.greenInk : T.red,
+              ),
+            ],
+          ),
+          if (failed > 0) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              entry.results
+                  .where((r) => r.result == CheckResult.notOk)
+                  .map((r) => r.label)
+                  .join(' · '),
+              style: AppText.bodyText,
+            ),
+          ],
+          if ((entry.remarks ?? '').isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(entry.remarks!, style: AppText.meta),
+          ],
         ],
       ),
     );

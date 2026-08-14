@@ -309,3 +309,9 @@ RegisterDef requireRegister(String id) {
   if (r == null) throw ArgumentError.value(id, 'id', 'Unknown register');
   return r;
 }
+
+/// The register-filter value that means "show inspections instead".
+///
+/// A sentinel rather than a sixth register: inspections are not one, and the
+/// list renders them differently.
+const String kInspectionsFilter = 'inspections';

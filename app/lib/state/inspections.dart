@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/repositories.dart';
 import '../models/checklist.dart';
 import 'providers.dart';
+import '../utils/dates.dart';
+import 'entries.dart';
 import 'schedule.dart';
 import 'session.dart';
 
@@ -138,3 +140,49 @@ class InspectionController {
 
 final inspectionControllerProvider =
     Provider<InspectionController>(InspectionController.new);
+
+
+/// Every inspection recorded at this site, newest first.
+///
+/// Inspections live beside the registers rather than in them — a checklist
+/// sweep is not a defect noticed — but they are still the depot's record of
+/// what was done, so the register screen lists them under their own filter.
+final siteInspectionsProvider =
+    FutureProvider<List<InspectionEntry>>((ref) async {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) return const <InspectionEntry>[];
+  final rows =
+      await ref.watch(checklistRepositoryProvider).fetchInspections(site);
+  return rows..sort((a, b) => b.inspectedOn.compareTo(a.inspectedOn));
+});
+
+/// The same list under the register screen's period and search filters, so
+/// "last 7 days" and a bus number mean the same thing on either tab.
+final filteredInspectionsProvider =
+    Provider<List<InspectionEntry>>((ref) {
+  final all =
+      ref.watch(siteInspectionsProvider).valueOrNull ?? const <InspectionEntry>[];
+  final f = ref.watch(entryFiltersProvider);
+  final needle = f.query.trim().toLowerCase();
+
+  bool inPeriod(InspectionEntry e) => switch (f.dateMode) {
+        DateMode.all => true,
+        DateMode.today => e.inspectedOn == Dates.today(),
+        DateMode.week => e.inspectedOn.compareTo(Dates.today(-6)) >= 0 &&
+            e.inspectedOn.compareTo(Dates.today()) <= 0,
+        DateMode.month =>
+          e.inspectedOn.startsWith(Dates.currentMonthPrefix()),
+        DateMode.custom => (f.from.isEmpty ||
+                e.inspectedOn.compareTo(f.from) >= 0) &&
+            (f.to.isEmpty || e.inspectedOn.compareTo(f.to) <= 0),
+      };
+
+  bool matches(InspectionEntry e) =>
+      needle.isEmpty ||
+      e.registrationNo.toLowerCase().contains(needle) ||
+      e.workTypeCode.toLowerCase().contains(needle) ||
+      (e.doneBy ?? '').toLowerCase().contains(needle) ||
+      (e.supervisor ?? '').toLowerCase().contains(needle);
+
+  return all.where((e) => inPeriod(e) && matches(e)).toList();
+});

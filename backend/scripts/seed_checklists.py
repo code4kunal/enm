@@ -1,4 +1,4 @@
-"""Provision a site's daily-inspection checklists from its own D.I sheet.
+"""Provision a site's inspection checklists from its own sheets.
 
 The checks are the depot's, not this file's: they are read off the sheet's
 header row, in the order the sheet has them, so what a mechanic sees on screen
@@ -10,7 +10,12 @@ and the buses each sheet lists are marked as taking it. That mapping is the
 sheet's own: which bus is air-conditioned is not otherwise written down
 anywhere in the system.
 
-    python -m scripts.seed_di_checklist [SITE_CODE] [PATH_TO_D.I_SHEET]
+The two sheets are laid out differently, and both are read as they are rather
+than reformatted: the daily sheet runs its checks across the columns with a bus
+per row, and the ten-day sheet runs them down the rows with a check location
+beside each. That location becomes the section a check sits under on screen.
+
+    python -m scripts.seed_checklists [SITE_CODE] [DATA_DIR]
 
 Idempotent: re-running replaces the lines, keeps any a result already points
 at, and re-marks the fleet.
@@ -30,10 +35,9 @@ from app.services import checklists
 from app.services.imports import normalize_registration_no
 
 DEFAULT_SITE = "MBMT"
-DEFAULT_SHEET = "/srv/data/MBMT/August/D.I. SHEET.xlsx"
+DEFAULT_DIR = "/srv/data/MBMT/August"
 
-#: The work type these checklists belong to.
-WORK_TYPE_CODE = "D.I"
+DI_SHEET = "D.I. SHEET.xlsx"
 
 #: Worksheet -> the variant it describes. A sheet that is only a continuation
 #: of another (the 9M fleet runs onto a second page) names the same variant and
@@ -44,6 +48,18 @@ VARIANTS: dict[str, str] = {
     "12M AC  D.I SHEET": "12M AC",
     "12M  Non-AC  D.I SHEET": "12M Non-AC",
 }
+
+#: The ten-day sheets, and the variants each one covers. One sheet serves both
+#: 12M fleets — the depot checks an air-conditioned 12M and a non-AC one the
+#: same way at ten days, unlike the daily.
+TEN_DAY_SHEETS: list[tuple[str, tuple[str, ...]]] = [
+    ("10 Days 9M (new).xlsx", ("9M",)),
+    ("10 Days 12M AC & NAC FORMAT (2).xlsx", ("12M AC", "12M Non-AC")),
+]
+
+#: Where the ten-day sheets keep their columns.
+TEN_DAY_DESCRIPTION = 1
+TEN_DAY_LOCATION = 5
 
 #: Columns that are not checks: what identifies the bus, and the free-text
 #: tail. Matched on the leading word too, because the corner cell carries the
@@ -106,6 +122,34 @@ def read_sheet(path: Path) -> dict[str, tuple[list[str], set[str]]]:
     return found
 
 
+def read_ten_day(path: Path) -> list[tuple[str, str]]:
+    """(section, check) down the rows, in the sheet's order.
+
+    The sheet's "Check Location" — Inside Bus, Under Carriage, Re-verify —
+    becomes the section a check sits under, so the form groups the way the
+    mechanic walks the bus.
+    """
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    rows = list(workbook.worksheets[0].iter_rows(values_only=True))
+
+    items: list[tuple[str, str]] = []
+    for row in rows:
+        if len(row) <= TEN_DAY_DESCRIPTION:
+            continue
+        description = _clean(row[TEN_DAY_DESCRIPTION])
+        location = (
+            _clean(row[TEN_DAY_LOCATION]) if len(row) > TEN_DAY_LOCATION else ""
+        )
+        # The header row names the column rather than a job, and everything
+        # above it is the sheet's letterhead.
+        if not description or description.lower() == "job description":
+            continue
+        if not location:
+            continue
+        items.append((location, description))
+    return items
+
+
 def match_fleet(fleet: list[Vehicle], numbers: set[str]) -> list[Vehicle]:
     """The buses those short numbers name.
 
@@ -127,21 +171,22 @@ def match_fleet(fleet: list[Vehicle], numbers: set[str]) -> list[Vehicle]:
     return matched
 
 
-async def seed(site_code: str, path: Path) -> None:
-    sheets = read_sheet(path)
+async def _work_type(session, code: str) -> WorkType:
+    found = await session.scalar(
+        select(WorkType).where(func.upper(WorkType.code) == code.upper())
+    )
+    if found is None:
+        raise SystemExit(f"No {code} work type — run scripts.seed first")
+    return found
+
+
+async def seed(site_code: str, folder: Path) -> None:
+    sheets = read_sheet(folder / DI_SHEET)
     if not sheets:
-        raise SystemExit(f"No recognised D.I sheets in {path}")
+        raise SystemExit(f"No recognised D.I sheets in {folder / DI_SHEET}")
 
     async with SessionLocal() as session:
-        work_type = await session.scalar(
-            select(WorkType).where(
-                func.upper(WorkType.code) == WORK_TYPE_CODE.upper()
-            )
-        )
-        if work_type is None:
-            raise SystemExit(
-                f"No {WORK_TYPE_CODE} work type — run scripts.seed first"
-            )
+        work_type = await _work_type(session, "D.I")
 
         fleet = list(
             (
@@ -174,6 +219,29 @@ async def seed(site_code: str, path: Path) -> None:
                 f"  {variant:12s} {len(checks):2d} checks, {len(buses):2d} buses"
             )
 
+        # --- the ten-day service ---
+        ten_day = await _work_type(session, "10 DAYS SERVICE")
+        for file_name, variants in TEN_DAY_SHEETS:
+            path = folder / file_name
+            if not path.exists():
+                print(f"  (no {file_name}, skipping)")
+                continue
+            items = read_ten_day(path)
+            for variant in variants:
+                template = await checklists.ensure_template(
+                    session, site_code, ten_day, variant=variant
+                )
+                template.name = f"10 day inspection — {variant}"
+                await checklists.replace_items(
+                    session,
+                    template,
+                    [
+                        checklists.ChecklistLine(section=section, label=label)
+                        for section, label in items
+                    ],
+                )
+                print(f"  10-day {variant:12s} {len(items):2d} checks")
+
         unassigned = [v for v in fleet if not v.checklist_variant]
         if unassigned:
             print(
@@ -182,10 +250,10 @@ async def seed(site_code: str, path: Path) -> None:
                 + ", ".join(v.registration_no for v in unassigned[:6])
             )
         await session.commit()
-    print("Daily inspection checklists ready.")
+    print("Inspection checklists ready.")
 
 
 if __name__ == "__main__":
     site = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SITE
-    sheet = Path(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_SHEET)
-    asyncio.run(seed(site, sheet))
+    folder = Path(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_DIR)
+    asyncio.run(seed(site, folder))
