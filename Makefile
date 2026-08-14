@@ -56,7 +56,7 @@ lint-app:
 test: test-backend test-app ## Test both halves
 
 .PHONY: test-backend
-test-backend: ## Needs Postgres — `make db` first
+test-backend: db ## Postgres is provisioned first, so this never fails on a wipe
 	@cd $(BACKEND) && .venv/bin/python -m pytest -q
 
 .PHONY: test-app
@@ -70,12 +70,13 @@ contract: ## Check the client's assumptions against the API's schema
 # --- running -----------------------------------------------------------------
 
 .PHONY: db
-db: ## Just Postgres, for running the backend tests
+db: ## Postgres plus the test database, recreated if `down -v` took it
 	@cd $(BACKEND) && docker compose up -d db
-	@cd $(BACKEND) && docker compose exec -T db bash -c \
-		'until pg_isready -U enm >/dev/null 2>&1; do sleep 1; done'
-	@cd $(BACKEND) && docker compose exec -T db \
-		psql -U enm -d enm -c "SELECT 1" >/dev/null && echo "db ready"
+	@cd $(BACKEND) && docker compose exec -T db bash -c 'until pg_isready -U enm >/dev/null 2>&1; do sleep 1; done'
+	@# Already there is the normal case, so a failure here is not news.
+	@cd $(BACKEND) && docker compose exec -T db createdb -U enm enm_test 2>/dev/null || true
+	@cd $(BACKEND) && docker compose exec -T db psql -U enm -d enm_test -qc "CREATE EXTENSION IF NOT EXISTS pg_trgm"
+	@echo "db ready (enm + enm_test)"
 
 .PHONY: up
 up: ## Postgres + the API on $(API_PORT), migrated
