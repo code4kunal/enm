@@ -4,9 +4,10 @@ State after the site-management, snag-import and inspection-schedule work.
 
 ## Verified at this commit
 
-- Backend: `pytest` — 201 passing. `ruff check` clean. `alembic upgrade head`
-  runs 0001 → 0009.
-- App: `flutter analyze` clean, `flutter test` — 202 passing.
+- `make check` — 211 backend tests, 216 app tests, both linters, and 294
+  client-to-schema assumptions. Runs in about four minutes.
+- `make migrate-check` — 0001 → 0009 → base → 0009 on a throwaway database.
+- CI runs all of it on every push and pull request.
 - Driven in Chrome against the live API on `:8123`: sign in as the seeded super
   admin, site picker, home, Schedule → Calendar and Alerts, all reading the
   real database.

@@ -1,0 +1,122 @@
+name: CI
+
+# The tests only protect anything if they run. Everything here is a Makefile
+# target, so what CI does and what a laptop does are the same commands.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  FLUTTER_VERSION: "3.47.0"
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # The suite runs against real Postgres — it leans on enum types,
+        # pg_trgm and ON CONFLICT, none of which SQLite would tell the truth
+        # about.
+        image: postgres:16
+        env:
+          POSTGRES_USER: enm
+          POSTGRES_PASSWORD: enm
+          POSTGRES_DB: enm_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U enm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://enm:enm@localhost:5433/enm_test
+      JWT_SECRET: ci-only-not-a-real-secret-000000000000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --upgrade pip
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+          backend/.venv/bin/python -m pip install pytest pytest-asyncio ruff pypdf
+
+      - name: Enable pg_trgm
+        run: |
+          PGPASSWORD=enm psql -h localhost -p 5433 -U enm -d enm_test \
+            -c "CREATE EXTENSION IF NOT EXISTS pg_trgm"
+
+      - run: make lint-backend
+      - run: make test-backend
+
+      - name: Migrations run forward and back
+        # A migration that cannot be undone is a deploy that cannot be rolled
+        # back, and that is only ever discovered at the worst moment.
+        #
+        # Its own database on purpose: the test suite builds its schema with
+        # `create_all`, so alembic and pytest would otherwise be two mechanisms
+        # fighting over one set of tables.
+        env:
+          DATABASE_URL: postgresql+asyncpg://enm:enm@localhost:5433/enm_migrate
+        run: |
+          PGPASSWORD=enm createdb -h localhost -p 5433 -U enm enm_migrate
+          cd backend
+          .venv/bin/python -m alembic upgrade head
+          .venv/bin/python -m alembic downgrade base
+          .venv/bin/python -m alembic upgrade head
+
+  app:
+    name: App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: make install-app
+      - run: make lint-app
+      - run: make test-app
+
+      - name: Web bundle builds
+        run: make build-app
+
+  contract:
+    name: Contract
+    # The check that reads the client's casts and asks the API's schema
+    # whether they hold. Needs no database: the schema is built in-process.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --upgrade pip
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+      - run: make contract
