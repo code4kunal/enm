@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_headers
@@ -161,3 +162,77 @@ async def test_no_plans_means_nothing_falls_due(client: AsyncClient) -> None:
     h = await auth_headers(client)
     rows = (await client.get("/sites/MBMT/services/due", headers=h)).json()["items"]
     assert rows == []
+
+
+# --- the vehicle-status feed -------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from app.services.odometer import (  # noqa: E402
+    FILE_SOURCE_PREFIX,
+    VehicleStatusFileProvider,
+    provider_for,
+    read_vehicle_status,
+)
+
+FEED = Path(__file__).resolve().parents[2] / "data/MBMT/August/VehicleStatus (1).xlsx"
+
+needs_feed = pytest.mark.skipif(
+    not FEED.exists(),
+    reason="the depot's export is not in the repository, by design",
+)
+
+
+@needs_feed
+def test_the_export_reads_as_the_fleet_it_describes() -> None:
+    rows = read_vehicle_status(FEED)
+    assert len(rows) == 57
+
+    types = {r.vehicle_type for r in rows}
+    assert types == {"9M NAC", "12M AC", "12M NAC"}
+
+    first = next(r for r in rows if r.registration_no == "MH04LQ5736")
+    # 104997.3 on the feed: floored, because a bus has not done the next
+    # kilometre until it has done it.
+    assert first.odometer_km == 104_997
+    assert first.status == "Running"
+
+
+@needs_feed
+def test_a_zero_reading_is_nothing_rather_than_a_bus_that_never_moved() -> None:
+    rows = read_vehicle_status(FEED)
+    zeroed = [r for r in rows if r.odometer_km is None]
+    assert zeroed, "the export has a bus with no reading"
+    # It still names the bus and its type — only the reading is absent.
+    assert all(r.registration_no and r.vehicle_type for r in zeroed)
+
+
+@needs_feed
+async def test_the_file_provider_returns_only_the_buses_asked_for() -> None:
+    provider = VehicleStatusFileProvider(f"{FILE_SOURCE_PREFIX}{FEED}")
+    assert provider.is_configured
+
+    readings = await provider.fetch(["MH04LQ5736", "MH04LQ5737", "NOT-A-BUS"])
+    assert set(readings) == {"MH04LQ5736", "MH04LQ5737"}
+    km, stamp = readings["MH04LQ5736"]
+    assert km == 104_997
+    assert stamp.tzinfo is not None
+
+
+async def test_a_missing_file_is_an_unconfigured_feed_not_a_crash() -> None:
+    """A depot that has not dropped today's export yet must not fail the sync."""
+    provider = VehicleStatusFileProvider(f"{FILE_SOURCE_PREFIX}/no/such/file.xlsx")
+    assert provider.is_configured is False
+    assert await provider.fetch(["MH40LY1894"]) == {}
+
+
+def test_the_source_decides_which_feed_a_site_reads() -> None:
+    from app.models.site_config import SiteConfig
+
+    plain = provider_for(SiteConfig(site_code="MBMT", odometer_sync_source="telematics"))
+    assert not isinstance(plain, VehicleStatusFileProvider)
+
+    from_file = provider_for(
+        SiteConfig(site_code="MBMT", odometer_sync_source=f"{FILE_SOURCE_PREFIX}/tmp/x.xlsx")
+    )
+    assert isinstance(from_file, VehicleStatusFileProvider)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from datetime import date as date_t
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +41,15 @@ class TelematicsProvider:
 
 
 def provider_for(config: SiteConfig) -> TelematicsProvider:
-    return TelematicsProvider(config.odometer_sync_source)
+    """The feed this site reads from.
+
+    `file:/path/to/VehicleStatus.xlsx` reads the depot's own export; anything
+    else is the unconfigured default, which succeeds with nothing.
+    """
+    source = config.odometer_sync_source or ""
+    if source.startswith(FILE_SOURCE_PREFIX):
+        return VehicleStatusFileProvider(source)
+    return TelematicsProvider(source)
 
 
 def record_reading(
@@ -206,3 +216,107 @@ async def scan_sites_due_for_sync() -> None:
                     len(result.readings),
                     result.skipped,
                 )
+
+
+# --- a feed that reads the depot's own vehicle-status export ------------------
+
+#: Where the columns sit on MBMT's VehicleStatus export. The sheet opens with a
+#: subreport error and a title, so the headings are on row 4 and the fleet
+#: starts on row 5.
+STATUS_HEADER_ROW = 4
+STATUS_REGISTRATION = 2
+STATUS_VEHICLE_TYPE = 3
+STATUS_DATE = 4
+STATUS_STATUS = 5
+STATUS_END_ODOMETER = 8
+
+#: `odometer_sync_source` values that mean "read the export at this path".
+FILE_SOURCE_PREFIX = "file:"
+
+
+@dataclass(frozen=True, slots=True)
+class VehicleStatusRow:
+    """One line of the export: what a bus is and where its odometer stands."""
+
+    registration_no: str
+    vehicle_type: str
+    odometer_km: int | None
+    status: str
+    recorded_at: datetime | None
+
+
+def read_vehicle_status(path: Path) -> list[VehicleStatusRow]:
+    """Parse a VehicleStatus export.
+
+    Readings arrive as floats — 104997.3, 78635.203125 — because they come off
+    a telematics feed rather than a dial. They are floored rather than rounded:
+    a bus has not done the next kilometre until it has done it.
+
+    A zero reading means the feed has nothing for that bus, not that the bus
+    has never moved, so it comes back as None and the caller leaves the vehicle
+    alone.
+    """
+    from openpyxl import load_workbook  # noqa: PLC0415 — optional at import time
+
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    worksheet = workbook.worksheets[0]
+
+    rows: list[VehicleStatusRow] = []
+    for row in worksheet.iter_rows(min_row=STATUS_HEADER_ROW + 1, values_only=True):
+        if len(row) <= STATUS_END_ODOMETER:
+            continue
+        registration = " ".join(str(row[STATUS_REGISTRATION] or "").split())
+        if not registration:
+            continue
+
+        raw = row[STATUS_END_ODOMETER]
+        km: int | None = None
+        if isinstance(raw, int | float) and raw > 0:
+            km = int(raw)
+
+        stamp = row[STATUS_DATE]
+        rows.append(
+            VehicleStatusRow(
+                registration_no=registration.upper(),
+                vehicle_type=" ".join(str(row[STATUS_VEHICLE_TYPE] or "").split()),
+                odometer_km=km,
+                status=" ".join(str(row[STATUS_STATUS] or "").split()),
+                recorded_at=stamp if isinstance(stamp, datetime) else None,
+            )
+        )
+    return rows
+
+
+class VehicleStatusFileProvider(TelematicsProvider):
+    """The daily feed, as a file the depot drops somewhere we can read.
+
+    Stands in for the telematics API until there is one to call. Everything
+    downstream — the readings, the history, the dockings they trigger — is the
+    same either way, so swapping this for a real client changes one class.
+    """
+
+    def __init__(self, source: str) -> None:
+        super().__init__(source)
+        self.path = Path(source[len(FILE_SOURCE_PREFIX) :])
+
+    @property
+    def is_configured(self) -> bool:
+        return self.path.exists()
+
+    async def fetch(
+        self, registration_nos: list[str]
+    ) -> dict[str, tuple[int, datetime]]:
+        if not self.is_configured:
+            return {}
+        wanted = {r.upper() for r in registration_nos}
+        now = datetime.now(UTC)
+
+        readings: dict[str, tuple[int, datetime]] = {}
+        for row in read_vehicle_status(self.path):
+            if row.odometer_km is None or row.registration_no not in wanted:
+                continue
+            stamp = row.recorded_at or now
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=UTC)
+            readings[row.registration_no] = (row.odometer_km, stamp)
+        return readings
