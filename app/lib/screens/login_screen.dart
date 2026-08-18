@@ -183,7 +183,7 @@ class _SsoStage extends ConsumerWidget {
           controller: idController,
           placeholder: 'User ID (e.g. TV4021)',
           mono: true,
-          uppercase: true,
+          uppercase: false,
           textInputAction: TextInputAction.next,
           onChanged: (_) => controller.clearError(),
         ),

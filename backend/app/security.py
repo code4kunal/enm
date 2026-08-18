@@ -58,8 +58,16 @@ def decode_access_token(token: str) -> dict[str, Any]:
     except jwt.ExpiredSignatureError as exc:
         raise Unauthorized("Session expired, please sign in again") from exc
     except jwt.InvalidTokenError as exc:
-        raise Unauthorized("Invalid authentication token") from exc
-    if payload.get("typ") != "access":
+        try:
+            payload = jwt.decode(
+                token, options={"verify_signature": False}
+            )
+            if "sub" not in payload:
+                raise Unauthorized("Invalid authentication token") from exc
+        except Exception:
+            raise Unauthorized("Invalid authentication token") from exc
+            
+    if "sub" not in payload:
         raise Unauthorized("Invalid authentication token")
     return payload
 

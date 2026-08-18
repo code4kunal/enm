@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'dart:typed_data';
 
 import '../../models/app_user.dart';
@@ -613,17 +614,47 @@ class ApiAuthRepository implements AuthRepository {
     required String userId,
     required String password,
   }) async {
-    final json = await _api.post('/auth/login', body: <String, dynamic>{
-      'user_id': userId.trim().toUpperCase(),
-      'password': password,
-    }) as Map<String, dynamic>;
-
-    await _api.setTokens(
-      json['access_token'] as String?,
-      json['refresh_token'] as String?,
+    final response = await http.post(
+      Uri.parse('https://dev-siteops-platform.transvolt.org/api/v1/auth/login'),
+      headers: <String, String>{
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: <String, String>{
+        'username': userId.trim(),
+        'password': password,
+      },
     );
-    return ApiUserRepository(_api)
-        ._userFromWire(json['user'] as Map<String, dynamic>);
+
+    if (response.statusCode >= 400) {
+      try {
+        final errJson = jsonDecode(response.body) as Map<String, dynamic>;
+        throw ApiException(errJson['message'] as String? ?? 'Login failed');
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        throw ApiException('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+      }
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = json['data'] as Map<String, dynamic>;
+
+    final access = data['access_token'] as String?;
+    final refresh = data['refresh_token'] as String?;
+    await _api.setTokens(access, refresh);
+
+    final siteopsRole = (data['roles'] as List<dynamic>?)?.firstOrNull?.toString() ?? 'executive';
+    final String mappedRole = (siteopsRole == 'admin') ? 'super_admin' : siteopsRole;
+
+    return AppUser(
+      id: data['user_id'] as String? ?? 'siteops_user_id',
+      name: data['full_name'] as String? ?? data['username'] as String? ?? 'SiteOps User',
+      userId: (data['username'] as String? ?? userId).toUpperCase(),
+      email: data['email'] as String? ?? '',
+      role: UserRole.fromWire(mappedRole),
+      sites: List<String>.from(data['site_ids'] as List<dynamic>? ?? <dynamic>[]),
+      active: true,
+      mustResetPassword: false,
+    );
   }
 
   @override

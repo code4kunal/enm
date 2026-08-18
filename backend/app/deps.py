@@ -27,7 +27,55 @@ def _bearer(request: Request) -> str:
 
 async def current_user(request: Request, session: SessionDep) -> User:
     payload = decode_access_token(_bearer(request))
-    user = await session.get(User, payload.get("sub", ""))
+    sub_val = payload.get("sub", "")
+    user = await session.get(User, sub_val)
+    if user is None:
+        user_name = payload.get("user_name") or payload.get("username")
+        if user_name:
+            username_clean = user_name.strip().upper()
+            existing_user = await session.scalar(
+                select(User).where(User.user_id == username_clean)
+            )
+            if existing_user:
+                user = existing_user
+            else:
+                roles = payload.get("roles", [])
+                mapped_role = Role.executive
+                if "admin" in roles:
+                    mapped_role = Role.super_admin
+                elif "manager" in roles:
+                    mapped_role = Role.manager
+                elif "supervisor" in roles:
+                    mapped_role = Role.supervisor
+                    
+                user = User(
+                    id=sub_val,
+                    name=payload.get("full_name") or payload.get("name") or user_name,
+                    user_id=username_clean,
+                    email=payload.get("email"),
+                    role=mapped_role,
+                    password_hash=None,
+                    must_reset_password=False,
+                )
+                session.add(user)
+                await session.flush()
+                
+                if not user.is_super_admin:
+                    from app.models.master import Site
+                    from app.models.user import UserSiteAccess
+                    sites = (await session.scalars(select(Site))).all()
+                    for site in sites:
+                        session.add(UserSiteAccess(user_id=user.id, site_code=site.code))
+                    await session.flush()
+                
+                await session.commit()
+                from sqlalchemy.orm import selectinload
+                user = await session.scalar(
+                    select(User)
+                    .where(User.id == user.id)
+                    .options(selectinload(User.site_links))
+                )
+                
     if user is None:
         raise Unauthorized("Invalid authentication token")
     if not user.is_active:

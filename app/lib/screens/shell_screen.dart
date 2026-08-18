@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,6 +11,8 @@ import '../theme/tokens.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/chips.dart';
 import '../widgets/code_square.dart';
+import '../data/api/siteops_client.dart';
+import '../state/selected_site.dart';
 
 /// One navigation destination, shared by the desktop tab row and the mobile
 /// bottom nav.
@@ -44,8 +46,9 @@ class ShellScreen extends ConsumerWidget {
       const _Tab('Registers', Routes.registers),
       const _Tab('Breakdowns', Routes.breakdowns),
       const _Tab('Schedule', Routes.schedule),
+      const _Tab('Vehicle Master', Routes.vehicleMaster),
       const _Tab('Reports', Routes.reports),
-      // Site and Admin are role-gated — hidden rather than disabled, and the
+      // Site and Admin are role-gated â€” hidden rather than disabled, and the
       // server enforces the same rule.
       if (session.canManageSites) const _Tab('Site', Routes.site),
       if (session.canAdministerUsers) const _Tab('Admin', Routes.admin),
@@ -153,13 +156,15 @@ class _Header extends ConsumerWidget {
                         const Spacer(),
                         const _SiteSwitcher(),
                         const SizedBox(width: 12),
+                        const _SiteOpsDropdown(),
+                        const SizedBox(width: 12),
                         // The avatar opens the account screen; sign-out lives
                         // there, so a mis-tap on a tablet cannot drop a
                         // mechanic mid-entry.
                         Tooltip(
                           message: user == null
                               ? 'Account'
-                              : '${user.name} · Account',
+                              : '${user.name} Â· Account',
                           child: InkWell(
                             customBorder: const CircleBorder(),
                             onTap: () => context.go(Routes.profile),
@@ -401,6 +406,125 @@ class _BottomNavItem extends StatelessWidget {
                 child: CountBadge(count: badge, compact: true),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+// ─── SiteOps Site Dropdown ────────────────────────────────────────────────────
+
+
+// ___ SiteOps Site Dropdown ___________________________________________________
+
+class _SiteItem {
+  const _SiteItem({required this.id, required this.name, required this.siteType});
+  final String id;
+  final String name;
+  final String siteType;
+}
+
+class _SiteOpsDropdown extends ConsumerStatefulWidget {
+  const _SiteOpsDropdown();
+
+  @override
+  ConsumerState<_SiteOpsDropdown> createState() => _SiteOpsDropdownState();
+}
+
+class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
+  List<_SiteItem> _sites = [];
+  _SiteItem? _selected;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSites();
+  }
+
+  Future<void> _loadSites() async {
+    try {
+      final json = await siteOpsClient.get('/onboarding/sites/dropdown');
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      final sites = data
+          .cast<Map<String, dynamic>>()
+          .map((j) => _SiteItem(
+                id: j['id']?.toString() ?? '',
+                name: j['name']?.toString() ?? '',
+                siteType: j['site_type']?.toString() ?? '',
+              ))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _sites = sites;
+          if (sites.isNotEmpty) {
+            _selected = sites.first;
+            ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
+          }
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_sites.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: T.subtleFill,
+        borderRadius: T.controlShape,
+        border: Border.all(color: T.inputBorder, width: 1.5),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selected?.id,
+          isDense: true,
+          borderRadius: T.controlShape,
+          dropdownColor: T.card,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          icon: const Icon(Icons.expand_more, size: 20, color: T.secondary),
+          style: AppText.sans(size: 13, weight: FontWeight.w600),
+          items: <DropdownMenuItem<String>>[
+            for (final s in _sites)
+              DropdownMenuItem<String>(
+                value: s.id,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(s.name, style: AppText.sans(size: 13)),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: T.green.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        s.siteType,
+                        style: AppText.mono(size: 10, color: T.green, weight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          onChanged: (id) {
+            if (id != null) {
+              final site = _sites.firstWhere((s) => s.id == id);
+              setState(() => _selected = site);
+              ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
+            }
+          },
         ),
       ),
     );

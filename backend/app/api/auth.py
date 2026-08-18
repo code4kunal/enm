@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, status
+import httpx
 from sqlalchemy import select, update
 
 from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.errors import InactiveUser, NotFound, Unauthorized, ValidationError
 from app.models.user import RefreshToken, User
+from app.models.enums import Role
 from app.schemas.auth import (
     LoginIn,
     RefreshIn,
@@ -69,11 +71,84 @@ async def issue_tokens(
 @router.post("/login", response_model=TokenOut)
 async def login(payload: LoginIn, request: Request, session: SessionDep) -> TokenOut:
     handle = payload.user_id.strip().upper()
-    user = await session.scalar(select(User).where(User.user_id == handle))
-    if user is None or not verify_password(payload.password, user.password_hash):
-        raise Unauthorized("Invalid User ID or password")
+    password = payload.password
+
+    # 1. Attempt to authenticate against SiteOps platform login
+    siteops_url = "https://dev-siteops-platform.transvolt.org/api/v1/auth/login"
+    siteops_user = None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                siteops_url,
+                data={"username": payload.user_id.strip().lower(), "password": password},
+                timeout=10.0
+            )
+            if resp.status_code == 200:
+                res_data = resp.json()
+                if res_data.get("result") is True:
+                    siteops_user = res_data.get("data")
+    except Exception as e:
+        print(f"SiteOps connection error: {e}")
+
+    user = None
+    if siteops_user:
+        # Successfully authenticated via SiteOps!
+        siteops_username = siteops_user.get("username", "").strip().upper()
+        if not siteops_username:
+            siteops_username = handle
+            
+        user = await session.scalar(select(User).where(User.user_id == siteops_username))
+        
+        if user is None:
+            # Create user locally!
+            siteops_roles = siteops_user.get("roles", [])
+            # Map role
+            mapped_role = Role.executive
+            if "admin" in siteops_roles:
+                mapped_role = Role.super_admin
+            elif "manager" in siteops_roles:
+                mapped_role = Role.manager
+            elif "supervisor" in siteops_roles:
+                mapped_role = Role.supervisor
+            elif "executive" in siteops_roles:
+                mapped_role = Role.executive
+                
+            user = User(
+                name=siteops_user.get("full_name") or siteops_user.get("username") or "SiteOps User",
+                user_id=siteops_username,
+                email=siteops_user.get("email"),
+                role=mapped_role,
+                password_hash=None,  # Authenticated via SiteOps
+                must_reset_password=False,
+            )
+            session.add(user)
+            await session.flush()
+            
+            # Link to all existing sites by default
+            if not user.is_super_admin:
+                from app.models.master import Site
+                from app.models.user import UserSiteAccess
+                sites = (await session.scalars(select(Site))).all()
+                for site in sites:
+                    session.add(UserSiteAccess(user_id=user.id, site_code=site.code))
+                await session.flush()
+    else:
+        # Fallback to local DB authentication
+        user = await session.scalar(select(User).where(User.user_id == handle))
+        if user is None or not verify_password(password, user.password_hash):
+            raise Unauthorized("Invalid User ID or password")
+            
     if not user.is_active:
         raise InactiveUser("Account deactivated, contact site manager")
+        
+    # Eagerly load site_links relationship before issuing tokens
+    from sqlalchemy.orm import selectinload
+    user = await session.scalar(
+        select(User)
+        .where(User.id == user.id)
+        .options(selectinload(User.site_links))
+    )
+        
     return await issue_tokens(session, user, request.headers.get("User-Agent"))
 
 

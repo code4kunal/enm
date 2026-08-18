@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+﻿import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,6 +14,7 @@ import 'screens/reports_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/site_screen.dart';
+import 'screens/vehicle_master_screen.dart';
 import 'state/session.dart';
 import 'widgets/page_body.dart';
 
@@ -23,6 +24,7 @@ abstract final class Routes {
   static const registers = '/registers';
   static const breakdowns = '/breakdowns';
   static const schedule = '/schedule';
+  static const vehicleMaster = '/vehicle-master';
   static const reports = '/reports';
   static const site = '/site';
   static const admin = '/admin';
@@ -30,7 +32,7 @@ abstract final class Routes {
 
   static String newEntry(String registerId) => '/entry/new/$registerId';
 
-  /// Data entry for one inspection type — each has its own checklist, so each
+  /// Data entry for one inspection type - each has its own checklist, so each
   /// has its own form.
   static String newInspection(int workTypeId) => '/inspection/new/$workTypeId';
 
@@ -110,6 +112,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: Routes.schedule,
             builder: (context, state) => const PageBody(child: ScheduleScreen()),
+          ),
+          GoRoute(
+            path: Routes.vehicleMaster,
+            builder: (context, state) => const PageBody(child: VehicleMasterScreen()),
           ),
           GoRoute(
             path: Routes.reports,
