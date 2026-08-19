@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:transvolt_em/main.dart' as app;
@@ -14,7 +16,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('a manager signs in and reaches their site', (tester) async {
-    app.main();
+    unawaited(app.main());
     await signIn(tester, userId: kUser, password: kPassword, site: kSite);
 
     // Past the login card: the User ID / Password pair is gone.

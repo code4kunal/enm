@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -20,7 +22,7 @@ void main() {
   }
 
   testWidgets('the app boots to the login screen', (tester) async {
-    app.main();
+    unawaited(app.main());
     await settle(tester);
 
     expect(find.text('E & M MAINTENANCE'), findsOneWidget);
@@ -28,7 +30,7 @@ void main() {
   });
 
   testWidgets('the login screen offers the User ID path', (tester) async {
-    app.main();
+    unawaited(app.main());
     await settle(tester);
 
     // HANDOFF section 1: a User ID input, a Password input, a black Sign in
@@ -40,7 +42,7 @@ void main() {
   testWidgets(
     'the login screen offers the Microsoft sign-in HANDOFF promises',
     (tester) async {
-      app.main();
+      unawaited(app.main());
       await settle(tester);
       expect(find.text('Sign in with Microsoft'), findsOneWidget);
     },

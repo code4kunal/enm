@@ -34,3 +34,6 @@ backend/.env
 # Pinned chromedriver for the QA floor. Fetched by `make qa-driver`, never
 # committed: it is an 9MB platform binary tied to one Chrome build.
 app/.tooling/chromedriver
+
+# pytest bytecode from the QA floor
+qa/**/__pycache__/
