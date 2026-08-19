@@ -154,8 +154,6 @@ class _Header extends ConsumerWidget {
                           ),
                         ),
                         const Spacer(),
-                        const _SiteSwitcher(),
-                        const SizedBox(width: 12),
                         const _SiteOpsDropdown(),
                         const SizedBox(width: 12),
                         // The avatar opens the account screen; sign-out lives
@@ -462,6 +460,7 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
           if (sites.isNotEmpty) {
             _selected = sites.first;
             ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
+            ref.read(sessionProvider.notifier).switchSite(sites.first.id);
           }
           _loading = false;
         });
@@ -523,6 +522,7 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
               final site = _sites.firstWhere((s) => s.id == id);
               setState(() => _selected = site);
               ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
+              ref.read(sessionProvider.notifier).switchSite(site.id);
             }
           },
         ),

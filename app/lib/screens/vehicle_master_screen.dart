@@ -1,4 +1,4 @@
-﻿import "dart:async";
+import "dart:async";
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 
@@ -13,24 +13,25 @@ class _Vehicle {
   const _Vehicle({
     required this.id, required this.vehicleNo, required this.code,
     required this.ttNo, required this.vehicleTypeName, required this.vehicleTypeId,
-    required this.make, required this.model, required this.fuel,
+    required this.make, required this.model, required this.fuel, required this.variant,
     required this.engineNo, required this.chassisNo, required this.macId,
     required this.capacity, required this.acNac, required this.lastOdo,
     required this.status, required this.isActive, required this.isFitnessExpired,
-    required this.fitnessExpiry, required this.sites,
+    required this.fitnessExpiry, required this.sites, required this.manufactureYear,
+    required this.dateOfReg, required this.rtoLoc, required this.financierName,
+    required this.fitnessCertNo,
   });
 
   final String id, vehicleNo, code, ttNo, vehicleTypeName, vehicleTypeId;
-  final String make, model, fuel, engineNo, chassisNo, macId;
+  final String make, model, fuel, variant, engineNo, chassisNo, macId;
   final String capacity, acNac, lastOdo, status, fitnessExpiry;
+  final String manufactureYear, dateOfReg, rtoLoc, financierName, fitnessCertNo;
   final bool isActive, isFitnessExpired;
-  final List<String> sites;
+  final List<Map<String, dynamic>> sites;
 
   factory _Vehicle.fromJson(Map<String, dynamic> j) {
     final sitesList = (j["sites"] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>()
-        .map((s) => s["name"]?.toString() ?? "")
-        .where((s) => s.isNotEmpty)
         .toList();
     return _Vehicle(
       id: j["id"]?.toString() ?? "",
@@ -41,6 +42,7 @@ class _Vehicle {
       vehicleTypeId: j["vehicle_type_id"]?.toString() ?? "",
       make: j["make"]?.toString() ?? "",
       model: j["model"]?.toString() ?? "",
+      variant: j["variant"]?.toString() ?? "",
       fuel: j["fuel"]?.toString() ?? "",
       engineNo: j["engine_no"]?.toString() ?? "",
       chassisNo: j["chassis_no"]?.toString() ?? "",
@@ -52,6 +54,11 @@ class _Vehicle {
       isActive: j["is_active"] as bool? ?? true,
       isFitnessExpired: j["is_fitness_expired"] as bool? ?? false,
       fitnessExpiry: j["fitness_expiry_date"]?.toString() ?? "",
+      manufactureYear: j["manufacture_year"]?.toString() ?? "",
+      dateOfReg: j["date_of_reg"]?.toString() ?? "",
+      rtoLoc: j["rto_loc"]?.toString() ?? "",
+      financierName: j["financier_name"]?.toString() ?? "",
+      fitnessCertNo: j["fitness_cert_no"]?.toString() ?? "",
       sites: sitesList,
     );
   }
@@ -72,6 +79,8 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   List<_Vehicle> _records = [];
+  List<Map<String, dynamic>> _vehicleTypes = [];
+  List<Map<String, dynamic>> _allSites = [];
   int _totalCount = 0;
   int _currentPage = 1;
   bool _isLoading = false;
@@ -82,7 +91,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
   void initState() {
     super.initState();
     _searchCtrl.addListener(_onSearchChanged);
-    // Trigger first fetch after frame
+    _fetchLookups();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final siteId = ref.read(selectedSiteProvider).id;
       if (siteId != null && siteId.isNotEmpty) {
@@ -90,6 +99,19 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
         _fetch(siteId);
       }
     });
+  }
+  
+  Future<void> _fetchLookups() async {
+    try {
+      final vtJson = await siteOpsClient.get("/master/vehicle-types?pagination=false");
+      final vtData = vtJson is Map ? vtJson["data"] as List<dynamic>? ?? [] : [];
+      _vehicleTypes = vtData.map((e) => e as Map<String, dynamic>).toList();
+      
+      final stJson = await siteOpsClient.get("/onboarding/sites/dropdown");
+      final stData = stJson is Map ? stJson["data"] as List<dynamic>? ?? [] : [];
+      _allSites = stData.map((e) => e as Map<String, dynamic>).toList();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
@@ -125,7 +147,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
       final pag = data["pagination"] as Map<String, dynamic>? ?? {};
       if (!mounted) return;
       setState(() {
-        _records = items.cast<Map<String, dynamic>>().map(_Vehicle.fromJson).toList();
+        _records = items.map((e) => _Vehicle.fromJson(e as Map<String, dynamic>)).toList();
         _totalCount = (pag["total_items"] as int?) ?? items.length;
       });
     } catch (e) {
@@ -147,23 +169,63 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
   // ─── Form Modal ──────────────────────────────────────────────────────────
 
   Future<void> _showFormModal({_Vehicle? existing}) async {
-    final siteId = ref.read(selectedSiteProvider).id;
     final ctrls = {
       "vehicle_no": TextEditingController(text: existing?.vehicleNo ?? ""),
+      "code":       TextEditingController(text: existing?.code ?? ""),
+      "tt_no":      TextEditingController(text: existing?.ttNo ?? ""),
+      
+      "make":       TextEditingController(text: existing?.make ?? ""),
+      "model":      TextEditingController(text: existing?.model ?? ""),
+      "variant":    TextEditingController(text: existing?.variant ?? ""),
+      "capacity":   TextEditingController(text: existing?.capacity ?? ""),
+      "last_odo":   TextEditingController(text: existing?.lastOdo ?? ""),
+      
       "engine_no":  TextEditingController(text: existing?.engineNo ?? ""),
       "chassis_no": TextEditingController(text: existing?.chassisNo ?? ""),
       "mac_id":     TextEditingController(text: existing?.macId ?? ""),
-      "make":       TextEditingController(text: existing?.make ?? ""),
-      "model":      TextEditingController(text: existing?.model ?? ""),
-      "tt_no":      TextEditingController(text: existing?.ttNo ?? ""),
+      
+      "date_of_reg":TextEditingController(text: existing?.dateOfReg ?? ""),
+      "rto_loc":    TextEditingController(text: existing?.rtoLoc ?? ""),
+      "financier_name": TextEditingController(text: existing?.financierName ?? ""),
+      
+      "fitness_cert_no": TextEditingController(text: existing?.fitnessCertNo ?? ""),
+      "fitness_expiry_date": TextEditingController(text: existing?.fitnessExpiry ?? ""),
     };
+    
+    String? selectedVehicleType = existing?.vehicleTypeId.isNotEmpty == true ? existing?.vehicleTypeId : null;
+    String? selectedAcNac = existing?.acNac.isNotEmpty == true ? existing?.acNac : null;
+    String? selectedFuel = existing?.fuel.isNotEmpty == true ? existing?.fuel : null;
+    String? selectedYear = existing?.manufactureYear.isNotEmpty == true ? existing?.manufactureYear : null;
+    String? selectedStatus = existing?.status.isNotEmpty == true ? existing?.status : null;
+    bool isActive = existing?.isActive ?? true;
+    
+    List<String> selectedSites = existing?.sites.map((s) => s["id"].toString()).toList() ?? [];
+    if (selectedSites.isEmpty && ref.read(selectedSiteProvider).id != null) {
+      selectedSites.add(ref.read(selectedSiteProvider).id!);
+    }
+
     String? err;
     bool saving = false;
+    
+    final currentYear = DateTime.now().year;
+    final years = List.generate(currentYear - 1950 + 1, (i) => (1950 + i).toString()).reversed.toList();
+
+    // Helper to prevent material dropdown crash if value is not in items list
+    String? sanitizeDropdown(String? val, List<String> allowed) {
+      if (val == null) return null;
+      if (allowed.contains(val)) return val;
+      return null;
+    }
+
 
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) {
+        final allowedVTypes = _vehicleTypes.map((vt) => vt["id"].toString()).toList();
+        final allowedAc = ["12M AC", "12M NAC", "9M AC", "9M NAC", "Other"];
+        final allowedFuel = ["Electric", "Diesel", "CNG", "Petrol"];
+        final allowedStatus = ["Active", "Inactive", "Maintenance", "Retired"];
         Widget fld(String key, String label, {String hint = ""}) => Padding(
           padding: const EdgeInsets.only(bottom: 14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -187,95 +249,310 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
             ),
           ]),
         );
+        
+        Widget ddl(String label, String? val, List<DropdownMenuItem<String>> items, Function(String?) onChanged) => Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: AppText.sans(size: 12, color: T.secondary)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: T.inputBorder),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: val,
+                  isExpanded: true,
+                  isDense: false,
+                  hint: Text("Select $label", style: AppText.sans(size: 13, color: T.muted)),
+                  items: items,
+                  onChanged: (v) => setDlg(() => onChanged(v)),
+                ),
+              ),
+            ),
+          ]),
+        );
+        
+        Widget secLabel(String title) => Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppText.sans(size: 14, weight: FontWeight.w700, color: T.green)),
+              const SizedBox(height: 4),
+              Container(height: 1, color: T.border),
+            ],
+          ),
+        );
 
         return Dialog(
           backgroundColor: T.card,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text(
-                    existing == null ? "Add Vehicle" : "Update Vehicle",
-                    style: AppText.sans(size: 17, weight: FontWeight.w700),
-                  )),
-                  IconButton(onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close, size: 20)),
-                ]),
-                const SizedBox(height: 18),
-                if (err != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: T.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Text(err!, style: AppText.sans(size: 13, color: T.red)),
+            width: 700,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
+                  child: Row(children: [
+                    Expanded(child: Text(
+                      existing == null ? "Add Vehicle" : "Update Vehicle",
+                      style: AppText.sans(size: 18, weight: FontWeight.w700),
+                    )),
+                    IconButton(onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close, size: 20)),
+                  ]),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      if (err != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: T.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Text(err!, style: AppText.sans(size: 13, color: T.red)),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      
+                      secLabel("General Information"),
+                      Row(
+                        children: [
+                          Expanded(child: fld("vehicle_no", "Vehicle Number *", hint: "e.g. MH01AB1234")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("code", "Vehicle Code", hint: "Internal Ref Code")),
+                        ],
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: fld("tt_no", "TT Number", hint: "e.g. TT-01")),
+                          const SizedBox(width: 16),
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text("Sites *", style: AppText.sans(size: 12, color: T.secondary)),
+                              const SizedBox(height: 4),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: T.inputBorder),
+                                ),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (final s in _allSites)
+                                      FilterChip(
+                                        label: Text(s["name"] ?? "", style: AppText.sans(size: 12)),
+                                        selected: selectedSites.contains(s["id"]),
+                                        onSelected: (val) {
+                                          setDlg(() {
+                                            if (val) selectedSites.add(s["id"]);
+                                            else selectedSites.remove(s["id"]);
+                                          });
+                                        },
+                                      )
+                                  ],
+                                ),
+                              ),
+                            ]),
+                          )),
+                        ],
+                      ),
+                      
+                      secLabel("Technical Specifications"),
+                      Row(
+                        children: [
+                          Expanded(child: fld("make", "Make", hint: "e.g. Tata")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("model", "Model", hint: "e.g. LPO 1618")),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: fld("variant", "Variant", hint: "Standard / BS-VI")),
+                          const SizedBox(width: 16),
+                          Expanded(child: ddl("Vehicle Type *", sanitizeDropdown(selectedVehicleType, allowedVTypes), [
+                            for (final vt in _vehicleTypes)
+                              DropdownMenuItem(value: vt["id"], child: Text(vt["type"] ?? ""))
+                          ], (v) => selectedVehicleType = v)),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: ddl("AC / Non-AC", sanitizeDropdown(selectedAcNac, allowedAc), [
+                            for (final a in ["12M AC", "12M NAC", "9M AC", "9M NAC", "Other"])
+                              DropdownMenuItem(value: a, child: Text(a))
+                          ], (v) => selectedAcNac = v)),
+                          const SizedBox(width: 16),
+                          Expanded(child: ddl("Fuel Type", sanitizeDropdown(selectedFuel, allowedFuel), [
+                            for (final f in ["Electric", "Diesel", "CNG", "Petrol"])
+                              DropdownMenuItem(value: f, child: Text(f))
+                          ], (v) => selectedFuel = v)),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: fld("capacity", "Seating Capacity", hint: "e.g. 50 + 1")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("last_odo", "Last Odometer", hint: "Current reading")),
+                        ],
+                      ),
+                      
+                      secLabel("Engine & Identity"),
+                      Row(
+                        children: [
+                          Expanded(child: fld("engine_no", "Engine Number *", hint: "Unique Engine ID")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("chassis_no", "Chassis Number *", hint: "Unique Chassis ID")),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: fld("mac_id", "MAC ID / Device ID *", hint: "Hardware ID")),
+                          const SizedBox(width: 16),
+                          const Spacer(),
+                        ],
+                      ),
+                      
+                      secLabel("Registration & Financial"),
+                      Row(
+                        children: [
+                          Expanded(child: ddl("Manufacturing Year", sanitizeDropdown(selectedYear, years), [
+                            for (final y in years) DropdownMenuItem(value: y, child: Text(y))
+                          ], (v) => selectedYear = v)),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("date_of_reg", "Date of Registration", hint: "YYYY-MM-DD")),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: fld("rto_loc", "RTO Location", hint: "City / District")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("financier_name", "Financier Name", hint: "Bank / Institution Name")),
+                        ],
+                      ),
+                      
+                      secLabel("Maintenance & Documents"),
+                      Row(
+                        children: [
+                          Expanded(child: fld("fitness_cert_no", "Fitness Certificate No", hint: "Cert ID No")),
+                          const SizedBox(width: 16),
+                          Expanded(child: fld("fitness_expiry_date", "Fitness Expiry Date", hint: "YYYY-MM-DD")),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Expanded(child: ddl("Status", sanitizeDropdown(selectedStatus, allowedStatus), [
+                            for (final s in ["Active", "Inactive", "Maintenance", "Retired"]) DropdownMenuItem(value: s, child: Text(s))
+                          ], (v) => selectedStatus = v)),
+                          const SizedBox(width: 16),
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Row(
+                              children: [
+                                Checkbox(value: isActive, onChanged: (v) => setDlg(() => isActive = v ?? true), activeColor: T.green),
+                                Text("Active", style: AppText.sans(size: 14)),
+                              ],
+                            ),
+                          )),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                    ]),
                   ),
-                  const SizedBox(height: 12),
-                ],
-                fld("vehicle_no", "Vehicle Number *", hint: "e.g. MH12AB1234"),
-                fld("engine_no",  "Engine Number *",  hint: "Engine No"),
-                fld("chassis_no", "Chassis Number *", hint: "Chassis No"),
-                fld("mac_id",     "MAC ID *",         hint: "MAC ID"),
-                fld("make",       "Make",             hint: "e.g. Tata"),
-                fld("model",      "Model",            hint: "e.g. Starbus"),
-                fld("tt_no",      "TT Number",        hint: "TT No"),
-                const SizedBox(height: 8),
-                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: Text("Cancel", style: AppText.sans(size: 14, color: T.secondary)),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: T.green, foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(28.0),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: Text("Cancel", style: AppText.sans(size: 14, color: T.secondary)),
                     ),
-                    onPressed: saving ? null : () async {
-                      final vNo = ctrls["vehicle_no"]!.text.trim();
-                      final eng = ctrls["engine_no"]!.text.trim();
-                      final cha = ctrls["chassis_no"]!.text.trim();
-                      final mac = ctrls["mac_id"]!.text.trim();
-                      if (vNo.isEmpty || eng.isEmpty || cha.isEmpty || mac.isEmpty) {
-                        setDlg(() => err = "Vehicle No, Engine No, Chassis No and MAC ID are required.");
-                        return;
-                      }
-                      setDlg(() => saving = true);
-                      try {
-                        final payload = {
-                          "vehicle_no": vNo, "engine_no": eng,
-                          "chassis_no": cha, "mac_id": mac,
-                          if (ctrls["make"]!.text.trim().isNotEmpty) "make": ctrls["make"]!.text.trim(),
-                          if (ctrls["model"]!.text.trim().isNotEmpty) "model": ctrls["model"]!.text.trim(),
-                          if (ctrls["tt_no"]!.text.trim().isNotEmpty) "tt_no": ctrls["tt_no"]!.text.trim(),
-                          if (siteId != null) "site_id": [siteId],
-                        };
-                        if (existing == null) {
-                          await siteOpsClient.post("/master/vehicles", body: payload);
-                        } else {
-                          await siteOpsClient.patch("/master/vehicles/${existing.id}", body: payload);
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: T.green, foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      onPressed: saving ? null : () async {
+                        final vNo = ctrls["vehicle_no"]!.text.trim();
+                        final eng = ctrls["engine_no"]!.text.trim();
+                        final cha = ctrls["chassis_no"]!.text.trim();
+                        final mac = ctrls["mac_id"]!.text.trim();
+                        if (vNo.isEmpty || eng.isEmpty || cha.isEmpty || mac.isEmpty) {
+                          setDlg(() => err = "Vehicle No, Engine No, Chassis No and MAC ID are required.");
+                          return;
                         }
-                        if (ctx.mounted) Navigator.of(ctx).pop();
-                        _fetch(siteId);
-                        _toast(existing == null ? "Vehicle created!" : "Vehicle updated!");
-                      } catch (e) {
-                        setDlg(() { saving = false; err = e.toString().replaceAll("Exception: ", ""); });
-                      }
-                    },
-                    child: Text(saving ? "Saving…" : "Save",
-                        style: AppText.sans(size: 14, weight: FontWeight.w600, color: Colors.white)),
-                  ),
-                ]),
-              ]),
+                        if (selectedSites.isEmpty) {
+                          setDlg(() => err = "At least one site must be selected.");
+                          return;
+                        }
+                        if (selectedVehicleType == null) {
+                          setDlg(() => err = "Vehicle Type is required.");
+                          return;
+                        }
+                        
+                        setDlg(() => saving = true);
+                        try {
+                          final payload = {
+                            "vehicle_no": vNo, "engine_no": eng,
+                            "chassis_no": cha, "mac_id": mac,
+                            "site_ids": selectedSites,
+                            "vehicle_type_id": selectedVehicleType,
+                            if (ctrls["code"]!.text.trim().isNotEmpty) "code": ctrls["code"]!.text.trim(),
+                            if (ctrls["make"]!.text.trim().isNotEmpty) "make": ctrls["make"]!.text.trim(),
+                            if (ctrls["model"]!.text.trim().isNotEmpty) "model": ctrls["model"]!.text.trim(),
+                            if (ctrls["variant"]!.text.trim().isNotEmpty) "variant": ctrls["variant"]!.text.trim(),
+                            if (ctrls["tt_no"]!.text.trim().isNotEmpty) "tt_no": ctrls["tt_no"]!.text.trim(),
+                            if (ctrls["capacity"]!.text.trim().isNotEmpty) "capacity": ctrls["capacity"]!.text.trim(),
+                            if (ctrls["last_odo"]!.text.trim().isNotEmpty) "last_odo": double.tryParse(ctrls["last_odo"]!.text.trim()) ?? 0.0,
+                            if (ctrls["date_of_reg"]!.text.trim().isNotEmpty) "date_of_reg": ctrls["date_of_reg"]!.text.trim(),
+                            if (ctrls["rto_loc"]!.text.trim().isNotEmpty) "rto_loc": ctrls["rto_loc"]!.text.trim(),
+                            if (ctrls["financier_name"]!.text.trim().isNotEmpty) "financier_name": ctrls["financier_name"]!.text.trim(),
+                            if (ctrls["fitness_cert_no"]!.text.trim().isNotEmpty) "fitness_cert_no": ctrls["fitness_cert_no"]!.text.trim(),
+                            if (ctrls["fitness_expiry_date"]!.text.trim().isNotEmpty) "fitness_expiry_date": ctrls["fitness_expiry_date"]!.text.trim(),
+                            if (selectedAcNac != null) "ac_nac": selectedAcNac,
+                            if (selectedFuel != null) "fuel": selectedFuel,
+                            if (selectedYear != null) "manufacture_year": int.parse(selectedYear!),
+                            if (selectedStatus != null) "status": selectedStatus,
+                            "is_active": isActive,
+                          };
+                          
+                          if (existing == null) {
+                            await siteOpsClient.multipart("POST", "/master/vehicles", payload);
+                          } else {
+                            await siteOpsClient.multipart("PATCH", "/master/vehicles/${existing.id}", payload);
+                          }
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _fetch(ref.read(selectedSiteProvider).id);
+                          _toast(existing == null ? "Vehicle created!" : "Vehicle updated!");
+                        } catch (e) {
+                          setDlg(() { saving = false; err = e.toString().replaceAll("Exception: ", ""); });
+                        }
+                      },
+                      child: Text(saving ? "Saving…" : "Save",
+                          style: AppText.sans(size: 14, weight: FontWeight.w600, color: Colors.white)),
+                    ),
+                  ]),
+                ),
+              ],
             ),
           ),
         );
       }),
     );
-    ctrls.values.forEach((c) => c.dispose());
+    for (final c in ctrls.values) {
+      c.dispose();
+    }
   }
 
   // ─── Delete ───────────────────────────────────────────────────────────────
