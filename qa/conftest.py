@@ -8,7 +8,22 @@ from qa.personas import provision, token_for
 
 @pytest.fixture(scope="session")
 def base_url() -> str:
-    return os.environ.get("QA_API_BASE", "http://localhost:8123/api/v1")
+    """The isolated stack, not the database you work in.
+
+    `tools/qa_stack.sh up` clones dev into a scratch database and serves it on
+    its own port. The clone is what makes the floor both isolated and
+    realistic: a freshly migrated database has no depot data, so every report
+    test would skip, while a copy carries MBMT's real month.
+    """
+    url = os.environ.get("QA_API_BASE", "http://localhost:8124/api/v1")
+    try:
+        httpx.get(f"{url}/health", timeout=5.0)
+    except httpx.HTTPError:
+        pytest.skip(
+            f"no QA stack at {url} — run `make qa-up` "
+            "(or set QA_API_BASE to point somewhere else)"
+        )
+    return url
 
 
 @pytest.fixture(scope="session")

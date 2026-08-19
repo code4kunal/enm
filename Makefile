@@ -78,16 +78,27 @@ contract: ## Check the client's assumptions against the API's schema
 qa-driver: ## Fetch a chromedriver matching the installed Chrome
 	@./tools/fetch_chromedriver.sh
 
+QA_PORT  ?= 8124
+QA_BASE  ?= http://localhost:$(QA_PORT)/api/v1
+
+.PHONY: qa-up
+qa-up: ## Scratch database cloned from dev, plus an API of its own
+	@./tools/qa_stack.sh up
+
+.PHONY: qa-down
+qa-down: ## Stop the QA API and drop the scratch database
+	@./tools/qa_stack.sh down
+
 .PHONY: qa-api
-qa-api: ## API journeys against a running API on $(API_PORT)
-	@QA_API_BASE=$(API_BASE) $(PY) -m pytest qa/api -q
+qa-api: ## API journeys against the isolated QA stack
+	@QA_API_BASE=$(QA_BASE) $(PY) -m pytest qa/api -q
 
 .PHONY: qa-ui
 qa-ui: ## UI journeys in real Chrome against a running API
-	@API_BASE=$(API_BASE) FLUTTER=$(FLUTTER) ./tools/run_ui_journeys.sh $(TARGET)
+	@API_BASE=$(QA_BASE) FLUTTER=$(FLUTTER) ./tools/run_ui_journeys.sh $(TARGET)
 
 .PHONY: qa-smoke
-qa-smoke: qa-api qa-ui ## The QA floor. Both halves, against the real stack.
+qa-smoke: qa-api qa-ui ## The QA floor. Both halves, against the isolated stack.
 
 # --- running -----------------------------------------------------------------
 

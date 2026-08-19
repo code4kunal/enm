@@ -42,3 +42,7 @@ qa/**/__pycache__/
 .coverage
 backend/.coverage
 htmlcov/
+
+# QA scratch stack runtime
+.qa-api.pid
+.qa-api.log
