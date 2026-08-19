@@ -4,9 +4,9 @@ State after the site-management, snag-import and inspection-schedule work.
 
 ## Verified at this commit
 
-- `make check` — 229 backend tests, 221 app tests, both linters, and 296
+- `make check` — 240 backend tests, 221 app tests, both linters, and 298
   client-to-schema assumptions. Runs in about four minutes.
-- `make migrate-check` — 0001 → 0012 → base → 0012 on a throwaway database.
+- `make migrate-check` — 0001 → 0013 → base → 0013 on a throwaway database.
 - CI runs all of it on every push and pull request.
 - MBMT's August snag report imported end to end from a cold database: 57
   vehicles, 201 entries routed across five registers by TYPE OF WORK, 89
@@ -29,8 +29,9 @@ server-side and delivered through the platform share sheet.
 
 Two of the six charts are still empty for a reason rather than a bug. Tyre
 pressure and bus washing read from a checklist line the depot nominates with
-`chart_key`; until the D.I checklist is written and one line on it carries that
-key, both grids stay blank. kWh/km has no feed at all and says so on screen.
+`chart_key`, and no line on any sheet MBMT gave us records either thing — see
+section 6, it is a depot process gap, not a nomination we forgot to make.
+kWh/km has no feed at all and says so on screen.
 
 The **Unit Failure Statement** and **bus history card** now have capture
 screens and the depot's own 74-unit master, but no data yet — a unit reaches
@@ -82,33 +83,52 @@ PDF copies of the daily and ten-day sheets that arrived separately as .xlsx and
 parsed perfectly, so the docking schedules very likely exist as Excel too. That
 turns this into an afternoon with `scripts/seed_checklists.py`.
 
-## 6. `C/F` is routed on an assumption
+## 6. Master data the depot still owes us
+
+`defect_types` (16 GROUP values), `unit_types` (74) and `work_types` came off
+MBMT's own sheets. **`defect_sources` did not** — the seven values in
+`scripts/seed.py` were copied from `design/HANDOFF.md`, and no snag column maps
+to a defect source, so `defect_source_id` is null on every imported row and
+only hand-typed work-done entries ever set it. Ask the depot for their list, or
+drop the field.
+
+Two control charts are blocked further upstream than PENDING once said. Tyre
+pressure and bus washing wait on a `chart_key` nomination, but neither check
+exists on the D.I sheet (14 lines, none about tyres or washing) or the ten-day
+sheet — its closest is line 19, "Check all tyres wear, damages and deformity",
+which is wear, not pressure. Nominating a line cannot fix this; MBMT has to
+start recording both.
+
+`fitted_units` is still empty, so the Unit Failure Statement and the bus
+history card render with a master and no data.
+
+## 7. `C/F` is routed on an assumption
 
 `C/F` (carried forward) files as day-to-day work done. That one was not
 specified; the rest came from you. Change it in the work-type master — the
 routing is data, not code.
 
-## 7. Microsoft SSO
+## 8. Microsoft SSO
 
 `ApiAuthRepository.signInWithMicrosoft` still throws a clear "use your User ID"
 message. `POST /auth/sso` does real Entra ID validation (JWKS, iss, aud, exp);
 what is missing is MSAL on the device to obtain the token. Set `MS_TENANT_ID` /
 `MS_CLIENT_ID`, then wire an MSAL client and post the id_token.
 
-## 8. Photo attachment
+## 9. Photo attachment
 
 `PhotoAttachButton` toggles a flag only. The endpoints exist
 (`POST/DELETE /entries/{id}/photo`). Needs `image_picker`, then an `uploadPhoto`
 on `EntryRepository` calling `ApiClient.upload` — the multipart path is already
 written and used by the import.
 
-## 9. Offline capture
+## 10. Offline capture
 
 Ground staff work with patchy connectivity. Entries should queue locally and
 sync when the network returns. The repository interface is the right seam: a
 `QueuedEntryRepository` decorating the real one, backed by local storage.
 
-## 10. Smaller things
+## 11. Smaller things
 
 - **Import previews are process-local.** `PreviewStore` holds staged uploads in
   memory for 30 minutes. Move it to Redis before running more than one uvicorn
