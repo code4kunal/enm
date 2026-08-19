@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,12 +19,35 @@ from app.schemas.site_config import (
 #: A pull more often than this is telematics abuse, not fresher data.
 MIN_SYNC_MINUTES = 5
 
+#: The three-shift day every depot we onboard actually runs. Seeded once, when
+#: a site's config row is first created, so a new site can file a Daily Work
+#: Done entry against a real shift instead of an empty dropdown. A manager who
+#: clears or edits them is not overruled — `replace` writes exactly what it is
+#: given and this never runs again for that site.
+DEFAULT_SHIFTS: tuple[tuple[Shift, time, time], ...] = (
+    (Shift.A, time(6, 0), time(14, 0)),
+    (Shift.B, time(14, 0), time(22, 0)),
+    # C wraps midnight, which `end <= start` is how ShiftWindow says.
+    (Shift.C, time(22, 0), time(6, 0)),
+)
+
 
 async def get_or_create(session: AsyncSession, site_code: str) -> SiteConfig:
     config = await session.get(SiteConfig, site_code)
     if config is None:
         config = SiteConfig(site_code=site_code)
         session.add(config)
+        for shift, start, end in DEFAULT_SHIFTS:
+            session.add(
+                ShiftWindow(
+                    site_code=site_code,
+                    shift=shift,
+                    start_time=start,
+                    end_time=end,
+                )
+            )
+        # Flushed here rather than left pending: `replace` deletes the shift
+        # rows straight after calling this, and the delete has to see them.
         await session.flush()
     return config
 

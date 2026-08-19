@@ -40,6 +40,30 @@ async def test_a_site_starts_with_usable_defaults(client: AsyncClient) -> None:
     assert body["reminder_lead_km"] == 500
     assert body["odometer_sync"]["interval_minutes"] == 60
 
+    # Service plans stay empty — only the depot knows its own ladder — but the
+    # three-shift day is the same everywhere, and an empty shift dropdown on
+    # the Daily Work Done form is a worse default than a wrong one.
+    assert [(s["shift"], s["start"], s["end"]) for s in body["shifts"]] == [
+        ("A", "06:00", "14:00"),
+        ("B", "14:00", "22:00"),
+        ("C", "22:00", "06:00"),
+    ]
+
+
+async def test_clearing_the_shifts_is_not_undone_by_the_defaults(
+    client: AsyncClient,
+) -> None:
+    """The defaults are a starting point, not a policy.
+
+    They are seeded once with the config row. A site that deliberately runs no
+    named shifts must not have them grow back on the next read.
+    """
+    assert (await _put(client, _with(shifts=[]))).status_code == 200
+
+    h = await auth_headers(client)
+    r = await client.get("/sites/MBMT/config", headers=h)
+    assert r.json()["shifts"] == []
+
 
 async def test_saving_replaces_the_whole_aggregate(client: AsyncClient) -> None:
     assert (await _put(client, VALID)).status_code == 200
