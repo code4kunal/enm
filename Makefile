@@ -78,9 +78,16 @@ contract: ## Check the client's assumptions against the API's schema
 qa-driver: ## Fetch a chromedriver matching the installed Chrome
 	@./tools/fetch_chromedriver.sh
 
+.PHONY: qa-api
+qa-api: ## API journeys against a running API on $(API_PORT)
+	@QA_API_BASE=$(API_BASE) $(PY) -m pytest qa/api -q
+
 .PHONY: qa-ui
 qa-ui: ## UI journeys in real Chrome against a running API
 	@API_BASE=$(API_BASE) FLUTTER=$(FLUTTER) ./tools/run_ui_journeys.sh $(TARGET)
+
+.PHONY: qa-smoke
+qa-smoke: qa-api qa-ui ## The QA floor. Both halves, against the real stack.
 
 # --- running -----------------------------------------------------------------
 
