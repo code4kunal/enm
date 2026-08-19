@@ -72,6 +72,16 @@ test-app:
 contract: ## Check the client's assumptions against the API's schema
 	@$(PY) tools/check_contract.py
 
+# --- QA floor ----------------------------------------------------------------
+
+.PHONY: qa-driver
+qa-driver: ## Fetch a chromedriver matching the installed Chrome
+	@./tools/fetch_chromedriver.sh
+
+.PHONY: qa-ui
+qa-ui: ## UI journeys in real Chrome against a running API
+	@API_BASE=$(API_BASE) FLUTTER=$(FLUTTER) ./tools/run_ui_journeys.sh $(TARGET)
+
 # --- running -----------------------------------------------------------------
 
 .PHONY: db

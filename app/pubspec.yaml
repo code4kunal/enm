@@ -24,6 +24,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Drives the real client in a real browser. CanvasKit paints to a canvas,
+  # so the DOM carries no text and no DOM-based tool can see this app.
+  integration_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true

@@ -30,3 +30,7 @@ backend/.env
 # disk because the importers and their tests read them, never in the history:
 # this repository is not where a customer's data belongs.
 /data/
+
+# Pinned chromedriver for the QA floor. Fetched by `make qa-driver`, never
+# committed: it is an 9MB platform binary tied to one Chrome build.
+app/.tooling/chromedriver
