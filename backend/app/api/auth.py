@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, status
 import httpx
+from fastapi import APIRouter, Request, status
 from sqlalchemy import select, update
 
 from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.errors import InactiveUser, NotFound, Unauthorized, ValidationError
-from app.models.user import RefreshToken, User
 from app.models.enums import Role
+from app.models.user import RefreshToken, User
 from app.schemas.auth import (
     LoginIn,
     RefreshIn,
