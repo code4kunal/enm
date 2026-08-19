@@ -15,6 +15,10 @@ test is a hole, and the hole should be visible rather than absent.
 | P | Register x role write permission | CLAUDE.md role ladder | `test_permissions.py` |
 | T | A manager cannot reach another site | CLAUDE.md, "server re-checks site_access" | `test_permissions.py` |
 | I | Personas provision themselves | — (suite's own prerequisite) | `test_personas.py` |
+| E | An entry can be written back unchanged | HANDOFF 5, "save updates in place" | `test_entry_lifecycle.py` |
+| D | An edit moves the derived report | DMR is computed on read | `test_entry_lifecycle.py` |
+| R | Every derived report renders | HANDOFF, Annexure-IV | `test_reports.py` |
+| C | A chart claiming availability has data | the API's own `available` flag | `test_reports.py` |
 
 A dash means the journey is not covered. Fill it in; never delete the row.
 
