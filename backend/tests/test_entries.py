@@ -114,6 +114,62 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert again.json()["error"]["code"] == "CONFLICT"
 
 
+async def test_a_breakdown_can_be_written_back_unchanged(
+    client: AsyncClient,
+) -> None:
+    """What GET returns, PUT has to accept.
+
+    An edit form reads an entry, changes one field and writes it back. The
+    serialised `data` used to carry `resolved_at`, which `BreakdownData`
+    forbids, so a round trip 400ed on a key the client never set. Lifecycle
+    state belongs to the entry — `status` already carries it — not to the
+    register payload, which mirrors a paper column.
+    """
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=breakdown(), headers=h)
+    assert created.status_code == 201, created.text
+    entry = created.json()
+    assert "resolved_at" not in entry["data"]
+
+    echoed = await client.put(
+        f"/entries/{entry['id']}",
+        json={
+            "register": "breakdown",
+            "site": "MBMT",
+            "date": entry["date"],
+            "data": entry["data"],
+        },
+        headers=h,
+    )
+    assert echoed.status_code == 200, echoed.text
+    assert echoed.json()["data"]["route"] == "7"
+
+
+async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> None:
+    """The regression only showed up once `resolved_at` had a value."""
+    h = await auth_headers(client)
+    entry = (await client.post("/entries", json=breakdown(), headers=h)).json()
+    assert (
+        await client.post(f"/entries/{entry['id']}/resolve", headers=h)
+    ).status_code == 200
+
+    fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
+    assert fetched["status"] == "resolved"
+    assert "resolved_at" not in fetched["data"]
+
+    again = await client.put(
+        f"/entries/{entry['id']}",
+        json={
+            "register": "breakdown",
+            "site": "MBMT",
+            "date": fetched["date"],
+            "data": fetched["data"],
+        },
+        headers=h,
+    )
+    assert again.status_code == 200, again.text
+
+
 async def test_resolve_notifies_supervisors_on_open(client: AsyncClient) -> None:
     mgr = await auth_headers(client)
     await client.post("/entries", json=breakdown(), headers=mgr)

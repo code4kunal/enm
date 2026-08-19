@@ -326,9 +326,6 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "attended_details": d.attended_details,
             "remarks": d.remarks,
             "supervisor": d.supervisor,
-            "resolved_at": (
-                d.resolved_at.isoformat() if d.resolved_at else None
-            ),
         }
     return {
         "bus_no": bus_no,
@@ -403,7 +400,7 @@ DETAIL_COLUMNS = {
 def csv_details(entry: Entry) -> str:
     """Flatten the register payload into one human-readable CSV cell."""
     data = serialize_data(entry)
-    skip = {"bus_no", "resolved_at"}
+    skip = {"bus_no"}
     parts = [
         f"{k.replace('_', ' ').title()}: {v}"
         for k, v in data.items()

@@ -45,12 +45,6 @@ def test_an_entry_can_be_written_back_unchanged(
     with client_for("manager") as c:
         r = c.put(f"/entries/{entry['id']}", json=body)
 
-    if register == "breakdown":
-        pytest.xfail(
-            "qa/findings/2026-08-19-0004.md — GET emits `resolved_at` inside a "
-            "breakdown's data and PUT forbids it, so a breakdown cannot be "
-            "round-tripped."
-        )
     assert r.status_code == 200, (
         f"{register} could not be written back unchanged: {r.text}"
     )
