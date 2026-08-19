@@ -61,6 +61,7 @@ class BreakdownData(_DataBase):
     bus_no: BusNo
     defect_type: OptText = None
     driver_id: OptText = None
+    route: OptText = None
     location: OptText = None
     complaint: Req = Field(min_length=1)
     breakdown_time: HHMM | None = None

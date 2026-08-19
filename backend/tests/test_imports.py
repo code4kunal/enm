@@ -508,6 +508,48 @@ async def test_type_of_work_routes_the_sheet_to_its_registers(
     assert registers == {"breakdown", "driver_complaint", "work_done"}
 
 
+async def test_the_route_column_reaches_the_breakdown_register(
+    client: AsyncClient,
+) -> None:
+    """ROUTE was mapped, validated and then dropped on the floor.
+
+    Every register's map is a filter — a snag key absent from it is simply not
+    carried — so a column can be bound in the profile, pass every row check and
+    still reach no table. This is the test that says it lands.
+    """
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    sheet = (
+        "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ROUTE,LOCATION\n"
+        "2026-08-01,MH40LY1894,B.D,No traction,7,Kashimira signal\n"
+    )
+    preview = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=sheet,
+        mappings=_mappings(
+            {
+                "date": "DATE",
+                "bus": "VEHICLE NO",
+                "work_type": "TYPE OF WORK",
+                "complaint": "DRIVER COMPLAINT",
+                "route": "ROUTE",
+                "loc": "LOCATION",
+            }
+        ),
+    )
+    assert preview.status_code == 200, preview.text
+    assert (await _commit(client, h, preview.json()["token"])).status_code == 200
+
+    items = (await client.get("/entries?site=MBMT", headers=h)).json()["items"]
+    breakdowns = [e for e in items if e["register"] == "breakdown"]
+    assert len(breakdowns) == 1
+    assert breakdowns[0]["data"]["route"] == "7"
+    assert breakdowns[0]["data"]["location"] == "Kashimira signal"
+
+
 async def test_re_importing_the_same_month_changes_nothing(
     client: AsyncClient,
 ) -> None:

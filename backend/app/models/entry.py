@@ -246,6 +246,10 @@ class BreakdownEntry(Base):
         Integer, ForeignKey("defect_types.id", ondelete="RESTRICT"), nullable=True
     )
     driver_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The service route the bus was running when it failed. The snag report
+    # writes it in its own ROUTE column, and a breakdown is the only register
+    # where the bus was out on the road rather than on the depot floor.
+    route: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
     breakdown_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)

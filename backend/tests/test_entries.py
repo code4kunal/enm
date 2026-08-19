@@ -35,6 +35,7 @@ def breakdown() -> dict:
         "data": {
             "bus_no": "MH40LY1895",
             "driver_id": "DRV221",
+            "route": "7",
             "location": "Kashimira signal",
             "complaint": "HV contactor tripped, bus immobile",
             "breakdown_time": "14:20",
@@ -100,6 +101,9 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert entry["status"] == "open"
     assert entry["data"]["breakdown_time"] == "14:20"
     assert entry["data"]["loss_km"] == 18.5
+    # The route the bus was running when it failed. Read and thrown away until
+    # `breakdown_entries` had a column for it.
+    assert entry["data"]["route"] == "7"
 
     resolved = await client.post(f"/entries/{entry['id']}/resolve", headers=h)
     assert resolved.status_code == 200

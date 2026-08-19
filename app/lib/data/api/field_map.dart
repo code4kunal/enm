@@ -41,6 +41,7 @@ abstract final class RegisterFieldMap {
       'bus': 'bus_no',
       'defectType': 'defect_type',
       'driver': 'driver_id',
+      'route': 'route',
       'loc': 'location',
       'complaint': 'complaint',
       't_bd': 'breakdown_time',

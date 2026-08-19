@@ -149,6 +149,7 @@ async def _build_detail(
         row = BreakdownEntry(
             defect_type=typ,
             driver_id=data.driver_id,
+            route=data.route,
             location=data.location,
             complaint=data.complaint,
             breakdown_time=data.breakdown_time,
@@ -163,6 +164,7 @@ async def _build_detail(
             data.complaint,
             data.defect_type,
             data.driver_id,
+            data.route,
             data.location,
             data.attended_details,
             data.remarks,
@@ -314,6 +316,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "bus_no": bus_no,
             "defect_type": d.defect_type.name if d.defect_type else None,
             "driver_id": d.driver_id,
+            "route": d.route,
             "location": d.location,
             "complaint": d.complaint,
             "breakdown_time": _hhmm(d.breakdown_time),

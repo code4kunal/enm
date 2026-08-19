@@ -226,14 +226,21 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         label: 'Driver ID',
         type: FieldType.text,
         placeholder: 'e.g. DRV-2231',
-        width: FieldWidth.half,
+        width: FieldWidth.third,
+      ),
+      FieldDef(
+        key: 'route',
+        label: 'Route',
+        type: FieldType.text,
+        placeholder: 'e.g. 7',
+        width: FieldWidth.third,
       ),
       FieldDef(
         key: 'loc',
         label: 'Location of Breakdown',
         type: FieldType.text,
         placeholder: 'e.g. Kashimira signal, SV Road',
-        width: FieldWidth.half,
+        width: FieldWidth.third,
       ),
       FieldDef(
         key: 'complaint',
