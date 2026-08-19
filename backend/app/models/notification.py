@@ -36,7 +36,7 @@ class Notification(Base):
     entry_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("entries.id", ondelete="CASCADE"), nullable=True
     )
-    site_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    site_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_read: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

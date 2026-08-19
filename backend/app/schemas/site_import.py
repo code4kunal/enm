@@ -15,7 +15,7 @@ class ColumnMappingIO(BaseModel):
 
 
 class ImportProfileIn(BaseModel):
-    name: str = Field(min_length=1, max_length=160)
+    name: str = Field(min_length=1, max_length=500)
     target: ImportTarget
     mappings: list[ColumnMappingIO] = Field(default_factory=list)
     sheet_name: str | None = Field(default=None, max_length=120)

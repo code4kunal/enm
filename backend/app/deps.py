@@ -125,7 +125,7 @@ def assert_site_admin(user: User, site_code: str) -> str:
 
 async def site_param(
     user: CurrentUser,
-    site: Annotated[str, Query(min_length=1, max_length=16)],
+    site: Annotated[str, Query(min_length=1, max_length=50)],
 ) -> str:
     """Every scoped endpoint takes `?site=` and validates it against site_access."""
     return assert_site_access(user, site)

@@ -36,7 +36,7 @@ class Site(Base):
 
     __tablename__ = "sites"
 
-    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
@@ -71,7 +71,7 @@ class Vehicle(Base):
     # normalized: uppercase, no whitespace
     registration_no: Mapped[str] = mapped_column(String(32), nullable=False)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
@@ -102,7 +102,7 @@ class Vehicle(Base):
     last_service_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_service_on: Mapped[date_t | None] = mapped_column(Date, nullable=True)
     last_service_code: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="", server_default=""
+        String(50), nullable=False, default="", server_default=""
     )
 
     site: Mapped[Site] = relationship(back_populates="vehicles")

@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import '../state/providers.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -454,16 +455,29 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
                 siteType: j['site_type']?.toString() ?? '',
               ))
           .toList();
+      
       if (mounted) {
-        setState(() {
-          _sites = sites;
-          if (sites.isNotEmpty) {
-            _selected = sites.first;
-            ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
-            ref.read(sessionProvider.notifier).switchSite(sites.first.id);
-          }
-          _loading = false;
-        });
+        if (sites.isNotEmpty) {
+          final firstSite = sites.first;
+          final localSites = await ref.read(siteRepositoryProvider).fetchSites();
+          final matched = localSites.where(
+            (s) => s.name.trim().toLowerCase() == firstSite.name.trim().toLowerCase(),
+          ).toList();
+          final code = matched.isNotEmpty ? matched.first.code : firstSite.id;
+          
+          setState(() {
+            _sites = sites;
+            _selected = firstSite;
+            ref.read(selectedSiteProvider.notifier).select(firstSite.id, firstSite.name);
+            ref.read(sessionProvider.notifier).switchSite(code);
+            _loading = false;
+          });
+        } else {
+          setState(() {
+            _sites = sites;
+            _loading = false;
+          });
+        }
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -517,12 +531,18 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
                 ),
               ),
           ],
-          onChanged: (id) {
+          onChanged: (id) async {
             if (id != null) {
               final site = _sites.firstWhere((s) => s.id == id);
               setState(() => _selected = site);
               ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
-              ref.read(sessionProvider.notifier).switchSite(site.id);
+              
+              final localSites = await ref.read(siteRepositoryProvider).fetchSites();
+              final matched = localSites.where(
+                (s) => s.name.trim().toLowerCase() == site.name.trim().toLowerCase(),
+              ).toList();
+              final code = matched.isNotEmpty ? matched.first.code : site.id;
+              ref.read(sessionProvider.notifier).switchSite(code);
             }
           },
         ),

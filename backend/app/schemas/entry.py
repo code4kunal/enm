@@ -98,7 +98,7 @@ REGISTER_DATA_SCHEMAS: dict[Register, type[_DataBase]] = {
 
 class EntryCreate(BaseModel):
     register: Register
-    site: str = Field(min_length=1, max_length=16)
+    site: str = Field(min_length=1, max_length=50)
     date: date_t
     entry_time: HHMM | None = None
     data: dict[str, Any]

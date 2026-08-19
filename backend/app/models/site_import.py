@@ -22,7 +22,7 @@ class SiteImportProfile(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     target: Mapped[ImportTarget] = mapped_column(
@@ -85,7 +85,7 @@ class SiteImportRun(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     # Kept by value as well as by id: the run history has to survive the
     # profile being deleted.

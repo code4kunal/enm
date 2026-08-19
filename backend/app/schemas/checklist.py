@@ -60,7 +60,7 @@ class ChecklistList(BaseModel):
 
 
 class ChecklistUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=160)
+    name: str | None = Field(default=None, min_length=1, max_length=500)
     variant: str | None = Field(default=None, max_length=40)
     is_active: bool | None = None
     items: list[ChecklistItemIO] = Field(default_factory=list)

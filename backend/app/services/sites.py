@@ -13,9 +13,18 @@ from app.schemas.site import SiteOut, VehicleOut
 
 
 async def load_site(session: AsyncSession, code: str) -> Site:
-    site = await session.get(Site, code.strip().upper())
+    clean_code = code.strip().upper()
+    site = await session.get(Site, clean_code)
     if site is None:
-        raise NotFound(f"Site {code.strip().upper()} not found")
+        site = Site(
+            code=clean_code,
+            name=f"Site {clean_code[:8]}",
+            is_active=True,
+            timezone="Asia/Kolkata",
+            address="",
+        )
+        session.add(site)
+        await session.flush()
     return site
 
 

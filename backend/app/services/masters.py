@@ -23,10 +23,15 @@ async def resolve_vehicle(
         )
     )
     if vehicle is None:
-        raise ValidationError(
-            f"{normalized} is not on the {site_code} fleet",
-            {"bus_no": "unknown vehicle for this site"},
+        vehicle = Vehicle(
+            registration_no=normalized,
+            site_code=site_code,
+            is_active=True,
+            make="",
+            model="",
         )
+        session.add(vehicle)
+        await session.flush()
     if not vehicle.is_active:
         raise ValidationError(
             f"{normalized} is retired", {"bus_no": "vehicle is retired"}

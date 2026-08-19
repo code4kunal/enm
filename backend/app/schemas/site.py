@@ -44,7 +44,7 @@ class SiteList(BaseModel):
 
 
 class SiteCreate(BaseModel):
-    code: str = Field(min_length=2, max_length=16)
+    code: str = Field(min_length=2, max_length=50)
     name: str = Field(min_length=1, max_length=120)
     timezone: str = Field(default="Asia/Kolkata", max_length=64)
     address: str = Field(default="", max_length=255)
@@ -144,7 +144,7 @@ class OdometerSyncOut(BaseModel):
 
 
 class ServiceRecordIn(BaseModel):
-    plan_code: str = Field(min_length=1, max_length=16)
+    plan_code: str = Field(min_length=1, max_length=50)
     odometer_km: int = Field(ge=0, le=10_000_000)
     serviced_on: date_t
 

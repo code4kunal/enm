@@ -7,6 +7,7 @@ import '../data/repositories.dart';
 import 'providers.dart';
 import 'session.dart';
 import 'sites.dart';
+import 'schedule.dart';
 
 /// What the last scheduled odometer pull did.
 @immutable
@@ -46,6 +47,8 @@ class OdometerSyncState {
   }
 }
 
+final lastSyncedSiteProvider = StateProvider<String?>((ref) => null);
+
 /// Keeps every vehicle's odometer current on a schedule.
 ///
 /// The maintenance plan is distance-driven, so a stale odometer silently stops
@@ -62,15 +65,27 @@ class OdometerSyncController extends Notifier<OdometerSyncState> {
         ref.watch(sessionProvider.select((s) => s.stage)) == AuthStage.signedIn;
     final config = ref.watch(siteConfigProvider).valueOrNull;
 
-    _timer?.cancel();
     ref.onDispose(() => _timer?.cancel());
 
-    if (signedIn && site.isNotEmpty && (config?.odometerSync.enabled ?? false)) {
-      final interval = config!.odometerSync.interval;
-      _timer = Timer.periodic(interval, (_) => syncNow());
-      // Pull once on arrival rather than waiting a whole interval for the first
-      // reading — a manager opening the app wants today's numbers.
-      scheduleMicrotask(syncNow);
+    if (!signedIn || site.isEmpty) {
+      ref.read(lastSyncedSiteProvider.notifier).state = null;
+      _timer?.cancel();
+    } else if (config != null) {
+      if (config.odometerSync.enabled) {
+        final lastSyncedSite = ref.read(lastSyncedSiteProvider);
+        if (lastSyncedSite != site) {
+          ref.read(lastSyncedSiteProvider.notifier).state = site;
+          _timer?.cancel();
+          final interval = config.odometerSync.interval;
+          _timer = Timer.periodic(interval, (_) => syncNow());
+          // Pull once on arrival rather than waiting a whole interval for the first
+          // reading — a manager opening the app wants today's numbers.
+          scheduleMicrotask(syncNow);
+        }
+      } else {
+        ref.read(lastSyncedSiteProvider.notifier).state = null;
+        _timer?.cancel();
+      }
     }
 
     return const OdometerSyncState();
@@ -94,7 +109,8 @@ class OdometerSyncController extends Notifier<OdometerSyncState> {
       // Fresh readings change what is due, so the fleet and its schedule
       // both have to be re-read.
       ref.invalidate(vehiclesProvider);
-      ref.invalidate(siteConfigProvider);
+      ref.invalidate(calendarProvider);
+      ref.invalidate(alertsProvider);
     } on ApiException catch (e) {
       state = state.copyWith(running: false, error: e.message);
     }

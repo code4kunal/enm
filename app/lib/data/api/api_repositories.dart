@@ -1,3 +1,4 @@
+import 'siteops_client.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:typed_data';
@@ -45,20 +46,31 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<String>> vehicleNumbers({required String siteCode}) async {
-    // Only active vehicles: a retired one stays on past entries but must not
-    // be offered on a new one.
-    final json = await _api.get('/sites/$siteCode/vehicles',
-        query: const <String, String>{'active': 'true'});
-    return itemsOf(json).map((j) => j['registration_no'] as String).toList();
+    try {
+      final json = await siteOpsClient.get(
+        '/master/vehicles',
+        query: <String, String>{
+          'site_id': siteCode,
+          'page_size': '100',
+        },
+      );
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      return data
+          .map((j) => (j as Map<String, dynamic>)['vehicle_no']?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <String>[];
+    }
   }
 
   @override
   Future<List<String>> defectSources() async =>
-      _names(await _api.get('/master/defect-sources'));
+      _names(await siteOpsClient.get('/master/defect-sources', query: const <String, String>{'pagination': 'false'}));
 
   @override
   Future<List<String>> defectTypes() async =>
-      _names(await _api.get('/master/defect-types'));
+      _names(await siteOpsClient.get('/master/defect-types', query: const <String, String>{'pagination': 'false'}));
 
   @override
   Future<List<String>> staff({required String siteCode}) async {
@@ -71,18 +83,30 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {
-    final json = await _api.get(_masterPath(kind),
-        query: const <String, String>{'include_inactive': 'true'});
-    return itemsOf(json).map(MasterListItem.fromJson).toList();
+    final json = await siteOpsClient.get(
+      _masterPath(kind),
+      query: const <String, String>{
+        'include_inactive': 'true',
+        'page_size': '10',
+        'page': '1',
+      },
+    );
+    final List<dynamic> list = (json is Map)
+        ? (json['data'] ?? json['items'] ?? const <dynamic>[])
+        : (json is List ? json : const <dynamic>[]);
+    return list.cast<Map<String, dynamic>>().map(MasterListItem.fromJson).toList();
   }
 
   @override
   Future<MasterListItem> addMasterItem(MasterListKind kind, String name) async {
-    final json = await _api.post(
+    final json = await siteOpsClient.post(
       _masterPath(kind),
       body: <String, dynamic>{'name': name.trim()},
     );
-    return MasterListItem.fromJson(json as Map<String, dynamic>);
+    final map = (json is Map && json.containsKey('data'))
+        ? json['data'] as Map<String, dynamic>
+        : json as Map<String, dynamic>;
+    return MasterListItem.fromJson(map);
   }
 
   @override
@@ -90,7 +114,7 @@ class ApiMasterDataRepository implements MasterDataRepository {
     MasterListKind kind,
     MasterListItem item,
   ) async {
-    final json = await _api.put(
+    final json = await siteOpsClient.put(
       '${_masterPath(kind)}/${item.id}',
       body: <String, dynamic>{
         'name': item.name,
@@ -98,7 +122,10 @@ class ApiMasterDataRepository implements MasterDataRepository {
         'sort_order': item.sortOrder,
       },
     );
-    return MasterListItem.fromJson(json as Map<String, dynamic>);
+    final map = (json is Map && json.containsKey('data'))
+        ? json['data'] as Map<String, dynamic>
+        : json as Map<String, dynamic>;
+    return MasterListItem.fromJson(map);
   }
 
   static String _masterPath(MasterListKind kind) =>
@@ -108,10 +135,18 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   /// Names for a dropdown. The server already filters inactive rows here; the
   /// flag is re-checked so a stale response cannot reintroduce a hidden value.
-  static List<String> _names(dynamic json) => itemsOf(json)
-      .where((j) => j['is_active'] as bool? ?? true)
-      .map((j) => j['name'] as String)
-      .toList();
+  static List<String> _names(dynamic json) {
+    List<dynamic> list = [];
+    if (json is List) {
+      list = json;
+    } else if (json is Map) {
+      list = json['data'] ?? json['items'] ?? [];
+    }
+    return list
+        .where((j) => (j as Map)['is_active'] as bool? ?? true)
+        .map((j) => (j as Map)['name'] as String)
+        .toList();
+  }
 }
 
 // ─── Sites ────────────────────────────────────────────────────────────────

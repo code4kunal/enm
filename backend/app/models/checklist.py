@@ -50,7 +50,7 @@ class ChecklistTemplate(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     work_type_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("work_types.id", ondelete="CASCADE"), nullable=False
@@ -147,7 +147,7 @@ class InspectionEntry(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
     )
     vehicle_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False

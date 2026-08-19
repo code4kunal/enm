@@ -6,7 +6,7 @@ from app.schemas.common import HHMM, ISTDateTime
 
 
 class ServicePlanIO(BaseModel):
-    code: str = Field(max_length=16)
+    code: str = Field(max_length=50)
     name: str = Field(default="", max_length=120)
     #: 0 means this plan is time-driven only, and vice versa
     interval_km: int = Field(default=0, ge=0, le=10_000_000)

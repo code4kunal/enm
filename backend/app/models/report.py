@@ -46,7 +46,7 @@ class DmrDay(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     report_date: Mapped[date_t] = mapped_column(Date, nullable=False)
 
@@ -173,7 +173,7 @@ class OffRoadCase(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     vehicle_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False
@@ -275,7 +275,7 @@ class FittedUnit(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     vehicle_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("vehicles.id", ondelete="RESTRICT"), nullable=False

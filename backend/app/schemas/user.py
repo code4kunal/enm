@@ -36,7 +36,7 @@ class UserBrief(BaseModel):
 
 
 class UserCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=160)
+    name: str = Field(min_length=1, max_length=500)
     user_id: str = Field(min_length=1, max_length=64)
     email: EmailStr | None = None
     role: Role
@@ -66,7 +66,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=160)
+    name: str | None = Field(default=None, min_length=1, max_length=500)
     user_id: str | None = Field(default=None, min_length=1, max_length=64)
     email: EmailStr | None = None
     role: Role | None = None

@@ -53,7 +53,7 @@ def _model(kind: str) -> type[DefectSource] | type[DefectType]:
 async def list_staff(
     user: CurrentUser,
     session: SessionDep,
-    site: Annotated[str, Query(min_length=1, max_length=16)],
+    site: Annotated[str, Query(min_length=1, max_length=50)],
 ) -> StaffList:
     """The people working at a site, for the "reported by" and "supervisor"
     dropdowns on the register forms.

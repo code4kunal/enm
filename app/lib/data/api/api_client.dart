@@ -33,7 +33,8 @@ class UnsupportedByBackend extends ApiException {
 /// JSON transport with bearer auth and one transparent refresh on 401.
 class ApiClient {
   ApiClient({String? baseUrl, http.Client? httpClient})
-      : baseUrl = (baseUrl ?? ApiConfig.baseUrl).replaceAll(RegExp(r'/+$'), ''),
+      : selectedSiteId = null,
+        baseUrl = (baseUrl ?? ApiConfig.baseUrl).replaceAll(RegExp(r'/+$'), ''),
         _http = httpClient ?? http.Client();
 
   final String baseUrl;
@@ -41,6 +42,7 @@ class ApiClient {
 
   String? _accessToken;
   String? _refreshToken;
+  String? selectedSiteId;
 
   static const _accessKey = 'transvolt.access_token';
   static const _refreshKey = 'transvolt.refresh_token';
@@ -110,7 +112,8 @@ class ApiClient {
     String? contentType,
   }) async {
     Future<http.StreamedResponse> attempt() {
-      final request = http.MultipartRequest('POST', _uri(path, null))
+      final q = (selectedSiteId != null && selectedSiteId!.isNotEmpty) ? <String, String>{'site_id': selectedSiteId!} : null;
+      final request = http.MultipartRequest('POST', _uri(path, q))
         ..fields.addAll(fields)
         ..files.add(
           http.MultipartFile.fromBytes(field, bytes, filename: fileName),

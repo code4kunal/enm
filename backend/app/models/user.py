@@ -80,7 +80,7 @@ class UserSiteAccess(Base):
         String(32), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), primary_key=True
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), primary_key=True
     )
 
     user: Mapped[User] = relationship(back_populates="site_links")

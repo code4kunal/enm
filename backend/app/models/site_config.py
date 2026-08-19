@@ -29,7 +29,7 @@ class SiteConfig(Base):
     __tablename__ = "site_configs"
 
     site_code: Mapped[str] = mapped_column(
-        String(16),
+        String(50),
         ForeignKey("sites.code", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -92,9 +92,9 @@ class ServicePlan(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
-    code: Mapped[str] = mapped_column(String(16), nullable=False)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     interval_km: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
@@ -136,7 +136,7 @@ class ShiftWindow(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
     )
     shift: Mapped[Shift] = mapped_column(
         Enum(Shift, name=SHIFT_ENUM, values_callable=lambda e: [m.value for m in e]),

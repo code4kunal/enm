@@ -103,7 +103,7 @@ class Entry(Base):
         nullable=False,
     )
     site_code: Mapped[str] = mapped_column(
-        String(16), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
+        String(50), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
     )
     bus_id: Mapped[str] = _vehicle_fk()
     # Which TYPE OF WORK this was. Null for entries typed straight into a

@@ -1,3 +1,5 @@
+import 'selected_site.dart';
+import '../data/api/siteops_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/api/api_client.dart';
@@ -18,6 +20,10 @@ import 'session.dart';
 /// repository.
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient();
+  ref.listen<SelectedSiteState>(selectedSiteProvider, (prev, next) {
+    client.selectedSiteId = next.id;
+    siteOpsClient.selectedSiteId = next.id;
+  }, fireImmediately: true);
   ref.onDispose(client.close);
   return client;
 });
@@ -98,12 +104,20 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   if (site.isEmpty) return MasterData.empty;
 
+  Future<List<String>> safe(Future<List<String>> Function() call) async {
+    try {
+      return await call();
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
   final results = await Future.wait(<Future<List<String>>>[
-    repo.siteCodes(),
-    repo.vehicleNumbers(siteCode: site),
-    repo.defectSources(),
-    repo.defectTypes(),
-    repo.staff(siteCode: site),
+    safe(() => repo.siteCodes()),
+    safe(() => repo.vehicleNumbers(siteCode: site)),
+    safe(() => repo.defectSources()),
+    safe(() => repo.defectTypes()),
+    safe(() => repo.staff(siteCode: site)),
   ]);
 
   return MasterData(
