@@ -46,3 +46,13 @@ Future<void> signIn(
     await settle(tester, seconds: 4);
   }
 }
+
+/// Lets in-flight requests land before the widget tree is torn down.
+///
+/// Each `testWidgets` boots the app again, and a test that ends while the
+/// client is mid-request sees it aborted — reported as a failure after the
+/// test has already passed. Pumping a little longer at the end is the cheapest
+/// way to keep that noise out of a real signal.
+Future<void> quiesce(WidgetTester tester) async {
+  await settle(tester, seconds: 3);
+}

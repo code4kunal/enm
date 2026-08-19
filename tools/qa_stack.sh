@@ -67,7 +67,9 @@ up() {
     export DATABASE_URL="postgresql+asyncpg://enm:enm@localhost:5433/$QA_DB"
     export ENVIRONMENT=development
     export JWT_SECRET=qa-floor-scratch-secret
-    export NOTIFICATIONS_ENABLED=false
+    # In-app notifications stay ON — the floor tests the breakdown fan-out
+    # and the tenant boundary it has to respect. FCM stays off regardless,
+    # because no credentials are configured here.
     nohup .venv/bin/python -m uvicorn app.main:app --port "$QA_PORT" \
       --log-level warning > "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"

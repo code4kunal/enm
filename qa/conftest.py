@@ -61,3 +61,17 @@ def qa_bus(base_url, personas):
         if r.status_code not in (200, 201, 409):
             r.raise_for_status()
     return reg
+
+
+@pytest.fixture(scope="session")
+def run_tag() -> str:
+    """A short marker unique to this run.
+
+    The scratch database survives between runs, and an import is deduplicated
+    on the content of its rows — so a sheet with fixed text is already present
+    the second time the suite runs, and a test asserting it was written would
+    fail for a reason that has nothing to do with the app.
+    """
+    import secrets
+
+    return secrets.token_hex(3).upper()
