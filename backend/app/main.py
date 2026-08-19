@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app import openapi
 from app.api import api_router
 from app.config import settings
 from app.errors import register_exception_handlers
@@ -126,6 +127,9 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_prefix)
+    # The five register payloads are the heart of the contract; without this
+    # the schema says `data` is an object and stops there.
+    openapi.install(app)
 
     media_root = Path(settings.media_root)
     media_root.mkdir(parents=True, exist_ok=True)

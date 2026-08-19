@@ -18,7 +18,12 @@ from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
 from app.services import audit, notifications, storage
 from app.services import entries as svc
-from app.services.sites import assert_site_accepts_entries
+from app.services.common import today_ist
+from app.services.sites import (
+    assert_date_is_plausible,
+    assert_site_accepts_entries,
+    load_site,
+)
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
@@ -110,7 +115,8 @@ async def create_entry(
 ) -> EntryOut:
     site = assert_site_access(user, payload.site)
     # A deactivated site keeps its history but accepts nothing new.
-    await assert_site_accepts_entries(session, site)
+    site_row = await assert_site_accepts_entries(session, site)
+    assert_date_is_plausible(site_row, payload.date, today_ist())
     entry = await svc.create_entry(
         session,
         register=payload.register,
@@ -240,6 +246,10 @@ async def update_entry(
     entry = await _load(session, entry_id)
     if not _can_edit(user, entry):
         raise Forbidden("You can only edit your own entries for this site")
+    # An edit can move the date, so it gets the same guard as a new record.
+    assert_date_is_plausible(
+        await load_site(session, entry.site_code), payload.date, today_ist()
+    )
 
     before: dict[str, Any] = svc.serialize_data(entry)
     await svc.update_entry(

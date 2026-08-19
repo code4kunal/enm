@@ -24,6 +24,10 @@ test is a hole, and the hole should be visible rather than absent.
 | X | The DMR agrees with the entries it derives from | both derive from one source | `test_reports_consistency.py` |
 | M | The month grid agrees with the day view | two endpoints, one truth | `test_reports_consistency.py` |
 | Z | Every export produces a real CSV or PDF | HANDOFF 5, the depot prints these | `test_reports_consistency.py` |
+| A | A chart says whether *this depot* can answer it | the API's `available` flag | `test_reports.py` |
+| S | The contract publishes every register payload | README, "authority on the wire format" | `test_contract_shape.py` |
+| Q | Published required fields are the enforced ones | a contract that lies is worse than none | `test_contract_shape.py` |
+| L | A record cannot be dated outside the fleet's life | CLAUDE.md period filters | `test_field_validation.py` |
 
 A dash means the journey is not covered. Fill it in; never delete the row.
 

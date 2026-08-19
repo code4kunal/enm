@@ -224,6 +224,47 @@ async def _inspection_days(
     return attended, dockings
 
 
+async def site_availability(
+    session: AsyncSession, site_code: str, spec: ChartSpec
+) -> tuple[bool, str]:
+    """Whether this site can answer this chart, as opposed to whether the
+    system can in principle.
+
+    Tyre pressure and bus washing are answered by a checklist line the depot
+    nominates with `chart_key`. Until a line carries it there is no source at
+    all, and a grid that reports itself available and renders blank cannot be
+    told apart from a month where nobody checked. `energy` already shows the
+    honest shape; these two now match it.
+
+    Coolant topping is deliberately not included. It is wired to the coolant
+    register, so an empty month there is real data — no toppings happened —
+    and saying otherwise would hide a fact the depot should see.
+    """
+    if not spec.available:
+        return False, spec.unavailable_reason
+    key = CHECKLIST_CHARTS.get(spec.kind)
+    if key is None:
+        return True, ""
+
+    nominated = await session.scalar(
+        select(ChecklistItem.id)
+        .join(ChecklistTemplate)
+        .where(
+            ChecklistTemplate.site_code == site_code,
+            ChecklistItem.chart_key == key.value,
+        )
+        .limit(1)
+    )
+    if nominated:
+        return True, ""
+    return False, (
+        f"No inspection line is nominated for this chart. A depot marks the "
+        f"line that records it with chart key \"{key.value}\"; until one "
+        f"does, there is nothing to read and the grid would be blank rather "
+        f"than empty."
+    )
+
+
 async def _checklist_days(
     session: AsyncSession, site_code: str, dates: list[date_t], chart_key: ChartKey
 ) -> set[tuple[str, date_t]]:

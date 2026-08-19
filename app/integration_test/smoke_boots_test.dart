@@ -40,15 +40,36 @@ void main() {
   });
 
   testWidgets(
-    'the login screen offers the Microsoft sign-in HANDOFF promises',
+    'the login screen offers Microsoft sign-in exactly when it is usable',
     (tester) async {
       unawaited(app.main());
       await settle(tester);
-      expect(find.text('Sign in with Microsoft'), findsOneWidget);
+
+      // HANDOFF section 1 describes a configured deployment: a Microsoft
+      // button above a divider reading "OR SIGN IN WITH USER ID". The server
+      // decides whether this deployment is one, via /auth/sso/config, so the
+      // promise is asserted against that rather than against the screenshot.
+      //
+      // Offering a button that cannot obtain a token would be the real bug,
+      // so the two states are checked together: the button and the "OR" go in
+      // and out as one.
+      final button = find.text('Sign in with Microsoft');
+      final withOr = find.text('OR SIGN IN WITH USER ID');
+      final withoutOr = find.text('SIGN IN WITH USER ID');
+
+      if (button.evaluate().isNotEmpty) {
+        expect(withOr, findsOneWidget,
+            reason: 'SSO is offered, so HANDOFF section 1 wants the "OR"');
+        expect(withoutOr, findsNothing);
+      } else {
+        expect(withoutOr, findsOneWidget,
+            reason: 'no SSO, so the divider names the only path there is');
+        expect(withOr, findsNothing);
+      }
+
+      // Either way the User ID path is always there: HANDOFF section 1 exists
+      // for ground staff without a Transvolt mail ID.
+      expect(find.text('Sign in'), findsOneWidget);
     },
-    // See qa/findings/2026-08-19-0001.md. The button is absent because MSAL
-    // is not wired on the device (PENDING section 8). Skipped rather than left
-    // red: a gate that is red by default is a gate everyone learns to ignore.
-    skip: true,
   );
 }

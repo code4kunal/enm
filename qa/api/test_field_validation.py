@@ -157,14 +157,49 @@ def test_an_impossible_date_is_refused(mgr, bad):
     assert r.status_code == 400, f"date={bad!r} was accepted"
 
 
-@pytest.mark.parametrize("far", ["2099-01-01", "2262-01-01", "1900-01-01"])
-@pytest.mark.xfail(
-    reason="qa/findings/2026-08-19-0006.md — any date is accepted, so a typed "
-    "year silently creates a record no period filter will ever show.",
-    strict=True,
-)
+@pytest.mark.parametrize("far", ["2099-01-01", "2262-01-01", "1900-01-01", "0001-01-01"])
 def test_a_date_far_outside_the_fleet_lifetime_is_refused(mgr, far):
+    """A typed year is silent in a way most bad input is not: the record lands
+    in no period filter and no report, and nothing says it is missing."""
     client, site = mgr
     r = _post(client, site, "work_done",
               {"bus_no": BUS, "reported_defects": "x"}, date=far)
     assert r.status_code == 400, f"date={far} was accepted"
+    assert "date" in r.json()["error"]["fields"]
+
+
+def test_today_and_tomorrow_are_still_accepted(mgr):
+    """A night shift crosses midnight and a device can be an hour off, so the
+    bound has to leave room for tomorrow."""
+    import datetime as _dt
+
+    client, site = mgr
+    for day in (_dt.date.today(), _dt.date.today() + _dt.timedelta(days=1)):
+        r = _post(client, site, "work_done",
+                  {"bus_no": BUS, "reported_defects": "x"}, date=day.isoformat())
+        assert r.status_code == 201, f"{day} was refused: {r.text}"
+
+
+def test_a_backfilled_month_is_still_accepted(mgr):
+    """The bound exists to catch a typo, not to police history. The MBMT
+    import backfills a whole month."""
+    client, site = mgr
+    r = _post(client, site, "work_done",
+              {"bus_no": BUS, "reported_defects": "x"}, date="2026-08-01")
+    assert r.status_code == 201, r.text
+
+
+def test_an_edit_cannot_move_a_record_out_of_range(mgr):
+    """The date is editable, so the guard has to hold on the way in and on
+    every change after."""
+    client, site = mgr
+    created = _post(client, site, "work_done",
+                    {"bus_no": BUS, "reported_defects": "x"})
+    assert created.status_code == 201, created.text
+    entry = created.json()
+    moved = client.put(
+        f"/entries/{entry['id']}",
+        json={"register": "work_done", "site": site, "date": "2262-01-01",
+              "data": entry["data"]},
+    )
+    assert moved.status_code == 400, "an edit moved a record to the year 2262"

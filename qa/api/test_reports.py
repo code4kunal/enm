@@ -81,33 +81,69 @@ def test_the_dmr_derives_its_breakdown_split(reader):
     )
 
 
-def test_a_chart_claiming_availability_has_data(reader):
-    """`available: true` is a promise to the reader.
-
-    A chart that cannot be filled should say so, the way `energy` does. Three
-    say nothing and render blank — see qa/findings/2026-08-19-0005.md.
-    """
-    kinds = reader.get("/reports/control-charts").json()
-    empty_but_available = []
-    for c in kinds:
+def test_an_unavailable_chart_always_says_why(reader):
+    """`available: false` with no reason is a blank grid with no explanation."""
+    for c in reader.get(
+        "/reports/control-charts", params={"site": REPORT_SITE}
+    ).json():
         if not c["available"]:
-            assert c["unavailable_reason"], f"{c['kind']} is unavailable without a reason"
-            continue
-        j = reader.get(
-            f"/sites/{REPORT_SITE}/reports/control-charts/{c['kind']}",
+            assert c["unavailable_reason"].strip(), (
+                f"{c['kind']} is unavailable without saying why"
+            )
+
+
+def test_a_chart_fed_by_a_nominated_line_is_unavailable_without_one(reader):
+    """Tyre pressure and bus washing read a checklist line the depot marks with
+    `chart_key`. With no line marked there is no source at all, and a grid that
+    reports itself available and renders blank cannot be told apart from a
+    month where nobody checked.
+
+    Coolant topping is deliberately not in this rule: it is wired to the
+    coolant register, so an empty month there is real data.
+    """
+    by_kind = {
+        c["kind"]: c
+        for c in reader.get(
+            "/reports/control-charts", params={"site": REPORT_SITE}
+        ).json()
+    }
+    keys = {"tyrePressure": "tyre_pressure", "busWashing": "washing"}
+    for kind in keys:
+        spec = by_kind[kind]
+        chart = reader.get(
+            f"/sites/{REPORT_SITE}/reports/control-charts/{kind}",
             params={"month": REPORT_MONTH},
         ).json()
         filled = sum(
             1
-            for row in j["rows"]
+            for row in chart["rows"]
             for cell in row.get("cells", [])
             if cell.get("value") not in (None, "", 0)
         )
         if filled == 0:
-            empty_but_available.append(c["kind"])
+            assert not spec["available"], (
+                f"{kind} renders blank but reports itself available"
+            )
+            assert not chart["available"], (
+                f"{kind} chart body reports available while the catalogue does not"
+            )
+            assert keys[kind] in chart["unavailable_reason"], (
+                f"{kind}'s reason should name the key that would fix it: "
+                f"{chart['unavailable_reason']!r}"
+            )
 
-    if empty_but_available:
-        pytest.xfail(
-            "qa/findings/2026-08-19-0005.md — these charts report available "
-            f"and render blank: {sorted(empty_but_available)}"
-        )
+
+def test_the_catalogue_and_the_site_can_disagree(reader):
+    """What the system can answer, versus what this depot can. The difference
+    is the point: an unnominated line is a site problem, not a build problem.
+    """
+    catalogue = {c["kind"]: c["available"] for c in reader.get("/reports/control-charts").json()}
+    at_site = {
+        c["kind"]: c["available"]
+        for c in reader.get("/reports/control-charts", params={"site": REPORT_SITE}).json()
+    }
+    assert set(catalogue) == set(at_site)
+    # A site can never be able to answer something the system cannot.
+    for kind, sys_ok in catalogue.items():
+        if not sys_ok:
+            assert not at_site[kind], f"{kind} unavailable system-wide but available at a site"

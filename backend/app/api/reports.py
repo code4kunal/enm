@@ -474,15 +474,28 @@ async def close_off_road(
     return _off_road_out(case, payload.returned_on)
 
 
-def _chart_out(chart: control_charts.Chart) -> ControlChartOut:
+def _chart_out(
+    chart: control_charts.Chart,
+    availability: tuple[bool, str] | None = None,
+) -> ControlChartOut:
+    """`availability` is the site's answer, not the system's.
+
+    A chart answered by a nominated checklist line is available in principle
+    and unavailable at a depot that has nominated none.
+    """
     spec = chart.spec
+    available, reason = (
+        availability
+        if availability is not None
+        else (spec.available, spec.unavailable_reason)
+    )
     return ControlChartOut(
         kind=spec.kind,
         title=spec.title,
         legend=spec.legend,
         unit=spec.unit,
-        available=spec.available,
-        unavailable_reason=spec.unavailable_reason,
+        available=available,
+        unavailable_reason=reason,
         site_code=chart.site_code,
         from_date=chart.from_date,
         to_date=chart.to_date,
@@ -512,20 +525,38 @@ def _chart_window(
 
 
 @router.get("/reports/control-charts", response_model=list[ChartKindOut])
-async def list_control_charts(user: CurrentUser) -> list[ChartKindOut]:
-    """Which charts exist, and which of them have data behind them."""
-    del user
-    return [
-        ChartKindOut(
-            kind=spec.kind,
-            title=spec.title,
-            legend=spec.legend,
-            unit=spec.unit,
-            available=spec.available,
-            unavailable_reason=spec.unavailable_reason,
+async def list_control_charts(
+    user: CurrentUser,
+    session: SessionDep,
+    site: Annotated[str | None, Query(max_length=16)] = None,
+) -> list[ChartKindOut]:
+    """Which charts exist, and which of them have data behind them.
+
+    Without `site` this is the catalogue: what the system can answer at all.
+    With it, the answer is the depot's — a chart fed by a nominated checklist
+    line is unavailable at a site that has nominated none, and saying so is
+    the difference between an empty month and an unwired feed.
+    """
+    site_code = assert_site_access(user, site) if site else None
+    out: list[ChartKindOut] = []
+    for spec in control_charts.CHARTS:
+        if site_code:
+            available, reason = await control_charts.site_availability(
+                session, site_code, spec
+            )
+        else:
+            available, reason = spec.available, spec.unavailable_reason
+        out.append(
+            ChartKindOut(
+                kind=spec.kind,
+                title=spec.title,
+                legend=spec.legend,
+                unit=spec.unit,
+                available=available,
+                unavailable_reason=reason,
+            )
         )
-        for spec in control_charts.CHARTS
-    ]
+    return out
 
 
 @router.get(
@@ -550,7 +581,10 @@ async def control_chart(
         from_date=start,
         to_date=end,
     )
-    return _chart_out(chart)
+    availability = await control_charts.site_availability(
+        session, site_code, chart.spec
+    )
+    return _chart_out(chart, availability)
 
 
 @router.get("/sites/{code}/reports/control-charts/{kind}/export")
