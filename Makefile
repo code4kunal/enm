@@ -14,6 +14,7 @@ PY       := $(BACKEND)/.venv/bin/python
 FLUTTER  ?= flutter
 API_PORT ?= 8123
 API_BASE ?= http://localhost:$(API_PORT)/api/v1
+SITEOPS_BASE ?= https://dev-siteops-platform.transvolt.org/api/v1
 
 .PHONY: help
 help: ## List the targets
@@ -126,7 +127,9 @@ seed: ## Master data + the super admin. Idempotent.
 
 .PHONY: web
 web: ## Serve the Flutter client against the local API
-	@cd $(APP) && $(FLUTTER) run -d chrome --dart-define=API_BASE_URL=$(API_BASE)
+	@cd $(APP) && $(FLUTTER) run -d chrome \
+		--dart-define=API_BASE_URL=$(API_BASE) \
+		--dart-define=SITEOPS_BASE_URL=$(SITEOPS_BASE)
 
 .PHONY: logs
 logs:
@@ -139,7 +142,9 @@ build: build-app ## Build the release artefacts
 
 .PHONY: build-app
 build-app: ## Static web bundle into app/build/web
-	@cd $(APP) && $(FLUTTER) build web --dart-define=API_BASE_URL=$(API_BASE)
+	@cd $(APP) && $(FLUTTER) build web \
+		--dart-define=API_BASE_URL=$(API_BASE) \
+		--dart-define=SITEOPS_BASE_URL=$(SITEOPS_BASE)
 
 .PHONY: migrate
 migrate: ## Run migrations against DATABASE_URL, on their own

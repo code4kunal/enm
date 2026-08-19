@@ -16,21 +16,50 @@ CLAUDE.md  Shared conventions for both halves
 ## Running
 
 ```sh
-# API — :8000 is taken on this machine, so use 8123
+# Full stack (Postgres + API + Flutter web) — :8000 is taken here, so use 8123
 cd backend
-API_PORT=8123 PUBLIC_BASE_URL=http://localhost:8123 docker compose up -d
+API_PORT=8123 \
+  PUBLIC_BASE_URL=http://localhost:8123 \
+  API_PUBLIC_URL=http://localhost:8123/api/v1 \
+  docker compose up -d --build
+# API at http://localhost:8123/api/v1 — frontend at http://localhost:8080
 
-# Client, offline against in-memory fakes
-cd app && flutter run -d chrome
+# API only (no web container)
+API_PORT=8123 PUBLIC_BASE_URL=http://localhost:8123 docker compose up -d db api
 
-# Client, against the live API
-flutter run -d chrome \
-  --dart-define=USE_API=true \
-  --dart-define=API_BASE_URL=http://localhost:8123/api/v1
+# Client from source (hot reload)
+cd app && flutter run -d chrome \
+  --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
+  --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+
+# If your API listens on :8000 instead of :8123, swap the port above.
+# Both URLs are compile-time `--dart-define` values — there is no .env file
+# in the Flutter app. The docker `web` service bakes them in at image build
+# time via API_PUBLIC_URL and SITEOPS_BASE_URL (see backend/.env.example).
 
 flutter test      # 177 tests
 flutter analyze   # clean
 ```
+
+### Docker on a remote dev server
+
+The Flutter web bundle calls the API from the **user's browser**, not from
+inside the docker network. `API_PUBLIC_URL` must be whatever URL the browser
+can reach — not `http://api:8000`.
+
+```sh
+cd backend
+API_PORT=8123 \
+  WEB_PORT=8080 \
+  PUBLIC_BASE_URL=http://dev.example.com:8123 \
+  API_PUBLIC_URL=http://dev.example.com:8123/api/v1 \
+  CORS_ORIGINS=http://dev.example.com:8080 \
+  docker compose up -d --build
+```
+
+If a reverse proxy terminates TLS and serves the API at `https://dev.example.com/api/v1`,
+set `API_PUBLIC_URL` to that public URL instead. Changing `API_PUBLIC_URL` requires
+rebuilding the web image: `docker compose build web && docker compose up -d web`.
 
 Only the web platform is scaffolded. `flutter create --platforms=ios,android .`
 adds the others; the app code is platform-agnostic. Verified on Flutter 3.47.0.

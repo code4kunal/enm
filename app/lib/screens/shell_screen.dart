@@ -1,5 +1,4 @@
-import '../state/providers.dart';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,7 +11,7 @@ import '../theme/tokens.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/chips.dart';
 import '../widgets/code_square.dart';
-import '../data/api/siteops_client.dart';
+import '../state/providers.dart';
 import '../state/selected_site.dart';
 
 /// One navigation destination, shared by the desktop tab row and the mobile
@@ -419,10 +418,12 @@ class _BottomNavItem extends StatelessWidget {
 // ___ SiteOps Site Dropdown ___________________________________________________
 
 class _SiteItem {
-  const _SiteItem({required this.id, required this.name, required this.siteType});
+  const _SiteItem({required this.id, required this.name, required this.siteType, required this.code});
   final String id;
   final String name;
   final String siteType;
+  /// Short uppercase handle (MBMT) that the E&M backend uses as site PK.
+  final String code;
 }
 
 class _SiteOpsDropdown extends ConsumerStatefulWidget {
@@ -445,39 +446,41 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
 
   Future<void> _loadSites() async {
     try {
-      final json = await siteOpsClient.get('/onboarding/sites/dropdown');
+      final json = await ref.read(siteOpsClientProvider).get('/onboarding/sites/dropdown');
       final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+
+      // E&M sites keyed by name so we can map SiteOps UUIDs → E&M codes.
+      final enmSites = await ref.read(siteRepositoryProvider).fetchSites();
+      final codeByName = <String, String>{
+        for (final s in enmSites) s.name.trim().toLowerCase(): s.code,
+      };
+
       final sites = data
           .cast<Map<String, dynamic>>()
-          .map((j) => _SiteItem(
-                id: j['id']?.toString() ?? '',
-                name: j['name']?.toString() ?? '',
-                siteType: j['site_type']?.toString() ?? '',
-              ))
+          .map((j) {
+            final name = j['name']?.toString() ?? '';
+            return _SiteItem(
+              id: j['id']?.toString() ?? '',
+              name: name,
+              siteType: j['site_type']?.toString() ?? '',
+              code: (j['code'] ?? j['site_code'])?.toString().trim().toUpperCase()
+                  ?? codeByName[name.trim().toLowerCase()]
+                  ?? '',
+            );
+          })
           .toList();
-      
       if (mounted) {
-        if (sites.isNotEmpty) {
-          final firstSite = sites.first;
-          final localSites = await ref.read(siteRepositoryProvider).fetchSites();
-          final matched = localSites.where(
-            (s) => s.name.trim().toLowerCase() == firstSite.name.trim().toLowerCase(),
-          ).toList();
-          final code = matched.isNotEmpty ? matched.first.code : firstSite.id;
-          
-          setState(() {
-            _sites = sites;
-            _selected = firstSite;
-            ref.read(selectedSiteProvider.notifier).select(firstSite.id, firstSite.name);
-            ref.read(sessionProvider.notifier).switchSite(code);
-            _loading = false;
-          });
-        } else {
-          setState(() {
-            _sites = sites;
-            _loading = false;
-          });
-        }
+        setState(() {
+          _sites = sites;
+          if (sites.isNotEmpty) {
+            _selected = sites.first;
+            ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
+            if (sites.first.code.isNotEmpty) {
+              ref.read(sessionProvider.notifier).switchSite(sites.first.code);
+            }
+          }
+          _loading = false;
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -531,18 +534,14 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
                 ),
               ),
           ],
-          onChanged: (id) async {
+          onChanged: (id) {
             if (id != null) {
               final site = _sites.firstWhere((s) => s.id == id);
               setState(() => _selected = site);
               ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
-              
-              final localSites = await ref.read(siteRepositoryProvider).fetchSites();
-              final matched = localSites.where(
-                (s) => s.name.trim().toLowerCase() == site.name.trim().toLowerCase(),
-              ).toList();
-              final code = matched.isNotEmpty ? matched.first.code : site.id;
-              ref.read(sessionProvider.notifier).switchSite(code);
+              if (site.code.isNotEmpty) {
+                ref.read(sessionProvider.notifier).switchSite(site.code);
+              }
             }
           },
         ),

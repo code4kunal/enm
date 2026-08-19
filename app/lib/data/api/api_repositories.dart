@@ -14,6 +14,7 @@ import '../../models/site_import.dart';
 import '../repositories.dart';
 import 'api_client.dart';
 import 'field_map.dart';
+import 'siteops_client.dart';
 import '../auth/ms_sso.dart';
 
 /// Register id translation. The app uses the short ids from `registers.dart`;
@@ -650,7 +651,7 @@ class ApiAuthRepository implements AuthRepository {
     required String password,
   }) async {
     final response = await http.post(
-      Uri.parse('https://dev-siteops-platform.transvolt.org/api/v1/auth/login'),
+      Uri.parse('${SiteOpsConfig.baseUrl}/auth/login'),
       headers: <String, String>{
         'Content-Type': 'application/x-www-form-urlencoded',
       },

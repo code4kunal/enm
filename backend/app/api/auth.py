@@ -74,7 +74,7 @@ async def login(payload: LoginIn, request: Request, session: SessionDep) -> Toke
     password = payload.password
 
     # 1. Attempt to authenticate against SiteOps platform login
-    siteops_url = "https://dev-siteops-platform.transvolt.org/api/v1/auth/login"
+    siteops_url = f"{settings.siteops_base_url.rstrip('/')}/auth/login"
     siteops_user = None
     try:
         async with httpx.AsyncClient() as client:

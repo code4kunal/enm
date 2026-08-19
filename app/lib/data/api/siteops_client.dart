@@ -1,130 +1,145 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Thin HTTP client that points at the SiteOps backend and re-uses the
-/// access token that the user obtained during login.
-class SiteOpsClient {
-  SiteOpsClient() : selectedSiteId = null;
-  String? selectedSiteId;
+import '../repositories.dart';
 
-  static const String _baseUrl = String.fromEnvironment(
+/// SiteOps platform API — vehicle master, site dropdown, onboarding.
+///
+/// Base URL from `--dart-define=SITEOPS_BASE_URL=...` ([SiteOpsConfig.baseUrl]).
+/// Auth tokens are written by [ApiAuthRepository.signInWithCredentials], which
+/// signs in against SiteOps and persists the bearer token under the same keys
+/// as [ApiClient].
+abstract final class SiteOpsConfig {
+  static const String baseUrl = String.fromEnvironment(
     'SITEOPS_BASE_URL',
     defaultValue: 'https://dev-siteops-platform.transvolt.org/api/v1',
   );
+}
+
+class SiteOpsClient {
+  SiteOpsClient({String? baseUrl, http.Client? httpClient})
+      : baseUrl = (baseUrl ?? SiteOpsConfig.baseUrl)
+            .replaceAll(RegExp(r'/+$'), ''),
+        _http = httpClient ?? http.Client();
+
+  final String baseUrl;
+  final http.Client _http;
+
+  static const _accessKey = 'transvolt.access_token';
 
   Future<String?> _accessToken() async {
+    final prefs = await _prefs();
+    return prefs?.getString(_accessKey);
+  }
+
+  Future<SharedPreferences?> _prefs() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('transvolt.access_token');
-    } catch (_) {
+      return await SharedPreferences.getInstance();
+    } on Exception {
+      return null;
+    } on Error {
       return null;
     }
   }
 
-  Map<String, String> _headers(String? token) => <String, String>{
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
+  Future<dynamic> get(String path, {Map<String, String>? query}) =>
+      _send('GET', path, query: query);
 
-  Uri _uri(String path, {Map<String, String>? query}) {
-    final cleaned = path.startsWith('/') ? path : '/$path';
-    var finalQuery = query;
-    if (selectedSiteId != null && selectedSiteId!.isNotEmpty) {
-      if (query == null || !query.containsKey('site_id')) {
-        finalQuery = <String, String>{
-          ...?query,
-          'site_id': selectedSiteId!,
-        };
-      }
-    }
-    final uri = Uri.parse('$_baseUrl$cleaned');
-    if (finalQuery == null || finalQuery.isEmpty) return uri;
-    return uri.replace(queryParameters: {
-      ...uri.queryParameters,
-      ...finalQuery,
-    });
-  }
+  Future<dynamic> delete(String path) => _send('DELETE', path);
 
-  Future<dynamic> get(String path, {Map<String, String>? query}) async {
-    final token = await _accessToken();
-    final response = await http.get(_uri(path, query: query), headers: _headers(token));
-    return _decode(response);
-  }
-
-  Future<dynamic> post(String path, {Object? body}) async {
-    final token = await _accessToken();
-    final response = await http.post(
-      _uri(path),
-      headers: _headers(token),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(response);
-  }
-
-  Future<dynamic> put(String path, {Object? body}) async {
-    final token = await _accessToken();
-    final response = await http.put(
-      _uri(path),
-      headers: _headers(token),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(response);
-  }
-
-  Future<dynamic> patch(String path, {Object? body}) async {
-    final token = await _accessToken();
-    final response = await http.patch(
-      _uri(path),
-      headers: _headers(token),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(response);
-  }
-
-  Future<dynamic> delete(String path) async {
-    final token = await _accessToken();
-    final response = await http.delete(_uri(path), headers: _headers(token));
-    return _decode(response);
-  }
-
+  /// Form/multipart write used by vehicle create and update.
   Future<dynamic> multipart(
     String method,
     String path,
-    Map<String, dynamic> data,
+    Map<String, dynamic> fields,
   ) async {
-    final token = await _accessToken();
-    final boundary = 'Boundary-${DateTime.now().millisecondsSinceEpoch}';
-    final List<int> bodyBytes = [];
-    
-    data.forEach((key, value) {
-      if (value == null) return;
+    Future<http.StreamedResponse> attempt() async {
+      final request = http.MultipartRequest('POST', _uri(path, null));
+      if (method != 'POST') {
+        request.headers['X-HTTP-Method-Override'] = method;
+      }
+      _flattenFields(request.fields, fields);
+      final token = await _accessToken();
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      return _http.send(request);
+    }
+
+    http.StreamedResponse streamed;
+    try {
+      streamed = await attempt();
+    } on Exception catch (e) {
+      throw ApiException('Cannot reach SiteOps at $baseUrl — $e');
+    }
+    return _decode(await http.Response.fromStream(streamed));
+  }
+
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Object? body,
+  }) async {
+    Future<http.Response> attempt() async {
+      final uri = _uri(path, query);
+      final token = await _accessToken();
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        if (body != null) 'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+      final encoded = body == null ? null : jsonEncode(body);
+
+      return switch (method) {
+        'GET' => _http.get(uri, headers: headers),
+        'POST' => _http.post(uri, headers: headers, body: encoded),
+        'PUT' => _http.put(uri, headers: headers, body: encoded),
+        'DELETE' => _http.delete(uri, headers: headers),
+        _ => throw ArgumentError('Unsupported method $method'),
+      };
+    }
+
+    http.Response response;
+    try {
+      response = await attempt();
+    } on Exception catch (e) {
+      throw ApiException('Cannot reach SiteOps at $baseUrl — $e');
+    }
+    return _decode(response);
+  }
+
+  Uri _uri(String path, Map<String, String>? query) {
+    final cleaned = path.startsWith('/') ? path : '/$path';
+    final uri = Uri.parse('$baseUrl$cleaned');
+    if (query == null || query.isEmpty) return uri;
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        ...query,
+      },
+    );
+  }
+
+  void _flattenFields(
+    Map<String, String> target,
+    Map<String, dynamic> source,
+  ) {
+    for (final entry in source.entries) {
+      final value = entry.value;
+      if (value == null) continue;
       if (value is List) {
         for (final item in value) {
-          bodyBytes.addAll(utf8.encode('--$boundary\r\n'));
-          bodyBytes.addAll(utf8.encode('Content-Disposition: form-data; name="$key"\r\n\r\n'));
-          bodyBytes.addAll(utf8.encode('$item\r\n'));
+          target['${entry.key}[]'] = item.toString();
         }
+      } else if (value is bool || value is num) {
+        target[entry.key] = value.toString();
       } else {
-        bodyBytes.addAll(utf8.encode('--$boundary\r\n'));
-        bodyBytes.addAll(utf8.encode('Content-Disposition: form-data; name="$key"\r\n\r\n'));
-        bodyBytes.addAll(utf8.encode('$value\r\n'));
+        target[entry.key] = value.toString();
       }
-    });
-    bodyBytes.addAll(utf8.encode('--$boundary--\r\n'));
-
-    final response = await http.Response.fromStream(await http.Client().send(
-      http.Request(method, _uri(path))
-        ..headers.addAll({
-          'Content-Type': 'multipart/form-data; boundary=$boundary',
-          'Accept': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        })
-        ..bodyBytes = bodyBytes,
-    ));
-    
-    return _decode(response);
+    }
   }
 
   dynamic _decode(http.Response response) {
@@ -132,7 +147,7 @@ class SiteOpsClient {
     final text = response.body;
 
     if (status == 204 || text.isEmpty) {
-      if (status >= 400) throw Exception('Request failed ($status)');
+      if (status >= 400) throw ApiException('Request failed ($status)');
       return null;
     }
 
@@ -140,27 +155,43 @@ class SiteOpsClient {
     try {
       json = jsonDecode(text);
     } on FormatException {
-      if (status >= 400) throw Exception('Request failed ($status)');
+      if (status >= 400) throw ApiException('Request failed ($status)');
       return null;
     }
 
     if (status < 400) return json;
 
-    String message = 'Request failed ($status)';
+    var message = 'Request failed ($status)';
+    var fields = const <String, String>{};
+
     if (json is Map<String, dynamic>) {
+      if (json['message'] is String) {
+        message = json['message'] as String;
+      }
       final error = json['error'];
       if (error is Map<String, dynamic>) {
         message = error['message'] as String? ?? message;
-      } else if (json['message'] != null) {
-        message = json['message'] as String? ?? message;
+        final raw = error['fields'];
+        if (raw is Map) {
+          fields = raw.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
       } else if (json['detail'] != null) {
         final detail = json['detail'];
         message = detail is String ? detail : jsonEncode(detail);
       }
     }
-    throw Exception(message);
+
+    if (status == 401) throw ApiException(message, fields: fields);
+    if (status == 403) {
+      throw ApiException(
+        message == 'Request failed (403)'
+            ? 'You do not have access to that'
+            : message,
+        fields: fields,
+      );
+    }
+    throw ApiException(message, fields: fields);
   }
+
+  void close() => _http.close();
 }
-
-final siteOpsClient = SiteOpsClient();
-

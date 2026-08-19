@@ -15,7 +15,8 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
-RUN chmod +x /srv/scripts/entrypoint.sh \
+RUN sed -i 's/\r$//' /srv/scripts/entrypoint.sh \
+ && chmod +x /srv/scripts/entrypoint.sh \
  && useradd --create-home --uid 10001 app \
  && mkdir -p /srv/media && chown -R app:app /srv
 USER app

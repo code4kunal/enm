@@ -27,7 +27,8 @@ def _bearer(request: Request) -> str:
 
 async def current_user(request: Request, session: SessionDep) -> User:
     payload = decode_access_token(_bearer(request))
-    sub_val = payload.get("sub", "")
+    sub_raw = payload.get("sub", "")
+    sub_val = sub_raw.replace("-", "") if sub_raw else ""
     user = await session.get(User, sub_val)
     if user is None:
         user_name = payload.get("user_name") or payload.get("username")

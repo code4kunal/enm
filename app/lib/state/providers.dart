@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/api/api_client.dart';
 import '../data/api/api_repositories.dart';
+import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
@@ -13,8 +14,13 @@ import 'session.dart';
 ///
 /// Every repository resolves to its HTTP implementation in `data/api/`. There
 /// are no in-memory fakes and no demo seed: what the screens show is what is in
-/// the database. Point a build at a different API with
-/// `--dart-define=API_BASE_URL=...`.
+/// the database. Point a build at different backends with:
+///
+/// ```sh
+/// flutter run -d chrome \
+///   --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
+///   --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+/// ```
 
 /// HTTP transport, created once so the access token is shared by every
 /// repository.
@@ -24,6 +30,13 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     client.selectedSiteId = next.id;
     siteOpsClient.selectedSiteId = next.id;
   }, fireImmediately: true);
+  ref.onDispose(client.close);
+  return client;
+});
+
+/// SiteOps platform API — vehicle master, site dropdown, onboarding.
+final siteOpsClientProvider = Provider<SiteOpsClient>((ref) {
+  final client = SiteOpsClient();
   ref.onDispose(client.close);
   return client;
 });

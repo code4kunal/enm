@@ -24,6 +24,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://enm:enm@db:5432/enm
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
       SEED_ON_START: ${SEED_ON_START:-true}
       ENVIRONMENT: development
       # Microsoft SSO (leave blank to disable /auth/sso)
@@ -42,6 +44,20 @@ services:
       - ../data:/srv/data:ro
     command:
       ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  web:
+    build:
+      context: ../app
+      args:
+        # The browser calls this URL — NOT http://api:8000. Must be reachable
+        # from the user's machine (localhost, dev host, or reverse proxy).
+        API_BASE_URL: ${WEB_API_BASE_URL:-${API_PUBLIC_URL:-http://localhost:8123/api/v1}}
+        SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
 
 volumes:
   pgdata:

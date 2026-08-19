@@ -2,7 +2,7 @@ import "dart:async";
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 
-import "../data/api/siteops_client.dart";
+import "../state/providers.dart";
 import "../state/selected_site.dart";
 import "../theme/app_theme.dart";
 import "../theme/tokens.dart";
@@ -103,11 +103,12 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
   
   Future<void> _fetchLookups() async {
     try {
-      final vtJson = await siteOpsClient.get("/master/vehicle-types?pagination=false");
+      final client = ref.read(siteOpsClientProvider);
+      final vtJson = await client.get("/master/vehicle-types?pagination=false");
       final vtData = vtJson is Map ? vtJson["data"] as List<dynamic>? ?? [] : [];
       _vehicleTypes = vtData.map((e) => e as Map<String, dynamic>).toList();
       
-      final stJson = await siteOpsClient.get("/onboarding/sites/dropdown");
+      final stJson = await client.get("/onboarding/sites/dropdown");
       final stData = stJson is Map ? stJson["data"] as List<dynamic>? ?? [] : [];
       _allSites = stData.map((e) => e as Map<String, dynamic>).toList();
       if (mounted) setState(() {});
@@ -141,7 +142,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
         "site_id": siteId,
         if (_searchCtrl.text.trim().isNotEmpty) "search": _searchCtrl.text.trim(),
       };
-      final json = await siteOpsClient.get("/master/vehicles", query: q);
+      final json = await ref.read(siteOpsClientProvider).get("/master/vehicles", query: q);
       final data = json is Map ? json : <String, dynamic>{};
       final items = (data["data"] ?? []) as List<dynamic>;
       final pag = data["pagination"] as Map<String, dynamic>? ?? {};
@@ -527,10 +528,11 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
                             "is_active": isActive,
                           };
                           
+                          final client = ref.read(siteOpsClientProvider);
                           if (existing == null) {
-                            await siteOpsClient.multipart("POST", "/master/vehicles", payload);
+                            await client.multipart("POST", "/master/vehicles", payload);
                           } else {
-                            await siteOpsClient.multipart("PATCH", "/master/vehicles/${existing.id}", payload);
+                            await client.multipart("PATCH", "/master/vehicles/${existing.id}", payload);
                           }
                           if (ctx.mounted) Navigator.of(ctx).pop();
                           _fetch(ref.read(selectedSiteProvider).id);
@@ -576,7 +578,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
     );
     if (ok == true) {
       try {
-        await siteOpsClient.delete("/master/vehicles/${v.id}");
+        await ref.read(siteOpsClientProvider).delete("/master/vehicles/${v.id}");
         _fetch(ref.read(selectedSiteProvider).id);
         _toast("Vehicle deleted.");
       } catch (e) {

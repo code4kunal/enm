@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     refresh_token_ttl_seconds: int = 2_592_000
     bcrypt_rounds: int = 12
 
+    # --- SiteOps platform ---
+    siteops_base_url: str = "https://dev-siteops-platform.transvolt.org/api/v1"
+
     # --- Microsoft Entra ID (SSO) ---
     ms_tenant_id: str | None = None
     ms_client_id: str | None = None
