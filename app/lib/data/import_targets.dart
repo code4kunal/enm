@@ -86,11 +86,52 @@ List<TargetField> targetFieldsFor(ImportTarget target) {
         ),
       ];
 
+    // The depot's own monthly sheet. One row per job, and the TYPE OF WORK
+    // column decides which register it becomes — so the fields are the sheet's
+    // columns, not any single register's. Mirrors SNAG_FIELDS on the server.
+    case ImportTarget.snagReport:
+      return const <TargetField>[
+        TargetField(key: 'date', label: 'Date', required: true, hint: 'yyyy-MM-dd'),
+        TargetField(
+          key: 'bus',
+          label: 'Vehicle No',
+          required: true,
+          hint: 'MH40LY1894 — normalised to uppercase, spaces stripped',
+        ),
+        TargetField(
+          key: 'work_type',
+          label: 'Type of Work',
+          required: true,
+          hint: 'B.D, D.C, DEPOT, D.I … routed by the work-type master',
+        ),
+        TargetField(key: 'complaint', label: 'Driver Complaint', required: true),
+        TargetField(key: 'defectType', label: 'Group'),
+        TargetField(key: 'odometer_km', label: 'Kms'),
+        TargetField(key: 'action', label: 'Action Taken'),
+        TargetField(key: 'spares', label: 'Part Used'),
+        TargetField(key: 'employee', label: 'Attend By'),
+        TargetField(key: 'driver', label: 'Driver No'),
+        TargetField(key: 'route', label: 'Route'),
+        TargetField(key: 'loc', label: 'Location'),
+        TargetField(key: 't_bd', label: 'Reporting Time', hint: 'HH:mm'),
+        TargetField(key: 't_mech', label: 'Mech. Attend Time', hint: 'HH:mm'),
+        TargetField(
+          key: 't_att',
+          label: 'Complaint Resolving Time',
+          hint: 'HH:mm',
+        ),
+        TargetField(key: 'loss', label: 'Loss Kms'),
+        TargetField(key: 'supervisor', label: 'Supervisor (floor)'),
+        TargetField(key: 'status', label: 'Complaint Status', hint: 'OPEN / CLOSE'),
+        TargetField(key: 'remarks', label: 'Remarks'),
+      ];
+
     // Register targets are resolved above.
     case ImportTarget.workDone:
     case ImportTarget.coolant:
     case ImportTarget.driverComplaint:
     case ImportTarget.breakdown:
+    case ImportTarget.pmSchedule:
       return const <TargetField>[];
   }
 }

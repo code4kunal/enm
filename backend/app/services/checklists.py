@@ -237,7 +237,13 @@ async def record_inspection(
             {"inspected_on": "duplicate"},
         )
 
-    template = await ensure_template(session, site_code, work_type)
+    # The bus's own variant, not the site's variant-less placeholder. Omitting
+    # it resolved a template with no items, so every real answer came back
+    # "unknown item" and only an empty inspection could be filed — a record
+    # that a sweep happened and no record of what was checked.
+    template = await ensure_template(
+        session, site_code, work_type, variant=vehicle.checklist_variant
+    )
     by_id = {item.id: item for item in template.items if item.is_active}
 
     missing = [

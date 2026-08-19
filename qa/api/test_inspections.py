@@ -54,6 +54,30 @@ def fleet(depot):
     return depot.get(f"/sites/{REPORT_SITE}/vehicles").json()["items"]
 
 
+@pytest.fixture(scope="session")
+def free_day(run_tag):
+    """A date this run has not used for an inspection yet.
+
+    An inspection is unique per bus, per type, per day, and the scratch
+    database survives between runs — so a fixed date is already taken the
+    second time the suite runs and the test fails as a conflict for a reason
+    that has nothing to do with the app.
+
+    Session-scoped: the counter has to keep climbing across tests, not restart
+    for each one, or two tests hand the same bus the same day.
+    """
+    from datetime import date, timedelta
+
+    base = date(2025, 1, 1) + timedelta(days=int(run_tag, 16) % 300)
+    counter = {"n": 0}
+
+    def _next() -> str:
+        counter["n"] += 1
+        return (base + timedelta(days=counter["n"])).isoformat()
+
+    return _next
+
+
 @pytest.mark.parametrize("code", SWEEPS_WITH_CHECKS)
 def test_every_active_bus_has_something_to_tick(checklists, fleet, code):
     """The trap this guards: a bus with no `checklist_variant` falls back to a
@@ -116,32 +140,9 @@ def _pairing(fleet, checklists, code="D.I"):
     return None, None
 
 
-def test_an_inspection_can_be_filed(depot, fleet, checklists, run_tag):
-    """The record itself, before its contents."""
-    template, bus = _pairing(fleet, checklists)
-    if template is None:
-        pytest.skip("no D.I checklist paired with a bus")
-    r = depot.post(
-        f"/sites/{REPORT_SITE}/inspections",
-        json={
-            "vehicle_id": bus["id"],
-            "work_type_id": template["work_type_id"],
-            "inspected_on": "2026-07-05",
-            "done_by": f"QA floor {run_tag}",
-            "results": [],
-        },
-    )
-    assert r.status_code in (200, 201, 409), r.text
-
-
-@pytest.mark.xfail(
-    reason="qa/findings/2026-08-19-0009.md — create_inspection resolves the "
-    "site's variant-less template, which holds no items, so every real "
-    "checklist answer is rejected as unknown. 90 inspections in MBMT's data, "
-    "zero recorded answers.",
-    strict=True,
-)
-def test_an_inspection_records_the_answers_given(depot, fleet, checklists):
+def test_an_inspection_records_the_answers_given(
+    depot, fleet, checklists, free_day
+):
     """A sweep that records no answers records nothing.
 
     The date is deliberately one with no inspection yet: the duplicate check
@@ -151,13 +152,15 @@ def test_an_inspection_records_the_answers_given(depot, fleet, checklists):
     if template is None:
         pytest.skip("no D.I checklist paired with a bus")
 
-    answers = [{"item_id": i["id"], "result": "ok"} for i in template["items"][:3]]
+    # Every line, not a sample: the required-line check is real now that the
+    # bus's own template is resolved, and it should be.
+    answers = [{"item_id": i["id"], "result": "ok"} for i in template["items"]]
     r = depot.post(
         f"/sites/{REPORT_SITE}/inspections",
         json={
             "vehicle_id": bus["id"],
             "work_type_id": template["work_type_id"],
-            "inspected_on": "2026-06-11",
+            "inspected_on": free_day(),
             "done_by": "QA floor",
             "results": answers,
         },
@@ -167,6 +170,66 @@ def test_an_inspection_records_the_answers_given(depot, fleet, checklists):
         f"{r.text}"
     )
     assert len(r.json().get("results", [])) == len(answers)
+
+
+def test_an_inspection_that_answers_nothing_is_refused(
+    depot, fleet, checklists, free_day
+):
+    """A sweep recording no answers is not a sweep.
+
+    This was accepted before the variant fix, because the empty placeholder
+    template required nothing — which is how ninety inspections came to hold
+    zero answers between them.
+    """
+    template, bus = _pairing(fleet, checklists)
+    if template is None:
+        pytest.skip("no D.I checklist paired with a bus")
+    r = depot.post(
+        f"/sites/{REPORT_SITE}/inspections",
+        json={
+            "vehicle_id": bus["id"],
+            "work_type_id": template["work_type_id"],
+            "inspected_on": free_day(),
+            "done_by": "QA floor",
+            "results": [],
+        },
+    )
+    assert r.status_code == 400, "an inspection with no answers was accepted"
+    assert "required" in r.json()["error"]["fields"].get("results", "")
+
+
+@pytest.mark.parametrize("code", SWEEPS_WITH_CHECKS)
+def test_each_variant_records_its_own_checks(
+    depot, fleet, checklists, code, free_day
+):
+    """The bug was one template standing in for all of them, so the guard has
+    to cover every variant rather than whichever one a test happened to pick.
+    """
+    for template in [t for t in checklists if t["work_type_code"] == code and t["items"]]:
+        bus = next(
+            (b for b in fleet if b.get("checklist_variant") == template["variant"]),
+            None,
+        )
+        if bus is None:
+            continue
+        answers = [{"item_id": i["id"], "result": "ok"} for i in template["items"]]
+        r = depot.post(
+            f"/sites/{REPORT_SITE}/inspections",
+            json={
+                "vehicle_id": bus["id"],
+                "work_type_id": template["work_type_id"],
+                "inspected_on": free_day(),
+                "done_by": "QA floor",
+                "results": answers,
+            },
+        )
+        assert r.status_code in (200, 201), (
+            f"{code}/{template['variant']}: {r.text[:160]}"
+        )
+        assert len(r.json()["results"]) == len(template["items"]), (
+            f"{code}/{template['variant']} recorded "
+            f"{len(r.json()['results'])} of {len(template['items'])} checks"
+        )
 
 
 def test_the_calendar_covers_the_window_it_reports(depot):

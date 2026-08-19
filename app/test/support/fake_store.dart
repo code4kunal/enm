@@ -165,6 +165,15 @@ class FakeStore {
           );
         }
 
+      // The snag report routes each row by TYPE OF WORK against the
+      // work-type master, which only the server holds — the offline demo has
+      // no way to decide which register a row becomes. `pmSchedule` is
+      // retired. Both are recognised here so the switch stays exhaustive and
+      // a new target cannot be added without someone deciding what it means.
+      case ImportTarget.snagReport:
+      case ImportTarget.pmSchedule:
+        break;
+
       case ImportTarget.workDone:
       case ImportTarget.coolant:
       case ImportTarget.driverComplaint:

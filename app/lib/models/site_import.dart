@@ -14,10 +14,17 @@ enum ImportTarget {
     'Preventive-maintenance plans — service intervals by km and days',
   ),
   odometers('Odometer readings', 'Bulk odometer update for the fleet'),
+  snagReport(
+    'Snag report',
+    'One monthly sheet — TYPE OF WORK routes each row to its register',
+  ),
   workDone('Register · Daily Work Done', 'Historical backfill'),
   coolant('Register · Coolant Topping', 'Historical backfill'),
   driverComplaint('Register · Driver Complaints', 'Historical backfill'),
-  breakdown('Register · Breakdown Report', 'Historical backfill');
+  breakdown('Register · Breakdown Report', 'Historical backfill'),
+  // Retired in favour of Inspections, and kept only so a profile written
+  // before the change still parses as itself. Never offered for a new one.
+  pmSchedule('Register · PM Schedule (retired)', 'No longer importable');
 
   const ImportTarget(this.label, this.description);
 
@@ -39,6 +46,12 @@ enum ImportTarget {
         ImportTarget.breakdown => 'breakdown',
         _ => null,
       };
+
+  /// Offered when creating or editing a profile. `pmSchedule` is recognised
+  /// but retired, so it is parsed and never proposed.
+  static List<ImportTarget> get selectable => ImportTarget.values
+      .where((ImportTarget t) => t != ImportTarget.pmSchedule)
+      .toList(growable: false);
 
   static ImportTarget fromName(String name) => ImportTarget.values.firstWhere(
         (t) => t.name == name,

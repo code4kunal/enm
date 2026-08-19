@@ -75,3 +75,34 @@ def test_the_published_required_fields_are_the_enforced_ones(
         assert r.status_code == 400, (
             f"{model}.{field} is published as required but was accepted missing"
         )
+
+
+def test_the_client_knows_every_import_target_the_server_can_send(schema):
+    """An enum the client does not fully know is a silent rewrite waiting.
+
+    `ImportTarget.fromName` falls back to `vehicles` for anything it does not
+    recognise, so a profile the server calls `snagReport` reads as a Vehicles
+    import — and saving it from that screen writes `vehicles` back, replacing
+    the depot's monthly snag mapping with something that was never configured.
+    Nothing errors. See qa/findings/2026-08-19-0010.md.
+
+    `tools/check_contract.py` cannot catch this: it compares Dart casts against
+    schema types, and an enum's *members* are neither.
+    """
+    from pathlib import Path as _Path
+
+    server = set(schema["components"]["schemas"]["ImportTarget"]["enum"])
+
+    dart = _Path("app/lib/models/site_import.dart").read_text()
+    body = dart[dart.index("enum ImportTarget {") : dart.index("const ImportTarget(")]
+    client = {
+        line.strip().split("(")[0]
+        for line in body.splitlines()
+        if line.strip() and line.strip()[0].islower() and "(" in line
+    }
+
+    missing = server - client
+    assert not missing, (
+        f"the server can return these import targets and the client would "
+        f"silently read them as `vehicles`: {sorted(missing)}"
+    )
