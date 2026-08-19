@@ -19,6 +19,11 @@ test is a hole, and the hole should be visible rather than absent.
 | D | An edit moves the derived report | DMR is computed on read | `test_entry_lifecycle.py` |
 | R | Every derived report renders | HANDOFF, Annexure-IV | `test_reports.py` |
 | C | A chart claiming availability has data | the API's own `available` flag | `test_reports.py` |
+| V | Every field validated: required, blank, enum, range, master FK | HANDOFF 4, CLAUDE.md | `test_field_validation.py` |
+| N | A bus number normalises however it is typed | CLAUDE.md conventions | `test_field_validation.py` |
+| X | The DMR agrees with the entries it derives from | both derive from one source | `test_reports_consistency.py` |
+| M | The month grid agrees with the day view | two endpoints, one truth | `test_reports_consistency.py` |
+| Z | Every export produces a real CSV or PDF | HANDOFF 5, the depot prints these | `test_reports_consistency.py` |
 
 A dash means the journey is not covered. Fill it in; never delete the row.
 
