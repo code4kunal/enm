@@ -37,3 +37,8 @@ app/.tooling/chromedriver
 
 # pytest bytecode from the QA floor
 qa/**/__pycache__/
+
+# coverage runs are local, not history
+.coverage
+backend/.coverage
+htmlcov/
