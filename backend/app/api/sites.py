@@ -31,7 +31,14 @@ from app.schemas.site import (
     VehicleUpdate,
 )
 from app.schemas.site_config import SiteConfigIO
-from app.services import audit, odometer, service_due, site_config, sites
+from app.services import (
+    audit,
+    checklists,
+    odometer,
+    service_due,
+    site_config,
+    sites,
+)
 from app.services.common import today_ist
 
 router = APIRouter(tags=["sites"])
@@ -74,6 +81,10 @@ async def create_site(
     )
     session.add(site)
     await session.flush()
+    # Migration 0014 gave the standard checklists to every site that existed
+    # when it ran; a site created afterwards is past it and would open an empty
+    # inspection form without this.
+    await checklists.apply_catalogue(session, site.code)
     await audit.record(
         session,
         actor_id=actor.id,

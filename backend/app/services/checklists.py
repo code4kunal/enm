@@ -98,6 +98,53 @@ async def variants_of(
     return list(rows.unique().all())
 
 
+async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
+    """Give a newly onboarded site the standard inspection checklists.
+
+    Migration 0014 puts these in the database for every site that existed when
+    it ran. A site created afterwards is past that migration, so it needs the
+    same catalogue applied here or its mechanics open an empty form.
+
+    Never overwrites: a template that already has lines belongs to the depot,
+    whether it edited ours or wrote its own.
+    """
+    from app.seeds.checklists_v1 import CHECKLISTS
+
+    codes = {t["work_type_code"] for t in CHECKLISTS}
+    work_types = {
+        wt.code: wt
+        for wt in (
+            await session.scalars(select(WorkType).where(WorkType.code.in_(codes)))
+        ).all()
+    }
+
+    added = 0
+    for entry in CHECKLISTS:
+        work_type = work_types.get(entry["work_type_code"])
+        if work_type is None:
+            continue
+        template = await ensure_template(
+            session, site_code, work_type, variant=entry["variant"]
+        )
+        if template.items:
+            continue
+        template.name = entry["name"]
+        for item in entry["items"]:
+            template.items.append(
+                ChecklistItem(
+                    section=item["section"] or "",
+                    label=item["label"],
+                    sort_order=item["sort_order"],
+                    response_type=ResponseType(item["response_type"]),
+                    is_required=item["is_required"],
+                    chart_key=item["chart_key"],
+                )
+            )
+            added += 1
+    await session.flush()
+    return added
+
+
 async def ensure_template(
     session: AsyncSession,
     site_code: str,

@@ -9,7 +9,7 @@ from app.db import SessionLocal
 from app.models.enums import Register, SlotStatus
 from app.models.inspection import InspectionSlot
 from app.models.master import Vehicle, WorkType
-from tests.conftest import auth_headers
+from tests.conftest import SUPER_ADMIN, auth_headers
 
 TODAY = date(2026, 8, 13)
 
@@ -433,3 +433,75 @@ async def test_the_variant_template_wins_when_the_bus_names_one(
         assert chosen is not None
         assert chosen.variant == "9M"
         assert any("Driver fan" in i.label for i in chosen.items)
+
+
+async def test_a_new_site_is_onboarded_with_the_standard_checklists(
+    client: AsyncClient,
+) -> None:
+    """Migration 0014 gives the catalogue to every site that existed when it
+    ran. A site created afterwards is past that migration, so onboarding has
+    to apply the same lines or its mechanics open an empty form.
+    """
+    # The catalogue is keyed on work-type code, and this database seeds none.
+    await _work_types()
+    h = await auth_headers(client, SUPER_ADMIN)
+    created = await client.post(
+        "/sites", json={"code": "NEWDEP", "name": "Newly onboarded"}, headers=h
+    )
+    assert created.status_code == 201, created.text
+
+    listed = await client.get("/sites/NEWDEP/checklists", headers=h)
+    assert listed.status_code == 200, listed.text
+    templates = listed.json()["items"]
+
+    by_key = {
+        (t["work_type_code"], t["variant"]): len(t["items"]) for t in templates
+    }
+    # D.I 14/12/14 by bus model, ten-day 57 each — the depot's own sheets.
+    assert by_key.get(("D.I", "9M")) == 14, by_key
+    assert by_key.get(("D.I", "12M AC")) == 14, by_key
+    assert by_key.get(("D.I", "12M Non-AC")) == 12, by_key
+    assert by_key.get(("10 DAYS SERVICE", "9M")) == 57, by_key
+
+    assert all(
+        (item["label"] or "").strip()
+        for t in templates
+        for item in t["items"]
+    ), "a checklist line arrived blank"
+
+
+async def test_onboarding_never_overwrites_a_depots_own_checklist(
+    client: AsyncClient,
+) -> None:
+    """A template with lines belongs to the depot, whether it edited ours or
+    wrote its own."""
+    await _work_types()
+    h = await auth_headers(client, SUPER_ADMIN)
+    assert (
+        await client.post(
+            "/sites", json={"code": "OWNDEP", "name": "Has its own"}, headers=h
+        )
+    ).status_code == 201
+
+    listed = (await client.get("/sites/OWNDEP/checklists", headers=h)).json()["items"]
+    di = next(t for t in listed if t["work_type_code"] == "D.I" and t["items"])
+
+    edited = await client.put(
+        f"/sites/OWNDEP/checklists/{di['work_type_id']}",
+        json={
+            "name": di["name"],
+            "variant": di["variant"],
+            "is_active": True,
+            "items": [{"section": "", "label": "Only line this depot wants"}],
+        },
+        headers=h,
+    )
+    assert edited.status_code == 200, edited.text
+
+    again = (await client.get("/sites/OWNDEP/checklists", headers=h)).json()["items"]
+    mine = next(
+        t
+        for t in again
+        if t["work_type_code"] == "D.I" and t["variant"] == di["variant"]
+    )
+    assert [i["label"] for i in mine["items"]] == ["Only line this depot wants"]
