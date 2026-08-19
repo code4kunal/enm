@@ -29,4 +29,4 @@ backend/.env
 # MBMT's own operational records — bus numbers, defects, staff names. Kept on
 # disk because the importers and their tests read them, never in the history:
 # this repository is not where a customer's data belongs.
-data/
+/data/
