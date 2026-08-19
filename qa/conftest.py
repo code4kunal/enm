@@ -28,3 +28,21 @@ def client_for(base_url, personas):
         )
 
     return _make
+
+
+@pytest.fixture(scope="session")
+def qa_bus(base_url, personas):
+    """One vehicle on the QA site, created by its manager. Idempotent."""
+    from qa.personas import token_for as _token
+
+    reg = "MH00QA0001"
+    site = personas["manager"].site
+    with httpx.Client(
+        base_url=base_url,
+        headers={"Authorization": f"Bearer {_token(base_url, personas['manager'])}"},
+        timeout=30.0,
+    ) as c:
+        r = c.post(f"/sites/{site}/vehicles", json={"registration_no": reg})
+        if r.status_code not in (200, 201, 409):
+            r.raise_for_status()
+    return reg
