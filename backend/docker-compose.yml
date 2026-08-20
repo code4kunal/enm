@@ -26,7 +26,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://enm:enm@db:5432/enm
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Explicit origins only — "*" + credentials is rejected by browsers.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8089,http://127.0.0.1:8080,http://127.0.0.1:8089}
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
       SEED_ON_START: ${SEED_ON_START:-true}
       ENVIRONMENT: development

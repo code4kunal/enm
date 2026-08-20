@@ -116,10 +116,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Browsers reject ACAO:* when Access-Control-Allow-Credentials is true.
+    # Explicit origins keep credentials on; a bare "*" falls back to no-credentials.
+    origins = settings.cors_origins
+    allow_credentials = "*" not in origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_origins=origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["Content-Disposition"],

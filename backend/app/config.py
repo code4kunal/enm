@@ -63,8 +63,15 @@ class Settings(BaseSettings):
     # --- CORS ---
     # NoDecode: these arrive as plain comma-separated strings in .env, not
     # JSON, and `_split_csv` below is what turns them into lists.
+    # Never default to "*": CORSMiddleware keeps allow_credentials=True, and
+    # browsers reject Access-Control-Allow-Origin: * with credentials.
     cors_origins: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["*"]
+        default_factory=lambda: [
+            "http://localhost:8080",
+            "http://localhost:8089",
+            "http://127.0.0.1:8080",
+            "http://127.0.0.1:8089",
+        ]
     )
 
     # --- media / photo upload ---

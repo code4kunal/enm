@@ -1,0 +1,80 @@
+# Example nginx front for Transvolt E&M (Flutter web + FastAPI).
+#
+# Same-origin setup (recommended): browser loads UI and API from one host, so
+# E&M CORS does not apply. Bake the public API URL into the web image:
+#   API_PUBLIC_URL=https://dev-enm.transvolt.org/api/v1
+#   docker compose build web && docker compose up -d web
+#
+# If the browser still calls the API on a different host/port, set on the API:
+#   CORS_ORIGINS=https://dev-enm.transvolt.org,http://YOUR_SERVER:8080
+#
+# SiteOps: Flutter web calls https://dev-siteops-platform.transvolt.org from the
+# browser (login + master data). That is a separate CORS policy — SiteOps must
+# allow this frontend origin (e.g. https://dev-enm.transvolt.org). E&M nginx
+# cannot fix SiteOps CORS; either allow the origin on SiteOps or proxy those
+# calls through the E&M API later.
+#
+# OPTIONS / preflight: do not add CORS headers here — FastAPI CORSMiddleware
+# owns them. proxy_pass forwards OPTIONS unchanged.
+
+upstream enm_em_frontend {
+    server 127.0.0.1:8089;
+    keepalive 8;
+}
+
+upstream enm_em_backend {
+    server 127.0.0.1:8123;
+    keepalive 8;
+}
+
+# ── HTTP: only this hostname. Other sites keep their own server_name. ──────
+server {
+    listen 80;
+    listen [::]:80;
+    server_name dev-enm.transvolt.org;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS: enable after certbot. Keep server_name identical to HTTP. ────────
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name dev-enm.transvolt.org;
+
+    ssl_certificate /etc/letsencrypt/live/transvolt.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/transvolt.org/privkey.pem;
+
+    client_max_body_size 50m;
+
+    location /api/ {
+        proxy_pass http://enm_em_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+        proxy_read_timeout 300s;
+    }
+
+    location /media/ {
+        proxy_pass http://enm_em_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://enm_em_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+    }
+}
