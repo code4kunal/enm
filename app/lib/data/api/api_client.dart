@@ -299,11 +299,11 @@ class ApiClient {
   void close() => _http.close();
 }
 
-/// Unwraps the backend's `{ "items": [...] }` list envelope.
+/// Unwraps the backend's `{ "items": [...] }` or `{ "data": [...] }` list envelope.
 List<Map<String, dynamic>> itemsOf(dynamic json) {
   if (json is List) return json.cast<Map<String, dynamic>>();
   if (json is Map<String, dynamic>) {
-    final items = json['items'];
+    final items = json['items'] ?? json['data'];
     if (items is List) return items.cast<Map<String, dynamic>>();
   }
   return const <Map<String, dynamic>>[];

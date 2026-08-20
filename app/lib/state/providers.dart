@@ -63,7 +63,10 @@ final siteRepositoryProvider = Provider<SiteRepository>(
 );
 
 final vehicleRepositoryProvider = Provider<VehicleRepository>(
-  (ref) => ApiVehicleRepository(ref.watch(apiClientProvider)),
+  (ref) => ApiVehicleRepository(
+    ref.watch(apiClientProvider),
+    ref.watch(siteOpsClientProvider),
+  ),
 );
 
 final siteConfigRepositoryProvider = Provider<SiteConfigRepository>(

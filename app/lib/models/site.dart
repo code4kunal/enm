@@ -193,19 +193,21 @@ class Vehicle {
       };
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
-        id: json['id'] as String,
-        registrationNo: json['registration_no'] as String,
-        siteCode: json['site_code'] as String,
+        id: (json['id'] ?? '').toString(),
+        registrationNo:
+            (json['registration_no'] ?? json['vehicle_no'] ?? '').toString(),
+        siteCode: (json['site_code'] ?? '').toString(),
         isActive: json['is_active'] as bool? ?? true,
-        make: json['make'] as String? ?? '',
-        model: json['model'] as String? ?? '',
-        checklistVariant: json['checklist_variant'] as String?,
+        make: (json['make'] ?? '').toString(),
+        model: (json['model'] ?? '').toString(),
+        checklistVariant: json['checklist_variant']?.toString(),
         batteryCapacityKwh: (json['battery_capacity_kwh'] as num?)?.toDouble(),
-        odometerKm: (json['odometer_km'] as num?)?.round() ?? 0,
-        odometerUpdatedAt: json['odometer_updated_at'] as String?,
+        odometerKm:
+            ((json['odometer_km'] ?? json['last_odo']) as num?)?.round() ?? 0,
+        odometerUpdatedAt: json['odometer_updated_at']?.toString(),
         lastServiceKm: (json['last_service_km'] as num?)?.round(),
-        lastServiceOn: json['last_service_on'] as String?,
-        lastServiceCode: json['last_service_code'] as String? ?? '',
+        lastServiceOn: json['last_service_on']?.toString(),
+        lastServiceCode: (json['last_service_code'] ?? '').toString(),
       );
 }
 

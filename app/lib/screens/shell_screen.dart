@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -475,9 +475,8 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
           if (sites.isNotEmpty) {
             _selected = sites.first;
             ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
-            if (sites.first.code.isNotEmpty) {
-              ref.read(sessionProvider.notifier).switchSite(sites.first.code);
-            }
+            final targetCode = sites.first.code.isNotEmpty ? sites.first.code : sites.first.id;
+            ref.read(sessionProvider.notifier).switchSite(targetCode);
           }
           _loading = false;
         });
@@ -539,9 +538,8 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
               final site = _sites.firstWhere((s) => s.id == id);
               setState(() => _selected = site);
               ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
-              if (site.code.isNotEmpty) {
-                ref.read(sessionProvider.notifier).switchSite(site.code);
-              }
+              final targetCode = site.code.isNotEmpty ? site.code : site.id;
+              ref.read(sessionProvider.notifier).switchSite(targetCode);
             }
           },
         ),

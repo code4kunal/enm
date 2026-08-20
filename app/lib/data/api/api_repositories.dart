@@ -342,18 +342,23 @@ class ApiSiteRepository implements SiteRepository {
 // ─── Vehicles ─────────────────────────────────────────────────────────────
 
 class ApiVehicleRepository implements VehicleRepository {
-  ApiVehicleRepository(this._api);
+  ApiVehicleRepository(this._api, [SiteOpsClient? siteOpsClient])
+      : siteOpsClient = siteOpsClient ?? SiteOpsClient();
 
   final ApiClient _api;
+  final SiteOpsClient siteOpsClient;
 
   @override
   Future<List<Vehicle>> fetchVehicles({
     required String siteCode,
     bool includeInactive = false,
   }) async {
-    final json = await _api.get(
-      '/sites/$siteCode/vehicles',
-      query: <String, String>{'include_inactive': '$includeInactive'},
+    final json = await siteOpsClient.get(
+      '/master/vehicles',
+      query: <String, String>{
+        'site_id': siteCode,
+        'page_size': '100',
+      },
     );
     return itemsOf(json).map(Vehicle.fromJson).toList();
   }
