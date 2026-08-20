@@ -10,6 +10,7 @@ import '../state/entries.dart';
 import '../models/checklist.dart';
 import '../state/inspections.dart';
 import '../state/session.dart';
+import '../state/providers.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/dates.dart';
@@ -26,6 +27,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     final site = session.site;
+    final siteName = ref.watch(activeSiteProvider)?.name ?? site;
     final todayEntries = ref.watch(todayEntriesProvider);
     final openBreakdowns = ref.watch(openBreakdownsProvider).length;
     final firstName = (session.user?.name ?? '').split(' ').first;
@@ -36,20 +38,20 @@ class HomeScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           if (openBreakdowns > 0) ...<Widget>[
-            _OpenBreakdownBanner(count: openBreakdowns, site: site),
+            _OpenBreakdownBanner(count: openBreakdowns, site: siteName),
             const SizedBox(height: 18),
           ],
-          _Greeting(name: firstName, site: site),
+          _Greeting(name: firstName, site: siteName),
           const SizedBox(height: 18),
           _RegisterCardGrid(todayEntries: todayEntries),
           const SizedBox(height: 22),
           const _InspectionCardGrid(),
           const SizedBox(height: 28),
-          Text("Today's entries · $site", style: AppText.sectionTitle),
+          Text("Today's entries · $siteName", style: AppText.sectionTitle),
           const SizedBox(height: 12),
           if (todayEntries.isEmpty)
             EmptyState(
-              message: 'No entries yet today at $site. '
+              message: 'No entries yet today at $siteName. '
                   'Start with any register above.',
             )
           else
