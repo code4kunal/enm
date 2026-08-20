@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:transvolt_em/data/api/api_client.dart';
 import 'package:transvolt_em/data/api/api_repositories.dart';
+import 'package:transvolt_em/data/api/siteops_client.dart';
 import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
@@ -245,7 +246,7 @@ void main() {
         '/master/defect-sources': ok('defect_sources'),
         '/master/defect-types': ok('defect_types'),
       });
-      final master = ApiMasterDataRepository(client);
+      final master = ApiMasterDataRepository(client, SiteOpsClient());
 
       expect(await master.siteCodes(), <String>['MBMT']);
       expect(
@@ -260,7 +261,7 @@ void main() {
       final client = clientServing(<String, ({int status, String body})>{
         '/master/defect-sources': ok('defect_sources'),
       });
-      final items = await ApiMasterDataRepository(client)
+      final items = await ApiMasterDataRepository(client, SiteOpsClient())
           .masterList(MasterListKind.defectSources);
 
       // Ids and flags are what the master-data editor needs; a bare string

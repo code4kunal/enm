@@ -1,5 +1,6 @@
 services:
   db:
+    container_name: enm_db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: enm
@@ -16,6 +17,7 @@ services:
       retries: 10
 
   api:
+    container_name: enm_backend
     build: .
     depends_on:
       db:
@@ -46,6 +48,7 @@ services:
       ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   web:
+    container_name: enm_frontend
     build:
       context: ../app
       args:

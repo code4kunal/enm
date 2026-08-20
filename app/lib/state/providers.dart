@@ -1,12 +1,12 @@
-import 'selected_site.dart';
-import '../data/api/siteops_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/api/api_client.dart';
 import '../data/api/api_repositories.dart';
+import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
+import 'selected_site.dart';
 import 'session.dart';
 
 /// Single wiring point for the data layer.
@@ -40,7 +40,7 @@ final siteOpsClientProvider = Provider<SiteOpsClient>((ref) {
 });
 
 final masterDataRepositoryProvider = Provider<MasterDataRepository>(
-  (ref) => ApiMasterDataRepository(ref.watch(apiClientProvider)),
+  (ref) => ApiMasterDataRepository(ref.watch(apiClientProvider), ref.watch(siteOpsClientProvider)),
 );
 
 final entryRepositoryProvider = Provider<EntryRepository>(

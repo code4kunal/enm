@@ -4,6 +4,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transvolt_em/data/api/api_client.dart';
 import 'package:transvolt_em/data/api/api_repositories.dart';
+import 'package:transvolt_em/data/api/siteops_client.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
@@ -102,7 +103,7 @@ void main() {
 
   test('master data resolves for the first site', () async {
     if (!online) return;
-    final master = ApiMasterDataRepository(client);
+    final master = ApiMasterDataRepository(client, SiteOpsClient());
     final codes = await master.siteCodes();
     expect(codes, isNotEmpty);
 
@@ -115,7 +116,7 @@ void main() {
 
   test('entries list is site-scoped and parses', () async {
     if (!online) return;
-    final codes = await ApiMasterDataRepository(client).siteCodes();
+    final codes = await ApiMasterDataRepository(client, SiteOpsClient()).siteCodes();
     final entries =
         await ApiEntryRepository(client).fetchEntries(site: codes.first);
 
@@ -129,7 +130,7 @@ void main() {
 
   test('an entry round-trips through create and read back', () async {
     if (!online) return;
-    final master = ApiMasterDataRepository(client);
+    final master = ApiMasterDataRepository(client, SiteOpsClient());
     final codes = await master.siteCodes();
     final site = codes.first;
     final vehicles = await master.vehicleNumbers(siteCode: site);
