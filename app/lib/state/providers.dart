@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/api/api_client.dart';
 import '../data/api/api_repositories.dart';
-import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
@@ -28,7 +27,6 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient();
   ref.listen<SelectedSiteState>(selectedSiteProvider, (prev, next) {
     client.selectedSiteId = next.id;
-    siteOpsClient.selectedSiteId = next.id;
   }, fireImmediately: true);
   ref.onDispose(client.close);
   return client;
@@ -115,7 +113,8 @@ final activeSiteProvider = Provider<Site?>((ref) {
 final masterDataProvider = FutureProvider<MasterData>((ref) async {
   final repo = ref.watch(masterDataRepositoryProvider);
   final site = ref.watch(sessionProvider.select((s) => s.site));
-  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  final siteOpsSiteId =
+      ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
   if (site.isEmpty) return MasterData.empty;
 
   Future<List<String>> safe(Future<List<String>> Function() call) async {
@@ -153,11 +152,13 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
 final technicianStaffProvider = FutureProvider<List<String>>((ref) async {
   final repo = ref.watch(masterDataRepositoryProvider);
   final siteName = ref.watch(sessionProvider.select((s) => s.site));
-  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  final siteOpsSiteId =
+      ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
   if (siteName.isEmpty) return const <String>[];
 
   try {
-    return await repo.technicianStaff(siteName: siteName, siteId: siteOpsSiteId);
+    return await repo.technicianStaff(
+        siteName: siteName, siteId: siteOpsSiteId);
   } catch (_) {
     return const <String>[];
   }
@@ -167,11 +168,13 @@ final technicianStaffProvider = FutureProvider<List<String>>((ref) async {
 final supervisorStaffProvider = FutureProvider<List<String>>((ref) async {
   final repo = ref.watch(masterDataRepositoryProvider);
   final siteName = ref.watch(sessionProvider.select((s) => s.site));
-  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  final siteOpsSiteId =
+      ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
   if (siteName.isEmpty) return const <String>[];
 
   try {
-    return await repo.supervisorStaff(siteName: siteName, siteId: siteOpsSiteId);
+    return await repo.supervisorStaff(
+        siteName: siteName, siteId: siteOpsSiteId);
   } catch (_) {
     return const <String>[];
   }
@@ -181,7 +184,8 @@ final supervisorStaffProvider = FutureProvider<List<String>>((ref) async {
 final mechanicStaffProvider = FutureProvider<List<String>>((ref) async {
   final repo = ref.watch(masterDataRepositoryProvider);
   final siteName = ref.watch(sessionProvider.select((s) => s.site));
-  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  final siteOpsSiteId =
+      ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
   if (siteName.isEmpty) return const <String>[];
 
   try {

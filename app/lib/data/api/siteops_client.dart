@@ -20,8 +20,8 @@ abstract final class SiteOpsConfig {
 
 class SiteOpsClient {
   SiteOpsClient({String? baseUrl, http.Client? httpClient})
-      : baseUrl = (baseUrl ?? SiteOpsConfig.baseUrl)
-            .replaceAll(RegExp(r'/+$'), ''),
+      : baseUrl =
+            (baseUrl ?? SiteOpsConfig.baseUrl).replaceAll(RegExp(r'/+$'), ''),
         _http = httpClient ?? http.Client();
 
   final String baseUrl;
@@ -46,6 +46,12 @@ class SiteOpsClient {
 
   Future<dynamic> get(String path, {Map<String, String>? query}) =>
       _send('GET', path, query: query);
+
+  Future<dynamic> post(String path, {Object? body}) =>
+      _send('POST', path, body: body);
+
+  Future<dynamic> put(String path, {Object? body}) =>
+      _send('PUT', path, body: body);
 
   Future<dynamic> delete(String path) => _send('DELETE', path);
 

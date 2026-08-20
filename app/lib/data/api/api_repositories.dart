@@ -42,9 +42,11 @@ const String _siteOpsBaseUrl = String.fromEnvironment(
 );
 
 class ApiMasterDataRepository implements MasterDataRepository {
-  ApiMasterDataRepository(this._api);
+  ApiMasterDataRepository(this._api, [SiteOpsClient? siteOpsClient])
+      : siteOpsClient = siteOpsClient ?? SiteOpsClient();
 
   final ApiClient _api;
+  final SiteOpsClient siteOpsClient;
 
   @override
   Future<List<String>> siteCodes() async =>
