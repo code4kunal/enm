@@ -47,6 +47,27 @@ class FakeMasterDataRepository implements MasterDataRepository {
           .toList();
 
   @override
+  Future<List<String>> technicianStaff({required String siteName, String? siteId}) async =>
+      _store.users
+          .where((u) => u.active && u.role == UserRole.executive)
+          .map((u) => u.name)
+          .toList();
+
+  @override
+  Future<List<String>> supervisorStaff({required String siteName, String? siteId}) async =>
+      _store.users
+          .where((u) => u.active && u.role == UserRole.supervisor)
+          .map((u) => u.name)
+          .toList();
+
+  @override
+  Future<List<String>> mechanicStaff({required String siteName, String? siteId}) async =>
+      _store.users
+          .where((u) => u.active && u.role == UserRole.executive) // or filter appropriately
+          .map((u) => u.name)
+          .toList();
+
+  @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {
     await Future<void>.delayed(_latency);
     return List<MasterListItem>.of(_listFor(kind))

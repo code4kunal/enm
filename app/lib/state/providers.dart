@@ -115,6 +115,7 @@ final activeSiteProvider = Provider<Site?>((ref) {
 final masterDataProvider = FutureProvider<MasterData>((ref) async {
   final repo = ref.watch(masterDataRepositoryProvider);
   final site = ref.watch(sessionProvider.select((s) => s.site));
+  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
   if (site.isEmpty) return MasterData.empty;
 
   Future<List<String>> safe(Future<List<String>> Function() call) async {
@@ -131,6 +132,9 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     safe(() => repo.defectSources()),
     safe(() => repo.defectTypes()),
     safe(() => repo.staff(siteCode: site)),
+    safe(() => repo.technicianStaff(siteName: site, siteId: siteOpsSiteId)),
+    safe(() => repo.supervisorStaff(siteName: site, siteId: siteOpsSiteId)),
+    safe(() => repo.mechanicStaff(siteName: site, siteId: siteOpsSiteId)),
   ]);
 
   return MasterData(
@@ -139,7 +143,52 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     defectSources: results[2],
     defectTypes: results[3],
     staff: results[4],
+    technicianStaff: results[5],
+    supervisorStaff: results[6],
+    mechanicStaff: results[7],
   );
+});
+
+/// Technician names for the Daily Work Done attended-by picker.
+final technicianStaffProvider = FutureProvider<List<String>>((ref) async {
+  final repo = ref.watch(masterDataRepositoryProvider);
+  final siteName = ref.watch(sessionProvider.select((s) => s.site));
+  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  if (siteName.isEmpty) return const <String>[];
+
+  try {
+    return await repo.technicianStaff(siteName: siteName, siteId: siteOpsSiteId);
+  } catch (_) {
+    return const <String>[];
+  }
+});
+
+/// Supervisor names for the Daily Work Done supervisor picker.
+final supervisorStaffProvider = FutureProvider<List<String>>((ref) async {
+  final repo = ref.watch(masterDataRepositoryProvider);
+  final siteName = ref.watch(sessionProvider.select((s) => s.site));
+  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  if (siteName.isEmpty) return const <String>[];
+
+  try {
+    return await repo.supervisorStaff(siteName: siteName, siteId: siteOpsSiteId);
+  } catch (_) {
+    return const <String>[];
+  }
+});
+
+/// Mechanic names for the Driver Complaints mechanic picker.
+final mechanicStaffProvider = FutureProvider<List<String>>((ref) async {
+  final repo = ref.watch(masterDataRepositoryProvider);
+  final siteName = ref.watch(sessionProvider.select((s) => s.site));
+  final siteOpsSiteId = ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+  if (siteName.isEmpty) return const <String>[];
+
+  try {
+    return await repo.mechanicStaff(siteName: siteName, siteId: siteOpsSiteId);
+  } catch (_) {
+    return const <String>[];
+  }
 });
 
 /// Full vehicle records for the active site's fleet screen, including retired

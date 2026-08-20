@@ -174,6 +174,9 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   Widget build(BuildContext context) {
     final entriesAsync = ref.watch(entriesProvider);
     final master = ref.watch(masterDataProvider).valueOrNull ?? MasterData.empty;
+    final technicianStaff = ref.watch(technicianStaffProvider).valueOrNull ?? const <String>[];
+    final supervisorStaff = ref.watch(supervisorStaffProvider).valueOrNull ?? const <String>[];
+    final mechanicStaff = ref.watch(mechanicStaffProvider).valueOrNull ?? const <String>[];
     final site = ref.watch(sessionProvider.select((s) => s.site));
     final isMobile = MediaQuery.sizeOf(context).width < T.mobileBreakpoint;
 
@@ -259,6 +262,9 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                 child: _FieldGrid(
                   register: register,
                   master: master,
+                  technicianStaff: technicianStaff,
+                  supervisorStaff: supervisorStaff,
+                  mechanicStaff: mechanicStaff,
                   isMobile: isMobile,
                   values: _values,
                   controllers: _controllers,
@@ -313,6 +319,9 @@ class _FieldGrid extends StatelessWidget {
   const _FieldGrid({
     required this.register,
     required this.master,
+    required this.technicianStaff,
+    required this.supervisorStaff,
+    required this.mechanicStaff,
     required this.isMobile,
     required this.values,
     required this.controllers,
@@ -325,6 +334,9 @@ class _FieldGrid extends StatelessWidget {
 
   final RegisterDef register;
   final MasterData master;
+  final List<String> technicianStaff;
+  final List<String> supervisorStaff;
+  final List<String> mechanicStaff;
   final bool isMobile;
   final Map<String, String> values;
   final Map<String, TextEditingController> controllers;
@@ -363,8 +375,12 @@ class _FieldGrid extends StatelessWidget {
               SizedBox(
                 width: widthFor(f.width),
                 child: _Field(
+                  registerId: register.id,
                   def: f,
                   master: master,
+                  technicianStaff: technicianStaff,
+                  supervisorStaff: supervisorStaff,
+                  mechanicStaff: mechanicStaff,
                   value: values[f.key] ?? '',
                   controller: controllers[f.key],
                   onSet: onSet,
@@ -388,8 +404,12 @@ class _FieldGrid extends StatelessWidget {
 
 class _Field extends StatelessWidget {
   const _Field({
+    required this.registerId,
     required this.def,
     required this.master,
+    required this.technicianStaff,
+    required this.supervisorStaff,
+    required this.mechanicStaff,
     required this.value,
     required this.controller,
     required this.onSet,
@@ -397,8 +417,12 @@ class _Field extends StatelessWidget {
     required this.onPickTime,
   });
 
+  final String registerId;
   final FieldDef def;
   final MasterData master;
+  final List<String> technicianStaff;
+  final List<String> supervisorStaff;
+  final List<String> mechanicStaff;
   final String value;
   final TextEditingController? controller;
   final void Function(String key, String value) onSet;
@@ -406,6 +430,22 @@ class _Field extends StatelessWidget {
   final Future<void> Function(String key) onPickTime;
 
   List<String> get _options {
+    if ((registerId == 'work' || registerId == 'coolant') && def.key == 'employee') {
+      return technicianStaff.isNotEmpty
+          ? technicianStaff
+          : master.staff;
+    }
+    if (def.key == 'supervisor') {
+      return supervisorStaff.isNotEmpty
+          ? supervisorStaff
+          : master.staff;
+    }
+    if (registerId == 'complaint' && def.key == 'mechanic') {
+      return mechanicStaff.isNotEmpty
+          ? mechanicStaff
+          : master.staff;
+    }
+
     switch (def.optionsFrom) {
       case MasterList.defectSources:
         return master.defectSources;

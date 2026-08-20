@@ -47,8 +47,6 @@ class OdometerSyncState {
   }
 }
 
-final lastSyncedSiteProvider = StateProvider<String?>((ref) => null);
-
 /// Keeps every vehicle's odometer current on a schedule.
 ///
 /// The maintenance plan is distance-driven, so a stale odometer silently stops
@@ -57,6 +55,7 @@ final lastSyncedSiteProvider = StateProvider<String?>((ref) => null);
 /// re-arms itself whenever the site or that interval changes.
 class OdometerSyncController extends Notifier<OdometerSyncState> {
   Timer? _timer;
+  String? _lastSyncedSite;
 
   @override
   OdometerSyncState build() {
@@ -68,13 +67,12 @@ class OdometerSyncController extends Notifier<OdometerSyncState> {
     ref.onDispose(() => _timer?.cancel());
 
     if (!signedIn || site.isEmpty) {
-      ref.read(lastSyncedSiteProvider.notifier).state = null;
+      _lastSyncedSite = null;
       _timer?.cancel();
     } else if (config != null) {
       if (config.odometerSync.enabled) {
-        final lastSyncedSite = ref.read(lastSyncedSiteProvider);
-        if (lastSyncedSite != site) {
-          ref.read(lastSyncedSiteProvider.notifier).state = site;
+        if (_lastSyncedSite != site) {
+          _lastSyncedSite = site;
           _timer?.cancel();
           final interval = config.odometerSync.interval;
           _timer = Timer.periodic(interval, (_) => syncNow());
@@ -83,7 +81,7 @@ class OdometerSyncController extends Notifier<OdometerSyncState> {
           scheduleMicrotask(syncNow);
         }
       } else {
-        ref.read(lastSyncedSiteProvider.notifier).state = null;
+        _lastSyncedSite = null;
         _timer?.cancel();
       }
     }

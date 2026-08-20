@@ -33,6 +33,14 @@ final Map<String, String> _registerFromWire = <String, String>{
 
 // ─── Master data ──────────────────────────────────────────────────────────
 
+const String _technicianRoleId = 'b7b3c31a-2c6d-4258-8743-dc6b858b10a2';
+const String _supervisorRoleId = '8d358f39-bbf0-4481-9b84-0e852f36b7e2';
+const String _mechanicRoleId = '6d84ed3e-1f86-49d9-bb55-610ab270f74e';
+const String _siteOpsBaseUrl = String.fromEnvironment(
+  'SITEOPS_BASE_URL',
+  defaultValue: 'https://dev-siteops-platform.transvolt.org/api/v1',
+);
+
 class ApiMasterDataRepository implements MasterDataRepository {
   ApiMasterDataRepository(this._api);
 
@@ -80,6 +88,122 @@ class ApiMasterDataRepository implements MasterDataRepository {
       query: <String, String>{'site': siteCode},
     );
     return itemsOf(json).map((j) => j['name'] as String).toList();
+  }
+
+  @override
+  Future<List<String>> technicianStaff({required String siteName, String? siteId}) async {
+    try {
+      final resolvedSiteId = siteId?.isNotEmpty == true
+          ? siteId!
+          : await _resolveSiteOpsSiteId(siteName);
+      if (resolvedSiteId.isEmpty) {
+        return const <String>[];
+      }
+
+      final json = await siteOpsClient.get(
+        '/users/',
+        query: <String, String>{
+          'page': '1',
+          'page_size': '100',
+          'pagination': 'false',
+          'is_active': 'true',
+          'site_id': resolvedSiteId,
+          'role_id': _technicianRoleId,
+        },
+      );
+
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      return data
+          .map((j) => (j as Map<String, dynamic>)['full_name']?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  @override
+  Future<List<String>> supervisorStaff({required String siteName, String? siteId}) async {
+    try {
+      final resolvedSiteId = siteId?.isNotEmpty == true
+          ? siteId!
+          : await _resolveSiteOpsSiteId(siteName);
+      if (resolvedSiteId.isEmpty) {
+        return const <String>[];
+      }
+
+      final json = await siteOpsClient.get(
+        '/users/',
+        query: <String, String>{
+          'page': '1',
+          'page_size': '100',
+          'pagination': 'false',
+          'is_active': 'true',
+          'site_id': resolvedSiteId,
+          'role_id': _supervisorRoleId,
+        },
+      );
+
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      return data
+          .map((j) => (j as Map<String, dynamic>)['full_name']?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  @override
+  Future<List<String>> mechanicStaff({required String siteName, String? siteId}) async {
+    try {
+      final resolvedSiteId = siteId?.isNotEmpty == true
+          ? siteId!
+          : await _resolveSiteOpsSiteId(siteName);
+      if (resolvedSiteId.isEmpty) {
+        return const <String>[];
+      }
+
+      final json = await siteOpsClient.get(
+        '/users/',
+        query: <String, String>{
+          'page': '1',
+          'page_size': '100',
+          'pagination': 'false',
+          'is_active': 'true',
+          'site_id': resolvedSiteId,
+          'role_id': _mechanicRoleId,
+        },
+      );
+
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      return data
+          .map((j) => (j as Map<String, dynamic>)['full_name']?.toString() ?? '')
+          .where((v) => v.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  Future<String> _resolveSiteOpsSiteId(String siteName) async {
+    try {
+      final json = await siteOpsClient.get('/onboarding/sites/dropdown');
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      final needle = siteName.trim().toLowerCase();
+      for (final item in data) {
+        final map = item as Map<String, dynamic>;
+        final name = map['name']?.toString().trim().toLowerCase() ?? '';
+        final id = map['id']?.toString().trim().toLowerCase() ?? '';
+        final code = map['code']?.toString().trim().toLowerCase() ?? '';
+        if (name == needle || id == needle || code == needle) {
+          return map['id']?.toString() ?? '';
+        }
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
   }
 
   @override

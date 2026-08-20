@@ -172,6 +172,15 @@ abstract interface class MasterDataRepository {
   /// Active staff at a site, for the "attended by" and "supervisor" pickers.
   Future<List<String>> staff({required String siteCode});
 
+  /// Active technicians for Daily Work Done's "Attended By" picker.
+  Future<List<String>> technicianStaff({required String siteName, String? siteId});
+
+  /// Active supervisors for Daily Work Done's "Supervisor (Floor)" picker.
+  Future<List<String>> supervisorStaff({required String siteName, String? siteId});
+
+  /// Active mechanics for Driver Complaints' "Name of the Mechanic" picker.
+  Future<List<String>> mechanicStaff({required String siteName, String? siteId});
+
   /// Full rows, including inactive, for the master-data editor.
   Future<List<MasterListItem>> masterList(MasterListKind kind);
 
@@ -192,6 +201,9 @@ class MasterData {
     required this.defectSources,
     required this.defectTypes,
     this.staff = const <String>[],
+    this.technicianStaff = const <String>[],
+    this.supervisorStaff = const <String>[],
+    this.mechanicStaff = const <String>[],
   });
 
   final List<String> sites;
@@ -204,12 +216,24 @@ class MasterData {
   /// The site's people, for the "attended by" and "supervisor" dropdowns.
   final List<String> staff;
 
+  /// Technician names for Daily Work Done's attended-by dropdown.
+  final List<String> technicianStaff;
+
+  /// Supervisor names for Daily Work Done's supervisor dropdown.
+  final List<String> supervisorStaff;
+
+  /// Mechanic names for Driver Complaints' mechanic dropdown.
+  final List<String> mechanicStaff;
+
   static const empty = MasterData(
     sites: <String>[],
     vehicles: <String>[],
     defectSources: <String>[],
     defectTypes: <String>[],
     staff: <String>[],
+    technicianStaff: <String>[],
+    supervisorStaff: <String>[],
+    mechanicStaff: <String>[],
   );
 }
 
