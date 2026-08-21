@@ -48,18 +48,11 @@ class ApiMasterDataRepository implements MasterDataRepository {
   final SiteOpsClient siteOpsClient;
 
   @override
-  Future<List<String>> siteCodes() async {
-    try {
-      final json = await siteOpsClient.get('/onboarding/sites/dropdown');
-      final list = (json is Map ? json['data'] : json) as List<dynamic>? ?? const <dynamic>[];
-      return list
-          .map((j) => (j as Map<String, dynamic>)['id']?.toString() ?? '')
-          .where((code) => code.isNotEmpty)
+  Future<List<String>> siteCodes() async =>
+      itemsOf(await _api.get('/sites'))
+          .where((j) => j['is_active'] as bool? ?? true)
+          .map((j) => j['code'] as String)
           .toList();
-    } catch (_) {
-      return const <String>[];
-    }
-  }
 
   @override
   Future<List<String>> vehicleNumbers({required String siteCode}) async {
@@ -289,25 +282,13 @@ class ApiSiteRepository implements SiteRepository {
       : siteOpsClient = siteOpsClient ?? SiteOpsClient();
 
   final ApiClient _api;
+
+  /// Kept for call-sites that still inject SiteOps; E&M site CRUD uses [_api].
   final SiteOpsClient siteOpsClient;
 
   @override
-  Future<List<Site>> fetchSites() async {
-    try {
-      final json = await siteOpsClient.get('/onboarding/sites/dropdown');
-      final list = (json is Map ? json['data'] : json) as List<dynamic>? ?? const <dynamic>[];
-      return list.map((j) {
-        final map = j as Map<String, dynamic>;
-        return Site(
-          code: map['id']?.toString() ?? '',
-          name: map['name']?.toString() ?? '',
-          isActive: true,
-        );
-      }).toList();
-    } catch (_) {
-      return const <Site>[];
-    }
-  }
+  Future<List<Site>> fetchSites() async =>
+      itemsOf(await _api.get('/sites')).map(Site.fromJson).toList();
 
   @override
   Future<Site> createSite({
@@ -317,17 +298,28 @@ class ApiSiteRepository implements SiteRepository {
     String address = '',
     String? commissionedOn,
   }) async {
-    return Site(code: code, name: name, isActive: true, timezone: timezone, address: address, commissionedOn: commissionedOn);
+    final json = await _api.post('/sites', body: <String, dynamic>{
+      'code': code,
+      'name': name,
+      'timezone': timezone,
+      'address': address,
+      'commissioned_on': commissionedOn,
+    });
+    return Site.fromJson(json as Map<String, dynamic>);
   }
 
   @override
   Future<Site> updateSite(Site site) async {
-    return site;
+    final json = await _api.put('/sites/${site.code}', body: site.toJson());
+    return Site.fromJson(json as Map<String, dynamic>);
   }
 
   @override
   Future<Site> setActive(String code, bool active) async {
-    return Site(code: code, name: '', isActive: active);
+    final json = await _api.post(
+      '/sites/$code/${active ? 'activate' : 'deactivate'}',
+    );
+    return Site.fromJson(json as Map<String, dynamic>);
   }
 
   @override

@@ -4,7 +4,6 @@ import '../data/registers.dart';
 import '../data/repositories.dart';
 import '../models/checklist.dart';
 import 'providers.dart';
-import 'selected_site.dart';
 import '../utils/dates.dart';
 import 'entries.dart';
 import 'schedule.dart';
@@ -14,11 +13,11 @@ import 'session.dart';
 ///
 /// This is what makes a daily inspection and a ten-day service different data
 /// entry rather than one shared form.
+///
+/// Uses [sessionProvider].site (E&M code like `MBMT`), not SiteOps UUID —
+/// `/sites/{code}/checklists` is keyed by depot code.
 final checklistsProvider = FutureProvider<List<Checklist>>((ref) {
-  final siteId = ref.watch(selectedSiteProvider).id;
-  final site = (siteId != null && siteId.isNotEmpty)
-      ? siteId
-      : ref.watch(sessionProvider.select((s) => s.site));
+  final site = ref.watch(sessionProvider.select((s) => s.site));
   if (site.isEmpty) return Future<List<Checklist>>.value(const <Checklist>[]);
   return ref.watch(checklistRepositoryProvider).fetchChecklists(site);
 });
@@ -111,10 +110,7 @@ final checklistProvider = Provider.family<Checklist?, int>((ref, workTypeId) {
 /// Inspections already recorded today, for the Home feed.
 final todaysInspectionsProvider =
     FutureProvider<List<InspectionEntry>>((ref) {
-  final siteId = ref.watch(selectedSiteProvider).id;
-  final site = (siteId != null && siteId.isNotEmpty)
-      ? siteId
-      : ref.watch(sessionProvider.select((s) => s.site));
+  final site = ref.watch(sessionProvider.select((s) => s.site));
   if (site.isEmpty) {
     return Future<List<InspectionEntry>>.value(const <InspectionEntry>[]);
   }
@@ -129,12 +125,7 @@ class InspectionController {
 
   ChecklistRepository get _repo => _ref.read(checklistRepositoryProvider);
 
-  String get _site {
-    final siteId = _ref.read(selectedSiteProvider).id;
-    return (siteId != null && siteId.isNotEmpty)
-        ? siteId
-        : _ref.read(sessionProvider).site;
-  }
+  String get _site => _ref.read(sessionProvider).site;
 
   Future<Checklist> saveChecklist(Checklist checklist) async {
     final saved = await _repo.saveChecklist(_site, checklist);
@@ -185,10 +176,7 @@ final inspectionControllerProvider =
 /// what was done, so the register screen lists them under their own filter.
 final siteInspectionsProvider =
     FutureProvider<List<InspectionEntry>>((ref) async {
-  final siteId = ref.watch(selectedSiteProvider).id;
-  final site = (siteId != null && siteId.isNotEmpty)
-      ? siteId
-      : ref.watch(sessionProvider.select((s) => s.site));
+  final site = ref.watch(sessionProvider.select((s) => s.site));
   if (site.isEmpty) return const <InspectionEntry>[];
   final rows =
       await ref.watch(checklistRepositoryProvider).fetchInspections(site);

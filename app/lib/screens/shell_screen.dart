@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../router.dart';
+import '../models/site.dart';
 import '../state/entries.dart';
 import '../state/odometer_sync.dart';
 import '../state/session.dart';
@@ -444,16 +445,38 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
     _loadSites();
   }
 
+  /// Map a SiteOps dropdown row to the E&M depot code (`MBMT`), never a UUID.
+  String _enmCodeFor(Map<String, dynamic> j, List<Site> enmSites) {
+    final raw = (j['code'] ?? j['site_code'])?.toString().trim().toUpperCase() ?? '';
+    // Reject empty strings and UUID-shaped values from SiteOps.
+    final looksLikeUuid = raw.contains('-') && raw.length >= 32;
+    if (raw.isNotEmpty && !looksLikeUuid) return raw;
+
+    final name = (j['name']?.toString() ?? '').trim().toLowerCase();
+    if (name.isEmpty) {
+      return enmSites.length == 1 ? enmSites.first.code : '';
+    }
+
+    for (final s in enmSites) {
+      final enmName = s.name.trim().toLowerCase();
+      final enmCode = s.code.toLowerCase();
+      if (enmName == name || enmCode == name) return s.code;
+      if (enmName.contains(name) || name.contains(enmName)) return s.code;
+      if (name.contains(enmCode) || enmName.contains(enmCode)) return s.code;
+    }
+
+    // Single-depot installs: SiteOps name may not match E&M wording.
+    if (enmSites.length == 1) return enmSites.first.code;
+    return '';
+  }
+
   Future<void> _loadSites() async {
     try {
       final json = await ref.read(siteOpsClientProvider).get('/onboarding/sites/dropdown');
       final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
 
-      // E&M sites keyed by name so we can map SiteOps UUIDs → E&M codes.
+      // E&M sites keyed by code — SiteOps only supplies the UUID + display name.
       final enmSites = await ref.read(siteRepositoryProvider).fetchSites();
-      final codeByName = <String, String>{
-        for (final s in enmSites) s.name.trim().toLowerCase(): s.code,
-      };
 
       final sites = data
           .cast<Map<String, dynamic>>()
@@ -463,9 +486,7 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
               id: j['id']?.toString() ?? '',
               name: name,
               siteType: j['site_type']?.toString() ?? '',
-              code: (j['code'] ?? j['site_code'])?.toString().trim().toUpperCase()
-                  ?? codeByName[name.trim().toLowerCase()]
-                  ?? '',
+              code: _enmCodeFor(j, enmSites),
             );
           })
           .toList();
@@ -475,8 +496,10 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
           if (sites.isNotEmpty) {
             _selected = sites.first;
             ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
-            final targetCode = sites.first.code.isNotEmpty ? sites.first.code : sites.first.id;
-            ref.read(sessionProvider.notifier).switchSite(targetCode);
+            // Never push a SiteOps UUID into session — E&M APIs key on MBMT etc.
+            if (sites.first.code.isNotEmpty) {
+              ref.read(sessionProvider.notifier).switchSite(sites.first.code);
+            }
           }
           _loading = false;
         });
@@ -538,8 +561,9 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
               final site = _sites.firstWhere((s) => s.id == id);
               setState(() => _selected = site);
               ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
-              final targetCode = site.code.isNotEmpty ? site.code : site.id;
-              ref.read(sessionProvider.notifier).switchSite(targetCode);
+              if (site.code.isNotEmpty) {
+                ref.read(sessionProvider.notifier).switchSite(site.code);
+              }
             }
           },
         ),

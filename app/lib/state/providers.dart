@@ -186,7 +186,10 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
 
   final results = await Future.wait(<Future<List<String>>>[
     safe(() => repo.siteCodes()),
-    safe(() => repo.vehicleNumbers(siteCode: site)),
+    // SiteOps vehicles are keyed by UUID; E&M session.site is MBMT.
+    safe(() => repo.vehicleNumbers(
+          siteCode: siteOpsSiteId.isNotEmpty ? siteOpsSiteId : site,
+        )),
     safe(() => repo.defectSources()),
     safe(() => repo.defectTypes()),
     safe(() => repo.staff(siteCode: site)),
@@ -257,11 +260,14 @@ final mechanicStaffProvider = FutureProvider<List<String>>((ref) async {
 /// Full vehicle records for the active site's fleet screen, including retired
 /// ones so a manager can reactivate.
 final siteVehiclesProvider = FutureProvider<List<Vehicle>>((ref) {
+  final siteOpsId = ref.watch(selectedSiteProvider.select((s) => s.id));
   final site = ref.watch(sessionProvider.select((s) => s.site));
-  if (site.isEmpty) return Future<List<Vehicle>>.value(const <Vehicle>[]);
+  final siteKey =
+      (siteOpsId != null && siteOpsId.isNotEmpty) ? siteOpsId : site;
+  if (siteKey.isEmpty) return Future<List<Vehicle>>.value(const <Vehicle>[]);
   return ref
       .watch(vehicleRepositoryProvider)
-      .fetchVehicles(siteCode: site, includeInactive: true);
+      .fetchVehicles(siteCode: siteKey, includeInactive: true);
 });
 
 /// The preventive-maintenance configuration for the active site.

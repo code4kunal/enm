@@ -6,6 +6,7 @@ import '../models/site.dart';
 import '../models/site_config.dart';
 import '../utils/dates.dart';
 import 'providers.dart';
+import 'selected_site.dart';
 import 'session.dart';
 
 // ─── Site onboarding ──────────────────────────────────────────────────────
@@ -131,11 +132,14 @@ final sitesAdminProvider =
 class VehiclesController extends AsyncNotifier<List<Vehicle>> {
   @override
   Future<List<Vehicle>> build() async {
+    final siteOpsId = ref.watch(selectedSiteProvider.select((s) => s.id));
     final site = ref.watch(sessionProvider.select((s) => s.site));
-    if (site.isEmpty) return const <Vehicle>[];
+    final siteKey =
+        (siteOpsId != null && siteOpsId.isNotEmpty) ? siteOpsId : site;
+    if (siteKey.isEmpty) return const <Vehicle>[];
     return ref
         .watch(vehicleRepositoryProvider)
-        .fetchVehicles(siteCode: site, includeInactive: true);
+        .fetchVehicles(siteCode: siteKey, includeInactive: true);
   }
 
   VehicleRepository get _repo => ref.read(vehicleRepositoryProvider);
