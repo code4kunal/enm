@@ -107,11 +107,64 @@ final siteCodesProvider = Provider<List<String>>((ref) {
 /// The active site's record.
 final activeSiteProvider = Provider<Site?>((ref) {
   final code = ref.watch(sessionProvider.select((s) => s.site));
+  final selectedId = ref.watch(selectedSiteProvider.select((s) => s.id));
+  final selectedName = ref.watch(selectedSiteProvider.select((s) => s.name));
   final sites = ref.watch(sitesProvider).valueOrNull ?? const <Site>[];
   for (final s in sites) {
-    if (s.code == code) return s;
+    if (s.code == code || (selectedId != null && s.code == selectedId)) return s;
+  }
+  if (selectedName != null && selectedName.isNotEmpty) {
+    return Site(
+      code: code,
+      name: selectedName,
+      address: '',
+      timezone: 'Asia/Kolkata',
+      isActive: true,
+    );
   }
   return null;
+});
+
+/// Human-readable display name for the active site (maps UUID to site name).
+final siteDisplayNameProvider = Provider<String>((ref) {
+  final selectedName = ref.watch(selectedSiteProvider.select((s) => s.name));
+  if (selectedName != null && selectedName.isNotEmpty) {
+    return selectedName;
+  }
+  final active = ref.watch(activeSiteProvider);
+  if (active != null && active.name.isNotEmpty) {
+    return active.name;
+  }
+  final code = ref.watch(sessionProvider.select((s) => s.site));
+  return code;
+});
+
+/// Resolves a vehicle registration number from its ID or UUID string.
+final vehicleNameProvider = Provider.family<String, String>((ref, vehicleId) {
+  if (vehicleId.isEmpty) return '—';
+
+  final fleet = ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
+  for (final v in fleet) {
+    if (v.id == vehicleId || v.registrationNo == vehicleId) {
+      if (v.registrationNo.isNotEmpty && (!v.registrationNo.contains('-') || v.registrationNo.length < 25)) {
+        return v.registrationNo;
+      }
+    }
+  }
+
+  final master = ref.watch(masterDataProvider).valueOrNull;
+  if (master != null) {
+    for (final busReg in master.vehicles) {
+      if (busReg == vehicleId && (!busReg.contains('-') || busReg.length < 25)) {
+        return busReg;
+      }
+    }
+  }
+
+  if (vehicleId.contains('-') && vehicleId.length >= 8) {
+    return 'Bus #${vehicleId.substring(0, 8).toUpperCase()}';
+  }
+  return vehicleId;
 });
 
 /// Reference data for the entry form, re-resolved whenever the active site

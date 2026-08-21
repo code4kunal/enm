@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/registers.dart';
 import '../data/repositories.dart';
 import '../models/checklist.dart';
 import 'providers.dart';
@@ -215,12 +216,34 @@ final filteredInspectionsProvider =
             (f.to.isEmpty || e.inspectedOn.compareTo(f.to) <= 0),
       };
 
+  bool matchesFilter(InspectionEntry e) {
+    if (f.registerId == kInspectionsFilter || f.registerId == 'all') {
+      return true;
+    }
+    final code = e.workTypeCode.toLowerCase();
+    final name = e.workTypeName.toLowerCase();
+
+    if (f.registerId == kPmDockingFilter) {
+      return code.contains('p.m') || code.contains('pm') || name.contains('preventive');
+    }
+    if (f.registerId == kTenDayFilter) {
+      return code.contains('10') || name.contains('10');
+    }
+    if (f.registerId == kDailyFilter) {
+      return code.contains('d.i') || code.contains('daily') || name.contains('daily');
+    }
+    return true;
+  }
+
   bool matches(InspectionEntry e) =>
       needle.isEmpty ||
       e.registrationNo.toLowerCase().contains(needle) ||
       e.workTypeCode.toLowerCase().contains(needle) ||
+      e.workTypeName.toLowerCase().contains(needle) ||
       (e.doneBy ?? '').toLowerCase().contains(needle) ||
       (e.supervisor ?? '').toLowerCase().contains(needle);
 
-  return all.where((e) => inPeriod(e) && matches(e)).toList();
+  return all
+      .where((e) => inPeriod(e) && matchesFilter(e) && matches(e))
+      .toList();
 });

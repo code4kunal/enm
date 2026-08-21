@@ -322,3 +322,13 @@ RegisterDef requireRegister(String id) {
 /// A sentinel rather than a sixth register: inspections are not one, and the
 /// list renders them differently.
 const String kInspectionsFilter = 'inspections';
+const String kPmDockingFilter = 'pm_docking';
+const String kTenDayFilter = '10_day';
+const String kDailyFilter = 'daily_inspection';
+
+bool isInspectionFilter(String id) {
+  return id == kInspectionsFilter ||
+      id == kPmDockingFilter ||
+      id == kTenDayFilter ||
+      id == kDailyFilter;
+}

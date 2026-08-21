@@ -192,12 +192,22 @@ class Vehicle {
         'last_service_code': lastServiceCode,
       };
 
-  factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
-        id: (json['id'] ?? '').toString(),
-        registrationNo:
-            (json['registration_no'] ?? json['vehicle_no'] ?? '').toString(),
-        siteCode: (json['site_code'] ?? '').toString(),
-        isActive: json['is_active'] as bool? ?? true,
+  factory Vehicle.fromJson(Map<String, dynamic> json) {
+    final rawReg = (json['registration_no'] ??
+            json['registration_number'] ??
+            json['vehicle_no'] ??
+            json['vehicle_number'] ??
+            json['bus_no'] ??
+            json['name'] ??
+            json['code'] ??
+            '')
+        .toString();
+    final idStr = (json['id'] ?? json['uuid'] ?? '').toString();
+    return Vehicle(
+      id: idStr,
+      registrationNo: rawReg.isNotEmpty ? rawReg : idStr,
+      siteCode: (json['site_code'] ?? json['site_id'] ?? '').toString(),
+      isActive: json['is_active'] as bool? ?? true,
         make: (json['make'] ?? '').toString(),
         model: (json['model'] ?? '').toString(),
         checklistVariant: json['checklist_variant']?.toString(),
@@ -209,6 +219,7 @@ class Vehicle {
         lastServiceOn: json['last_service_on']?.toString(),
         lastServiceCode: (json['last_service_code'] ?? '').toString(),
       );
+  }
 }
 
 /// An editable row in one of the shared dropdown lists (defect sources, defect

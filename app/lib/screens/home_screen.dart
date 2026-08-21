@@ -421,22 +421,40 @@ class _InspectionCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Consumer(
                   builder: (context, ref, _) {
-                    // A work type can keep a list per bus model. The count on
-                    // its own would describe only one of them, so say how many
-                    // there are and let the bus pick.
                     final variants =
                         ref.watch(variantCountProvider(checklist.workTypeId));
-                    final label = checklist.isEmpty
+                    final siteopsCats =
+                        ref.watch(siteopsCategoriesProvider).valueOrNull ?? const <ChecklistCategory>[];
+                    final matchingCat = siteopsCats.cast<ChecklistCategory?>().firstWhere(
+                          (c) => c != null && (
+                            c.name.toLowerCase().contains(checklist.workTypeName.toLowerCase()) ||
+                            checklist.workTypeName.toLowerCase().contains(c.name.toLowerCase()) ||
+                            (checklist.workTypeCode == 'P.M' && c.name.toLowerCase().contains('preventive'))
+                          ),
+                          orElse: () => null,
+                        );
+
+                    final int catItemCount =
+                        matchingCat != null ? matchingCat.toChecklistItems().length : 0;
+                    final int itemCount =
+                        checklist.items.isNotEmpty ? checklist.items.length : catItemCount;
+                    final bool hasChecklist =
+                        !checklist.isEmpty || variants > 0 || catItemCount > 0 || todayCount > 0;
+
+                    final String label = !hasChecklist
                         ? 'Checklist not written yet'
                         : variants > 1
                             ? '$variants checklists by bus model'
-                            : '${checklist.items.length} checks';
+                            : itemCount > 0
+                                ? '$itemCount checks'
+                                : 'Standard checklist';
+
                     return Text(
                       label,
                       style: AppText.sans(
                         size: 13,
                         weight: FontWeight.w600,
-                        color: checklist.isEmpty ? T.amber : T.green,
+                        color: hasChecklist ? T.green : T.amber,
                       ),
                     );
                   },

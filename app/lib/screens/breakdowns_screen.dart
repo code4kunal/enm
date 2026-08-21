@@ -6,6 +6,7 @@ import '../data/registers.dart';
 import '../models/entry.dart';
 import '../router.dart';
 import '../state/entries.dart';
+import '../state/providers.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -22,10 +23,10 @@ class BreakdownsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final breakdowns = ref.watch(breakdownsProvider);
-    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final siteName = ref.watch(siteDisplayNameProvider);
 
     return FadeUp(
-      key: ValueKey<String>('breakdowns-$site'),
+      key: ValueKey<String>('breakdowns-$siteName'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -48,7 +49,7 @@ class BreakdownsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           if (breakdowns.isEmpty)
-            EmptyState(message: 'No breakdowns recorded at $site.')
+            EmptyState(message: 'No breakdowns recorded at $siteName.')
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,6 +75,7 @@ class _BreakdownCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final open = entry.isOpen;
     final d = entry.data;
+    final busName = ref.watch(vehicleNameProvider(entry.busNumber));
 
     Future<void> resolve() async {
       await ref.read(entriesProvider.notifier).resolveBreakdown(entry.id);
@@ -100,7 +102,7 @@ class _BreakdownCard extends ConsumerWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
                     Text(
-                      entry.busNumber,
+                      busName,
                       style: AppText.mono(size: 15.5, weight: FontWeight.w600),
                     ),
                     StatusPill(open: open),

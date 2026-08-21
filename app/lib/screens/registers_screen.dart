@@ -6,6 +6,7 @@ import '../data/registers.dart';
 import '../models/entry.dart';
 import '../router.dart';
 import '../state/entries.dart';
+import '../state/providers.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -69,8 +70,8 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
     final controller = ref.read(entryFiltersProvider.notifier);
     final results = ref.watch(filteredEntriesProvider);
     final inspections = ref.watch(filteredInspectionsProvider);
-    final showingInspections = filters.registerId == kInspectionsFilter;
-    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final showingInspections = isInspectionFilter(filters.registerId);
+    final siteName = ref.watch(siteDisplayNameProvider);
 
     return FadeUp(
       key: const ValueKey<String>('registers'),
@@ -133,6 +134,11 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                 selected: filters.registerId == kInspectionsFilter,
                 onTap: () => controller.setRegister(kInspectionsFilter),
               ),
+              PillChip(
+                label: 'Preventive Maintenance Docking',
+                selected: filters.registerId == kPmDockingFilter,
+                onTap: () => controller.setRegister(kPmDockingFilter),
+              ),
               for (final r in kRegisters)
                 PillChip(
                   label: r.name,
@@ -184,10 +190,17 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
           const SizedBox(height: 14),
 
           if (showingInspections) ...<Widget>[
-            Text(
-              '${inspections.length} '
-              '${inspections.length == 1 ? 'inspection' : 'inspections'} · $site',
-              style: AppText.sans(size: 13, color: T.secondary),
+            Builder(
+              builder: (context) {
+                final String typeName = filters.registerId == kPmDockingFilter
+                    ? 'PM docking'
+                    : 'inspection';
+                return Text(
+                  '${inspections.length} '
+                  '${inspections.length == 1 ? typeName : '${typeName}s'} · $siteName',
+                  style: AppText.sans(size: 13, color: T.secondary),
+                );
+              },
             ),
             const SizedBox(height: 10),
             if (inspections.isEmpty)
@@ -205,7 +218,7 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
             const SizedBox(height: 32),
           ] else ...<Widget>[
           Text(
-            '${results.length} ${results.length == 1 ? 'entry' : 'entries'} · $site',
+            '${results.length} ${results.length == 1 ? 'entry' : 'entries'} · $siteName',
             style: AppText.sans(size: 13, color: T.secondary),
           ),
           const SizedBox(height: 10),
@@ -234,14 +247,15 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
 /// Reads differently from a register row on purpose: an inspection has no
 /// defect and no source, it has a bus, a sweep, and how many lines came back
 /// not OK — which is the only part a supervisor scans for.
-class _InspectionRow extends StatelessWidget {
+class _InspectionRow extends ConsumerWidget {
   const _InspectionRow({required this.entry});
 
   final InspectionEntry entry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final failed = entry.failedCount;
+    final busName = ref.watch(vehicleNameProvider(entry.registrationNo));
     return Panel(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
@@ -255,7 +269,7 @@ class _InspectionRow extends StatelessWidget {
                 foreground: T.secondary,
               ),
               const SizedBox(width: 8),
-              Text(entry.registrationNo, style: AppText.mono(size: 13.5)),
+              Text(busName, style: AppText.mono(size: 13.5)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -347,14 +361,16 @@ class _DateBound extends StatelessWidget {
   }
 }
 
-class _ResultRow extends StatelessWidget {
+class _ResultRow extends ConsumerWidget {
   const _ResultRow({required this.entry});
 
   final RegisterEntry entry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final register = requireRegister(entry.registerId);
+    final siteName = ref.watch(siteDisplayNameProvider);
+    final busName = ref.watch(vehicleNameProvider(entry.busNumber));
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
@@ -376,11 +392,11 @@ class _ResultRow extends StatelessWidget {
                   children: <Widget>[
                     CodeTag(code: register.code, color: register.color),
                     Text(
-                      entry.busNumber,
+                      busName,
                       style: AppText.mono(size: 14.5, weight: FontWeight.w600),
                     ),
                     Text(
-                      '${entry.date} · ${entry.site} · ${entry.enteredBy}',
+                      '${entry.date} · $siteName · ${entry.enteredBy}',
                       style: AppText.meta,
                     ),
                   ],
