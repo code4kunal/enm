@@ -14,8 +14,20 @@ COPY . .
 # docker compose build args when deploying to a remote dev server.
 ARG API_BASE_URL=http://localhost:8123/api/v1
 ARG SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+# Set ENVIRONMENT=production in .env so a mistaken localhost bake-in fails the
+# build instead of shipping a broken public UI. Local/dev leave unset.
+ARG ENVIRONMENT=development
 
-RUN flutter build web --release \
+RUN case "${ENVIRONMENT}" in \
+      production|prod) \
+        case "${API_BASE_URL}" in \
+          *localhost*|*127.0.0.1*) \
+            echo "ERROR: API_BASE_URL=${API_BASE_URL} still points at localhost while ENVIRONMENT=${ENVIRONMENT}." >&2; \
+            echo "Set API_PUBLIC_URL (or WEB_API_BASE_URL) to the browser-reachable URL, e.g. https://dev-emm.transvolt.org/api/v1" >&2; \
+            exit 1 ;; \
+        esac ;; \
+    esac \
+ && flutter build web --release \
     --pwa-strategy=none \
     --dart-define=API_BASE_URL=${API_BASE_URL} \
     --dart-define=SITEOPS_BASE_URL=${SITEOPS_BASE_URL}

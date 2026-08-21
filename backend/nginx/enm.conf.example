@@ -2,15 +2,17 @@
 #
 # Same-origin setup (recommended): browser loads UI and API from one host, so
 # E&M CORS does not apply. Bake the public API URL into the web image:
-#   API_PUBLIC_URL=https://dev-enm.transvolt.org/api/v1
-#   docker compose build web && docker compose up -d web
+#   API_PUBLIC_URL=https://dev-emm.transvolt.org/api/v1
+#   CORS_ORIGINS=https://dev-emm.transvolt.org
+#   docker compose build --no-cache web && docker compose up -d web
+# (Changing API_PUBLIC_URL without rebuilding web leaves localhost:8123 in JS.)
 #
 # If the browser still calls the API on a different host/port, set on the API:
-#   CORS_ORIGINS=https://dev-enm.transvolt.org,http://YOUR_SERVER:8080
+#   CORS_ORIGINS=https://dev-emm.transvolt.org,http://YOUR_SERVER:8080
 #
 # SiteOps: Flutter web calls https://dev-siteops-platform.transvolt.org from the
 # browser (login + master data). That is a separate CORS policy — SiteOps must
-# allow this frontend origin (e.g. https://dev-enm.transvolt.org). E&M nginx
+# allow this frontend origin (e.g. https://dev-emm.transvolt.org). E&M nginx
 # cannot fix SiteOps CORS; either allow the origin on SiteOps or proxy those
 # calls through the E&M API later.
 #
