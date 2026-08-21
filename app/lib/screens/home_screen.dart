@@ -442,7 +442,7 @@ class _InspectionCard extends StatelessWidget {
                         !checklist.isEmpty || variants > 0 || catItemCount > 0 || todayCount > 0;
 
                     final String label = !hasChecklist
-                        ? 'Checklist not written yet'
+                        ? 'Checklist not written yeet'
                         : variants > 1
                             ? '$variants checklists by bus model'
                             : itemCount > 0
