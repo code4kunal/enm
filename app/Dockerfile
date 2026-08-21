@@ -16,6 +16,7 @@ ARG API_BASE_URL=http://localhost:8123/api/v1
 ARG SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
 
 RUN flutter build web --release \
+    --pwa-strategy=none \
     --dart-define=API_BASE_URL=${API_BASE_URL} \
     --dart-define=SITEOPS_BASE_URL=${SITEOPS_BASE_URL}
 
