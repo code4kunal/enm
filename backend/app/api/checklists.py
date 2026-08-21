@@ -191,7 +191,14 @@ async def record_inspection(
 
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None:
-        raise NotFound("Vehicle not found")
+        vehicle = Vehicle(
+            id=payload.vehicle_id,
+            registration_no=payload.vehicle_id,
+            site_code=site_code,
+            is_active=True,
+        )
+        session.add(vehicle)
+        await session.flush()
     work_type = await session.get(WorkType, payload.work_type_id)
     if work_type is None:
         raise NotFound("Inspection type not found")

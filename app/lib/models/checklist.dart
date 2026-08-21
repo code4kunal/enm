@@ -265,3 +265,67 @@ class InspectionEntry {
         createdBy: json['created_by'] as String? ?? '',
       );
 }
+
+/// Category from SiteOps master checklist templates API
+@immutable
+class ChecklistCategory {
+  const ChecklistCategory({
+    required this.id,
+    required this.name,
+    this.orderIndex = 0,
+    this.isActive = true,
+    this.questionGroups = const <Map<String, dynamic>>[],
+  });
+
+  final String id;
+  final String name;
+  final int orderIndex;
+  final bool isActive;
+  final List<Map<String, dynamic>> questionGroups;
+
+  factory ChecklistCategory.fromJson(Map<String, dynamic> json) {
+    final rawGroups = json['question_groups'] as List<dynamic>? ?? const [];
+    return ChecklistCategory(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      orderIndex: (json['order_index'] as num?)?.toInt() ?? 0,
+      isActive: json['is_active'] as bool? ?? true,
+      questionGroups: rawGroups.cast<Map<String, dynamic>>(),
+    );
+  }
+
+  /// Converts question_groups in SiteOps format into standard ChecklistItems.
+  List<ChecklistItem> toChecklistItems() {
+    final items = <ChecklistItem>[];
+    int sortCounter = 0;
+    for (final group in questionGroups) {
+      final section = (group['category_label'] ?? '').toString();
+      final questions = group['questions'] as List<dynamic>? ?? const [];
+      for (final q in questions) {
+        if (q is! Map<String, dynamic>) continue;
+        final qId = (q['id'] ?? '').toString();
+        final translations = q['translations'] as List<dynamic>? ?? const [];
+        String textLabel = '';
+        if (translations.isNotEmpty && translations.first is Map) {
+          final trans = translations.first as Map<String, dynamic>;
+          textLabel = (trans['content'] ?? trans['check_for'] ?? '').toString();
+        }
+        if (textLabel.isEmpty) {
+          textLabel = 'Question ${sortCounter + 1}';
+        }
+        items.add(
+          ChecklistItem(
+            id: qId.isNotEmpty ? qId : 'q_$sortCounter',
+            section: section,
+            label: textLabel,
+            sortOrder: (q['order_index'] as num?)?.toInt() ?? sortCounter,
+            responseType: ResponseType.okNotOk,
+            isRequired: true,
+          ),
+        );
+        sortCounter++;
+      }
+    }
+    return items;
+  }
+}

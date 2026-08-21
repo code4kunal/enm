@@ -42,6 +42,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   String _date = Dates.today();
   String _doneBy = '';
   String _supervisor = '';
+  String? _selectedCategoryName;
   bool _saving = false;
   String? _error;
 
@@ -123,6 +124,38 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
     final fleet = ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
     final active = fleet.where((v) => v.isActive).toList();
 
+    final mechanics = ref.watch(mechanicStaffProvider).valueOrNull ?? const <String>[];
+    final supervisors = ref.watch(supervisorStaffProvider).valueOrNull ?? const <String>[];
+    final mechanicOptions = mechanics.isNotEmpty ? mechanics : (master?.staff ?? const <String>[]);
+    final supervisorOptions = supervisors.isNotEmpty ? supervisors : (master?.staff ?? const <String>[]);
+
+    final categories = ref.watch(siteopsCategoriesProvider).valueOrNull ?? const <ChecklistCategory>[];
+    final categoryOptions = categories.map((c) => c.name).toList();
+
+    if (_selectedCategoryName == null && categories.isNotEmpty) {
+      final defaultCat = categories.firstWhere(
+        (c) {
+          final n = c.name.toLowerCase();
+          if (widget.workTypeId == 5) return n.contains('daily');
+          if (widget.workTypeId == 6) return n.contains('10');
+          if (widget.workTypeId == 7) return n.contains('preventive') || n.contains('pm') || n.contains('schedule');
+          return false;
+        },
+        orElse: () => categories.first,
+      );
+      _selectedCategoryName = defaultCat.name;
+    }
+
+    ChecklistCategory? selectedCategory;
+    if (_selectedCategoryName != null && categories.isNotEmpty) {
+      for (final c in categories) {
+        if (c.name == _selectedCategoryName) {
+          selectedCategory = c;
+          break;
+        }
+      }
+    }
+
     // The checklist follows the bus, so it changes the moment one is picked.
     final variant = fleet
         .where((v) => v.id == _vehicleId)
@@ -133,14 +166,25 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
         (workTypeId: widget.workTypeId, variant: variant),
       ),
     );
-    // Whether this inspection keeps a list per bus model at all — which is
-    // what makes "no bus picked" different from "nobody has written one".
-    final hasVariants =
-        ref.watch(variantCountProvider(widget.workTypeId)) > 0;
 
     if (checklist == null) {
       return const EmptyState(message: 'Loading the checklist…');
     }
+
+    final categoryItems = (selectedCategory != null && selectedCategory.questionGroups.isNotEmpty)
+        ? selectedCategory.toChecklistItems()
+        : <ChecklistItem>[];
+
+    final effectiveChecklist = Checklist(
+      id: selectedCategory?.id ?? checklist.id,
+      siteCode: checklist.siteCode,
+      workTypeId: checklist.workTypeId,
+      workTypeCode: checklist.workTypeCode,
+      workTypeName: selectedCategory?.name.isNotEmpty == true ? selectedCategory!.name : checklist.workTypeName,
+      name: selectedCategory?.name.isNotEmpty == true ? selectedCategory!.name : checklist.name,
+      variant: checklist.variant,
+      items: categoryItems.isNotEmpty ? categoryItems : checklist.items,
+    );
 
     return FadeUp(
       key: ValueKey<String>('inspection-${widget.workTypeId}'),
@@ -152,7 +196,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
             children: <Widget>[
               BackLink(onTap: () => context.go(Routes.home)),
               const SizedBox(height: 10),
-              _Heading(checklist: checklist),
+              _Heading(checklist: effectiveChecklist),
               const SizedBox(height: 16),
               Panel(
                 child: Column(
@@ -172,6 +216,17 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                             .id;
                       }),
                     ),
+                    if (categoryOptions.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const FieldLabel(label: 'Category', master: true),
+                      const SizedBox(height: 6),
+                      AppSelect(
+                        value: _selectedCategoryName ?? '',
+                        options: categoryOptions,
+                        placeholder: 'Pick a category',
+                        onChanged: (v) => setState(() => _selectedCategoryName = v ?? ''),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +277,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                               const SizedBox(height: 6),
                               AppSelect(
                                 value: _doneBy,
-                                options: master?.staff ?? const <String>[],
+                                options: mechanicOptions,
                                 placeholder: 'Pick a mechanic',
                                 onChanged: (v) =>
                                     setState(() => _doneBy = v ?? ''),
@@ -242,7 +297,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                               const SizedBox(height: 6),
                               AppSelect(
                                 value: _supervisor,
-                                options: master?.staff ?? const <String>[],
+                                options: supervisorOptions,
                                 placeholder: 'Pick a supervisor',
                                 onChanged: (v) =>
                                     setState(() => _supervisor = v ?? ''),
@@ -256,13 +311,13 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              if (checklist.isEmpty)
+              if (effectiveChecklist.isEmpty)
                 _NoChecklistYet(
-                  checklist: checklist,
-                  waitingForBus: _vehicleId.isEmpty && hasVariants,
+                  checklist: effectiveChecklist,
+                  waitingForBus: false,
                 )
               else
-                ..._sections(checklist),
+                ..._sections(effectiveChecklist),
               const SizedBox(height: 16),
               Panel(
                 child: Column(
@@ -283,9 +338,9 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
               FilledActionButton(
                 label: _saving ? 'Saving…' : 'Record inspection',
                 expand: true,
-                onPressed: _saving || checklist.isEmpty
+                onPressed: _saving || effectiveChecklist.isEmpty
                     ? null
-                    : () => _save(checklist),
+                    : () => _save(effectiveChecklist),
               ),
               const SizedBox(height: 40),
             ],

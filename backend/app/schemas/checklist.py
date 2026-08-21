@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date as date_t
 
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import CheckResult, ResponseType
@@ -67,7 +68,7 @@ class ChecklistUpdate(BaseModel):
 
 
 class ResultIn(BaseModel):
-    item_id: str = Field(min_length=1, max_length=32)
+    item_id: str = Field(min_length=1, max_length=64)
     result: CheckResult = CheckResult.ok
     value: str | None = Field(default=None, max_length=255)
     remark: str | None = None
@@ -83,7 +84,7 @@ class ResultOut(BaseModel):
 
 
 class InspectionCreate(BaseModel):
-    vehicle_id: str = Field(min_length=1, max_length=32)
+    vehicle_id: str = Field(min_length=1, max_length=64)
     work_type_id: int
     inspected_on: date_t
     entry_time: HHMM | None = None

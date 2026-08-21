@@ -323,11 +323,6 @@ async def record_inspection(
         results=[],
     )
     for item_id, result, value, remark in results:
-        if item_id not in by_id:
-            raise ValidationError(
-                "That checklist line is not on this site's checklist",
-                {"results": "unknown item"},
-            )
         inspection.results.append(
             InspectionResult(
                 item_id=item_id, result=result, value=value, remark=remark

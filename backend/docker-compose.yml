@@ -38,7 +38,8 @@ services:
       FCM_CREDENTIALS_FILE: ${FCM_CREDENTIALS_FILE:-}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "8123:8000"
+      - "8000:8000"
     volumes:
       - media:/srv/media
       - ./secrets:/srv/secrets:ro

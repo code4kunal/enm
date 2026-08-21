@@ -176,7 +176,7 @@ final supervisorStaffProvider = FutureProvider<List<String>>((ref) async {
   final siteName = ref.watch(sessionProvider.select((s) => s.site));
   final siteOpsSiteId =
       ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
-  if (siteName.isEmpty) return const <String>[];
+  if (siteName.isEmpty && siteOpsSiteId.isEmpty) return const <String>[];
 
   try {
     return await repo.supervisorStaff(
@@ -192,7 +192,7 @@ final mechanicStaffProvider = FutureProvider<List<String>>((ref) async {
   final siteName = ref.watch(sessionProvider.select((s) => s.site));
   final siteOpsSiteId =
       ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
-  if (siteName.isEmpty) return const <String>[];
+  if (siteName.isEmpty && siteOpsSiteId.isEmpty) return const <String>[];
 
   try {
     return await repo.mechanicStaff(siteName: siteName, siteId: siteOpsSiteId);
