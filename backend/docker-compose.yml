@@ -27,7 +27,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       # Explicit origins only — "*" + credentials is rejected by browsers.
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8089,http://127.0.0.1:8080,http://127.0.0.1:8089}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:8000,http://localhost:8008,http://localhost:8080,http://localhost:8089,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8080,http://127.0.0.1:8089,http://127.0.0.1:5173}
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
       # Server-side only — never passed to the `web` build args below.
       SITEOPS_SERVICE_KEY: ${SITEOPS_SERVICE_KEY:-}
