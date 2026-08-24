@@ -9,6 +9,7 @@ from app.api import (
     imports,
     inspections,
     integrations,
+    job_cards,
     master,
     notifications,
     reports,
@@ -30,5 +31,6 @@ api_router.include_router(admin.router)
 api_router.include_router(notifications.router)
 api_router.include_router(siteops.router)
 api_router.include_router(integrations.router)
+api_router.include_router(job_cards.router)
 
 __all__ = ["api_router"]

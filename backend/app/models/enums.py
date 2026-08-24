@@ -58,6 +58,25 @@ class Shift(StrEnum):
     C = "C"
 
 
+class JobCardSource(StrEnum):
+    """What the card was opened from — one entry/inspection has at most one."""
+
+    inspection = "inspection"
+    entry = "entry"
+    breakdown = "breakdown"
+
+
+class JobCardStatus(StrEnum):
+    """`draft` through every posting step; `posted` only once all four have
+    succeeded. `issued`/`teco` are SAP updates flowing back, not ENM writes."""
+
+    draft = "draft"
+    posted = "posted"
+    issued = "issued"
+    teco = "teco"
+    error = "error"
+
+
 class Platform(StrEnum):
     android = "android"
     ios = "ios"
@@ -178,6 +197,9 @@ class AuditAction(StrEnum):
     slot_updated = "slot_updated"
     slot_completed = "slot_completed"
     alert_acknowledged = "alert_acknowledged"
+    job_card_created = "job_card_created"
+    job_card_posted = "job_card_posted"
+    job_card_post_failed = "job_card_post_failed"
     inspection_recorded = "inspection_recorded"
     checklist_updated = "checklist_updated"
     dmr_updated = "dmr_updated"
@@ -214,3 +236,5 @@ ENTRY_STATUS_ENUM = "entry_status_enum"
 SHIFT_ENUM = "shift_enum"
 PLATFORM_ENUM = "platform_enum"
 NOTIFICATION_TYPE_ENUM = "notification_type_enum"
+JOB_CARD_SOURCE_ENUM = "job_card_source_enum"
+JOB_CARD_STATUS_ENUM = "job_card_status_enum"

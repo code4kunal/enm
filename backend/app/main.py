@@ -19,6 +19,7 @@ from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
+from app.services.sap.posting import retry_errored_job_cards
 from app.services.streams import replay_on_startup
 
 logging.basicConfig(
@@ -41,7 +42,12 @@ async def lifespan(_app: FastAPI):
 
     scheduler: AsyncIOScheduler | None = None
     jobs = settings.notifications_enabled and settings.breakdown_sla_enabled
-    if jobs or settings.odometer_sync_enabled or settings.schedule_generator_enabled:
+    if (
+        jobs
+        or settings.odometer_sync_enabled
+        or settings.schedule_generator_enabled
+        or settings.sap_posting_retry_enabled
+    ):
         scheduler = AsyncIOScheduler(timezone=settings.timezone)
     if scheduler and jobs:
         scheduler.add_job(
@@ -102,6 +108,17 @@ async def lifespan(_app: FastAPI):
             settings.schedule_generator_hour,
             settings.schedule_generator_minute,
             settings.timezone,
+        )
+    if scheduler and settings.sap_posting_retry_enabled:
+        scheduler.add_job(
+            retry_errored_job_cards,
+            IntervalTrigger(minutes=settings.sap_posting_retry_minutes),
+            id="sap_posting_retry",
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info(
+            "SAP posting retry every %dm", settings.sap_posting_retry_minutes
         )
     if scheduler:
         scheduler.start()

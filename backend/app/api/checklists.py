@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
 from app.errors import NotFound
 from app.models.checklist import ChecklistTemplate, InspectionEntry
-from app.models.enums import AuditAction
+from app.models.enums import AuditAction, JobCardSource
 from app.models.master import Vehicle, WorkType
 from app.schemas.checklist import (
     ChecklistItemIO,
@@ -22,6 +22,8 @@ from app.schemas.checklist import (
 )
 from app.services import audit, checklists
 from app.services.common import today_ist
+from app.services.sap import posting as sap_posting
+from app.services.sap.posting import MaterialLine
 
 router = APIRouter(tags=["checklists"])
 
@@ -231,6 +233,19 @@ async def record_inspection(
             "failed": len(inspection.failed),
         },
     )
+    if payload.materials:
+        await sap_posting.open_job_card(
+            session,
+            source=JobCardSource.inspection,
+            source_id=inspection.id,
+            site_code=site_code,
+            vehicle=vehicle,
+            materials=[
+                MaterialLine(m.sap_material_no, m.qty_required)
+                for m in payload.materials
+            ],
+            actor=user,
+        )
     await session.commit()
     await session.refresh(inspection)
     return _inspection_out(inspection)

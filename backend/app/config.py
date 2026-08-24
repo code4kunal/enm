@@ -122,6 +122,18 @@ class Settings(BaseSettings):
     #: GET on startup if ENM was down when an event fired. Unset skips replay.
     fleet_streams_base_url: str | None = None
 
+    # --- SAP PM ---
+    #: Unset means every app.services.sap.client call refuses with
+    #: SapUnavailable rather than attempting a request. First connector is
+    #: whatever BASIS gives (RFC/BAPI or S/4 OData) — this assumes a REST/
+    #: OData-shaped base URL until that's confirmed.
+    sap_base_url: str | None = None
+    sap_service_key: str | None = None
+    #: Sweeps `status=error` job cards and resumes posting from whichever
+    #: step's checkpoint is still unset.
+    sap_posting_retry_enabled: bool = True
+    sap_posting_retry_minutes: int = 15
+
     @field_validator("cors_origins", "allowed_photo_types", mode="before")
     @classmethod
     def _split_csv(cls, v: object) -> object:

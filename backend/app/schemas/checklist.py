@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import CheckResult, ResponseType
 from app.schemas.common import HHMM, ISTDateTime
+from app.schemas.job_card import MaterialIn
 from app.services.control_charts import ChartKey
 
 
@@ -93,6 +94,9 @@ class InspectionCreate(BaseModel):
     odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)
     remarks: str | None = None
     results: list[ResultIn] = Field(default_factory=list)
+    #: Any line here opens a job card and posts it to SAP after the
+    #: inspection saves. Empty (the default) touches SAP not at all.
+    materials: list[MaterialIn] = Field(default_factory=list)
 
 
 class InspectionOut(BaseModel):

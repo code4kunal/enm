@@ -8,6 +8,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_valida
 
 from app.models.enums import EntryStatus, Register, Shift
 from app.schemas.common import HHMM, ISTDateTime, OptText
+from app.schemas.job_card import MaterialIn
 from app.schemas.user import UserBrief
 
 
@@ -102,6 +103,9 @@ class EntryCreate(BaseModel):
     date: date_t
     entry_time: HHMM | None = None
     data: dict[str, Any]
+    #: Any line here opens a job card and posts it to SAP after the entry
+    #: saves. Empty (the default) touches SAP not at all.
+    materials: list[MaterialIn] = Field(default_factory=list)
 
     @field_validator("site")
     @classmethod

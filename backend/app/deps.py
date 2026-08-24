@@ -117,6 +117,17 @@ async def require_manager(user: CurrentUser) -> User:
 ManagerUser = Annotated[User, Depends(require_manager)]
 
 
+async def require_supervisor(user: CurrentUser) -> User:
+    """Retry a failed SAP post, acknowledge a recon exception: floor
+    authority, not site administration — supervisor and up."""
+    if user.role not in (Role.super_admin, Role.manager, Role.supervisor):
+        raise Forbidden("Supervisor role required")
+    return user
+
+
+SupervisorUser = Annotated[User, Depends(require_supervisor)]
+
+
 async def require_super_admin(user: CurrentUser) -> User:
     if not user.is_super_admin:
         raise Forbidden("Super admin role required")

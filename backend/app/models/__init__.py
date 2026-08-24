@@ -16,6 +16,7 @@ from app.models.entry import (
     WorkDoneEntry,
 )
 from app.models.inspection import Alert, InspectionPlan, InspectionSlot
+from app.models.job_card import JobCard, JobCardComponent
 from app.models.master import (
     DefectSource,
     DefectType,
@@ -62,6 +63,8 @@ __all__ = [
     "InspectionPlan",
     "InspectionResult",
     "InspectionSlot",
+    "JobCard",
+    "JobCardComponent",
     "Notification",
     "OffRoadCase",
     "OdometerReading",

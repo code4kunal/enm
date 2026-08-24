@@ -13,12 +13,14 @@ from sqlalchemy import func, select
 from app.deps import CurrentUser, PageDep, SessionDep, SiteDep, assert_site_access
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import BreakdownEntry, Entry
-from app.models.enums import AuditAction, EntryStatus, Register, Role
+from app.models.enums import AuditAction, EntryStatus, JobCardSource, Register, Role
 from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
 from app.services import audit, notifications, storage
 from app.services import entries as svc
 from app.services.common import today_ist
+from app.services.sap import posting as sap_posting
+from app.services.sap.posting import MaterialLine
 from app.services.sites import (
     assert_date_is_plausible,
     assert_site_accepts_entries,
@@ -136,6 +138,23 @@ async def create_entry(
     )
     if payload.register is Register.breakdown:
         await notifications.notify_breakdown_opened(session, entry)
+    if payload.materials:
+        await sap_posting.open_job_card(
+            session,
+            source=(
+                JobCardSource.breakdown
+                if payload.register is Register.breakdown
+                else JobCardSource.entry
+            ),
+            source_id=entry.id,
+            site_code=site,
+            vehicle=entry.vehicle,
+            materials=[
+                MaterialLine(m.sap_material_no, m.qty_required)
+                for m in payload.materials
+            ],
+            actor=user,
+        )
     result = svc.serialize_entry(entry)
     await session.commit()
     return EntryOut(**result)

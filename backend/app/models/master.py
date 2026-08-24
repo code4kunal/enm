@@ -99,6 +99,9 @@ class Vehicle(Base):
     #: own column rather than `model`, which the snag import rewrites on every
     #: run and which does not distinguish an AC 12M from a non-AC one.
     checklist_variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: SAP PM equipment number, from the nightly master sync. A job card
+    #: can't be opened for a bus without one — see app.services.sap.posting.
+    sap_equipment_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
     last_service_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_service_on: Mapped[date_t | None] = mapped_column(Date, nullable=True)
     last_service_code: Mapped[str] = mapped_column(
