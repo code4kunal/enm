@@ -11,6 +11,7 @@ from app.api import (
     master,
     notifications,
     reports,
+    siteops,
     sites,
 )
 
@@ -26,5 +27,6 @@ api_router.include_router(reports.router)
 api_router.include_router(entries.router)
 api_router.include_router(admin.router)
 api_router.include_router(notifications.router)
+api_router.include_router(siteops.router)
 
 __all__ = ["api_router"]

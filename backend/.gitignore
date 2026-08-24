@@ -8,3 +8,4 @@ venv/
 media/
 secrets/
 *.sqlite3
+.backups/

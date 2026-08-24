@@ -54,6 +54,10 @@ class Settings(BaseSettings):
 
     # --- SiteOps platform ---
     siteops_base_url: str = "https://dev-siteops-platform.transvolt.org/api/v1"
+    #: Server-to-server key for master-data reads (sites, vehicles) that don't
+    #: depend on which user is asking. Never sent to the Flutter client — kept
+    #: server-side and attached as `X-Service-Key` by `app/services/siteops.py`.
+    siteops_service_key: str | None = None
 
     # --- Microsoft Entra ID (SSO) ---
     ms_tenant_id: str | None = None
