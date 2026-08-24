@@ -22,27 +22,6 @@ final checklistsProvider = FutureProvider<List<Checklist>>((ref) {
   return ref.watch(checklistRepositoryProvider).fetchChecklists(site);
 });
 
-/// SiteOps platform categories endpoint:
-/// /master/checklist-templates/96602ec5-a546-4626-9435-a543e6bf102a/categories?page_size=100&page=1
-final siteopsCategoriesProvider =
-    FutureProvider<List<ChecklistCategory>>((ref) async {
-  const templateSiteId = '96602ec5-a546-4626-9435-a543e6bf102a';
-  try {
-    final client = ref.watch(siteOpsClientProvider);
-    final json = await client.get(
-      '/master/checklist-templates/$templateSiteId/categories',
-      query: <String, String>{'page_size': '100', 'page': '1'},
-    );
-    final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? const [];
-    return data
-        .cast<Map<String, dynamic>>()
-        .map(ChecklistCategory.fromJson)
-        .toList();
-  } catch (_) {
-    return const <ChecklistCategory>[];
-  }
-});
-
 /// One checklist by its work type, for the form to render.
 /// Which checklist a given bus takes for a given inspection.
 ///

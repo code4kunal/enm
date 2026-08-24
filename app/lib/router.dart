@@ -90,63 +90,99 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: <RouteBase>[
           GoRoute(
             path: Routes.home,
-            builder: (context, state) => const PageBody(child: HomeScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: HomeScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.registers,
-            builder: (context, state) => const PageBody(child: RegistersScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: RegistersScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.breakdowns,
-            builder: (context, state) => const PageBody(child: BreakdownsScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: BreakdownsScreen()),
+            ),
           ),
           GoRoute(
             path: '/inspection/new/:workTypeId',
-            builder: (context, state) => PageBody(
-              child: InspectionFormScreen(
-              workTypeId:
-                  int.tryParse(state.pathParameters['workTypeId'] ?? '') ?? 0,
-            ),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: InspectionFormScreen(
+                  workTypeId:
+                      int.tryParse(state.pathParameters['workTypeId'] ?? '') ?? 0,
+                ),
+              ),
             ),
           ),
           GoRoute(
             path: Routes.schedule,
-            builder: (context, state) => const PageBody(child: ScheduleScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: ScheduleScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.vehicleMaster,
-            builder: (context, state) => const PageBody(child: VehicleMasterScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: VehicleMasterScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.reports,
-            builder: (context, state) => const PageBody(child: ReportsScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: ReportsScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.site,
-            builder: (context, state) => const PageBody(child: SiteScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: SiteScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.admin,
-            builder: (context, state) => const PageBody(child: AdminScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: AdminScreen()),
+            ),
           ),
           GoRoute(
             path: Routes.profile,
-            builder: (context, state) => const PageBody(child: ProfileScreen()),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: ProfileScreen()),
+            ),
           ),
           GoRoute(
             path: '/entry/new/:registerId',
-            builder: (context, state) => PageBody(
-              child: RegisterFormScreen(
-              registerId: state.pathParameters['registerId']!,
-            ),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: RegisterFormScreen(
+                  registerId: state.pathParameters['registerId']!,
+                ),
+              ),
             ),
           ),
           GoRoute(
             path: '/entry/edit/:entryId',
-            builder: (context, state) => PageBody(
-              child: RegisterFormScreen(
-              entryId: state.pathParameters['entryId'],
-            ),
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: RegisterFormScreen(
+                  entryId: state.pathParameters['entryId'],
+                ),
+              ),
             ),
           ),
         ],

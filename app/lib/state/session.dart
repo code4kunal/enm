@@ -142,7 +142,7 @@ class SessionController extends Notifier<SessionState> {
   /// list, so onboarding a site grants access without touching the account.
   Future<void> _onAuthenticated(AppUser user) async {
     state = SessionState(
-      stage: AuthStage.signedIn,
+      stage: AuthStage.choosingSite,
       user: user,
       signingIn: false,
     );

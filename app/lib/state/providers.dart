@@ -113,7 +113,7 @@ final activeSiteProvider = Provider<Site?>((ref) {
   for (final s in sites) {
     if (s.code == code || (selectedId != null && s.code == selectedId)) return s;
   }
-  if (selectedName != null && selectedName.isNotEmpty) {
+  if (selectedName.isNotEmpty) {
     return Site(
       code: code,
       name: selectedName,
@@ -128,7 +128,7 @@ final activeSiteProvider = Provider<Site?>((ref) {
 /// Human-readable display name for the active site (maps UUID to site name).
 final siteDisplayNameProvider = Provider<String>((ref) {
   final selectedName = ref.watch(selectedSiteProvider.select((s) => s.name));
-  if (selectedName != null && selectedName.isNotEmpty) {
+  if (selectedName.isNotEmpty) {
     return selectedName;
   }
   final active = ref.watch(activeSiteProvider);
@@ -259,15 +259,15 @@ final mechanicStaffProvider = FutureProvider<List<String>>((ref) async {
 
 /// Full vehicle records for the active site's fleet screen, including retired
 /// ones so a manager can reactivate.
+///
+/// E&M code, not the SiteOps id: this feeds bus history, off-road and units,
+/// which all resolve report rows against the E&M-native vehicle id.
 final siteVehiclesProvider = FutureProvider<List<Vehicle>>((ref) {
-  final siteOpsId = ref.watch(selectedSiteProvider.select((s) => s.id));
   final site = ref.watch(sessionProvider.select((s) => s.site));
-  final siteKey =
-      (siteOpsId != null && siteOpsId.isNotEmpty) ? siteOpsId : site;
-  if (siteKey.isEmpty) return Future<List<Vehicle>>.value(const <Vehicle>[]);
+  if (site.isEmpty) return Future<List<Vehicle>>.value(const <Vehicle>[]);
   return ref
       .watch(vehicleRepositoryProvider)
-      .fetchVehicles(siteCode: siteKey, includeInactive: true);
+      .fetchVehicles(siteCode: site, includeInactive: true);
 });
 
 /// The preventive-maintenance configuration for the active site.

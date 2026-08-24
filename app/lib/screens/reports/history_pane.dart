@@ -32,6 +32,13 @@ class HistoryPane extends ConsumerWidget {
         .toList();
     final vehicleId = ref.watch(historyVehicleProvider);
     final month = ref.watch(historyMonthProvider);
+    final search = ref.watch(historySearchProvider);
+    final needle = search.trim().toLowerCase();
+    final matches = needle.isEmpty
+        ? fleet
+        : fleet
+            .where((v) => v.registrationNo.toLowerCase().contains(needle))
+            .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -39,17 +46,43 @@ class HistoryPane extends ConsumerWidget {
         Row(
           children: <Widget>[
             Expanded(
+              flex: 2,
+              child: TextField(
+                onChanged: (v) =>
+                    ref.read(historySearchProvider.notifier).state = v,
+                style: AppText.mono(size: 16, weight: FontWeight.w600),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Search a bus…',
+                  prefixIcon: Icon(Icons.search, color: T.secondary, size: 20),
+                  filled: true,
+                  fillColor: T.card,
+                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: T.controlShape,
+                    borderSide: BorderSide(color: T.inputBorder, width: 1.5),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: T.controlShape,
+                    borderSide: BorderSide(color: T.inputBorder, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
               child: AppSelect(
-                value: fleet
+                value: matches
                     .where((v) => v.id == vehicleId)
                     .map((v) => v.registrationNo)
                     .firstOrNull,
-                options: fleet.map((v) => v.registrationNo).toList(),
-                placeholder: 'Pick a bus',
+                options: matches.map((v) => v.registrationNo).toList(),
+                placeholder: '${matches.length} bus${matches.length == 1 ? '' : 'es'}',
                 mono: true,
                 onChanged: (reg) => ref
                     .read(historyVehicleProvider.notifier)
-                    .state = fleet.firstWhere((v) => v.registrationNo == reg).id,
+                    .state = matches.firstWhere((v) => v.registrationNo == reg).id,
               ),
             ),
             const SizedBox(width: 10),

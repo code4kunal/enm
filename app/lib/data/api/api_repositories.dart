@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
 
 import '../../models/app_user.dart';
 import '../../models/entry.dart';
@@ -35,10 +36,6 @@ final Map<String, String> _registerFromWire = <String, String>{
 const String _technicianRoleId = 'b7b3c31a-2c6d-4258-8743-dc6b858b10a2';
 const String _supervisorRoleId = '8d358f39-bbf0-4481-9b84-0e852f36b7e2';
 const String _mechanicRoleId = '6d84ed3e-1f86-49d9-bb55-610ab270f74e';
-const String _siteOpsBaseUrl = String.fromEnvironment(
-  'SITEOPS_BASE_URL',
-  defaultValue: 'https://dev-siteops-platform.transvolt.org/api/v1',
-);
 
 class ApiMasterDataRepository implements MasterDataRepository {
   ApiMasterDataRepository(this._api, [SiteOpsClient? siteOpsClient])
@@ -56,17 +53,15 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<String>> vehicleNumbers({required String siteCode}) async {
+    // Our own backend, not SiteOps — see ApiVehicleRepository.fetchVehicles.
     try {
-      final json = await siteOpsClient.get(
-        '/master/vehicles',
-        query: <String, String>{
-          'site_id': siteCode,
-          'page_size': '100',
-        },
+      final json = await _api.get(
+        '/sites/$siteCode/vehicles',
+        query: const <String, String>{'active': 'true'},
       );
-      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
-      return data
-          .map((j) => (j as Map<String, dynamic>)['vehicle_no']?.toString() ?? '')
+      return itemsOf(json)
+          .map(Vehicle.fromJson)
+          .map((v) => v.registrationNo)
           .where((v) => v.isNotEmpty)
           .toList();
     } catch (_) {
@@ -76,11 +71,11 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<String>> defectSources() async =>
-      _names(await siteOpsClient.get('/master/defect-sources', query: const <String, String>{'pagination': 'false'}));
+      _names(await _api.get('/master/defect-sources'));
 
   @override
   Future<List<String>> defectTypes() async =>
-      _names(await siteOpsClient.get('/master/defect-types', query: const <String, String>{'pagination': 'false'}));
+      _names(await _api.get('/master/defect-types'));
 
   @override
   Future<List<String>> staff({required String siteCode}) async {
@@ -209,30 +204,20 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {
-    final json = await siteOpsClient.get(
+    final json = await _api.get(
       _masterPath(kind),
-      query: const <String, String>{
-        'include_inactive': 'true',
-        'page_size': '10',
-        'page': '1',
-      },
+      query: const <String, String>{'include_inactive': 'true'},
     );
-    final List<dynamic> list = (json is Map)
-        ? (json['data'] ?? json['items'] ?? const <dynamic>[])
-        : (json is List ? json : const <dynamic>[]);
-    return list.cast<Map<String, dynamic>>().map(MasterListItem.fromJson).toList();
+    return itemsOf(json).map(MasterListItem.fromJson).toList();
   }
 
   @override
   Future<MasterListItem> addMasterItem(MasterListKind kind, String name) async {
-    final json = await siteOpsClient.post(
+    final json = await _api.post(
       _masterPath(kind),
       body: <String, dynamic>{'name': name.trim()},
     );
-    final map = (json is Map && json.containsKey('data'))
-        ? json['data'] as Map<String, dynamic>
-        : json as Map<String, dynamic>;
-    return MasterListItem.fromJson(map);
+    return MasterListItem.fromJson(json as Map<String, dynamic>);
   }
 
   @override
@@ -240,7 +225,7 @@ class ApiMasterDataRepository implements MasterDataRepository {
     MasterListKind kind,
     MasterListItem item,
   ) async {
-    final json = await siteOpsClient.put(
+    final json = await _api.put(
       '${_masterPath(kind)}/${item.id}',
       body: <String, dynamic>{
         'name': item.name,
@@ -248,10 +233,7 @@ class ApiMasterDataRepository implements MasterDataRepository {
         'sort_order': item.sortOrder,
       },
     );
-    final map = (json is Map && json.containsKey('data'))
-        ? json['data'] as Map<String, dynamic>
-        : json as Map<String, dynamic>;
-    return MasterListItem.fromJson(map);
+    return MasterListItem.fromJson(json as Map<String, dynamic>);
   }
 
   static String _masterPath(MasterListKind kind) =>
@@ -345,12 +327,13 @@ class ApiVehicleRepository implements VehicleRepository {
     required String siteCode,
     bool includeInactive = false,
   }) async {
-    final json = await siteOpsClient.get(
-      '/master/vehicles',
-      query: <String, String>{
-        'site_id': siteCode,
-        'page_size': '100',
-      },
+    // Our own backend, not SiteOps: bus history, off-road and units all key
+    // report rows on this vehicle's E&M-native id, which only this list has —
+    // SiteOps's own vehicle master (Vehicle Master screen, header dropdown)
+    // uses a different id space entirely.
+    final json = await _api.get(
+      '/sites/$siteCode/vehicles',
+      query: includeInactive ? const <String, String>{} : const <String, String>{'active': 'true'},
     );
     return itemsOf(json).map(Vehicle.fromJson).toList();
   }
@@ -784,47 +767,44 @@ class ApiAuthRepository implements AuthRepository {
     required String userId,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse('${SiteOpsConfig.baseUrl}/auth/login'),
-      headers: <String, String>{
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: <String, String>{
-        'username': userId.trim(),
-        'password': password,
-      },
-    );
+    final json = await _api.post('/auth/login', body: <String, dynamic>{
+      'user_id': userId.trim().toUpperCase(),
+      'password': password,
+    }) as Map<String, dynamic>;
 
-    if (response.statusCode >= 400) {
-      try {
-        final errJson = jsonDecode(response.body) as Map<String, dynamic>;
-        throw ApiException(errJson['message'] as String? ?? 'Login failed');
-      } catch (e) {
-        if (e is ApiException) rethrow;
-        throw ApiException('HTTP ${response.statusCode}: ${response.reasonPhrase}');
-      }
+    await _api.setTokens(
+      json['access_token'] as String?,
+      json['refresh_token'] as String?,
+    );
+    // Best-effort: SiteOps issues its own token, which the vehicle master
+    // and site dropdown need but the E&M backend above does not return.
+    // Not every account has SiteOps access, so a failure here is silent —
+    // those two features degrade, the rest of sign-in already succeeded.
+    unawaited(_trySiteOpsLogin(userId, password));
+    return ApiUserRepository(_api)
+        ._userFromWire(json['user'] as Map<String, dynamic>);
+  }
+
+  Future<void> _trySiteOpsLogin(String userId, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${SiteOpsConfig.baseUrl}/auth/login'),
+        headers: <String, String>{
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: <String, String>{
+          'username': userId.trim(),
+          'password': password,
+        },
+      );
+      if (response.statusCode >= 400) return;
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = json['data'] as Map<String, dynamic>?;
+      final token = data?['access_token'] as String?;
+      if (token != null) await SiteOpsClient.setToken(token);
+    } catch (_) {
+      // Platform features degrade gracefully; see the call site.
     }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = json['data'] as Map<String, dynamic>;
-
-    final access = data['access_token'] as String?;
-    final refresh = data['refresh_token'] as String?;
-    await _api.setTokens(access, refresh);
-
-    final siteopsRole = (data['roles'] as List<dynamic>?)?.firstOrNull?.toString() ?? 'executive';
-    final String mappedRole = (siteopsRole == 'admin') ? 'super_admin' : siteopsRole;
-
-    return AppUser(
-      id: data['user_id'] as String? ?? 'siteops_user_id',
-      name: data['full_name'] as String? ?? data['username'] as String? ?? 'SiteOps User',
-      userId: (data['username'] as String? ?? userId).toUpperCase(),
-      email: data['email'] as String? ?? '',
-      role: UserRole.fromWire(mappedRole),
-      sites: List<String>.from(data['site_ids'] as List<dynamic>? ?? <dynamic>[]),
-      active: true,
-      mustResetPassword: false,
-    );
   }
 
   @override
@@ -846,6 +826,7 @@ class ApiAuthRepository implements AuthRepository {
       // A dead session is still a successful sign-out from the user's side.
     }
     await _api.clearTokens();
+    await SiteOpsClient.setToken(null);
   }
 }
 

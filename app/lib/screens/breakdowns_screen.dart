@@ -7,7 +7,6 @@ import '../models/entry.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
-import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';

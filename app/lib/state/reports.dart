@@ -104,6 +104,9 @@ final unitMonthProvider = StateProvider<String>(
 /// per-bus, so there is no sensible default.
 final historyVehicleProvider = StateProvider<String>((ref) => '');
 
+/// Free-text filter over the bus picker — a site's fleet can run to hundreds.
+final historySearchProvider = StateProvider<String>((ref) => '');
+
 /// The month the history card runs to, as `yyyy-MM`.
 final historyMonthProvider = StateProvider<String>(
   (ref) => Dates.today().substring(0, 7),

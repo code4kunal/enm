@@ -230,49 +230,6 @@ class _Header extends ConsumerWidget {
   }
 }
 
-/// Header site switcher. Re-scopes every list in the app.
-class _SiteSwitcher extends ConsumerWidget {
-  const _SiteSwitcher();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider);
-    // A user only switches between sites they have access to.
-    final options = session.availableSites;
-    if (options.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        color: T.subtleFill,
-        borderRadius: T.controlShape,
-        border: Border.all(color: T.inputBorder, width: 1.5),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: options.contains(session.site) ? session.site : options.first,
-          isDense: true,
-          borderRadius: T.controlShape,
-          dropdownColor: T.card,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          icon: const Icon(Icons.expand_more, size: 20, color: T.secondary),
-          style: AppText.mono(size: 14, weight: FontWeight.w600),
-          items: <DropdownMenuItem<String>>[
-            for (final d in options)
-              DropdownMenuItem<String>(
-                value: d,
-                child: Text(d, style: AppText.mono(size: 14)),
-              ),
-          ],
-          onChanged: (d) {
-            if (d != null) ref.read(sessionProvider.notifier).switchSite(d);
-          },
-        ),
-      ),
-    );
-  }
-}
-
 class _DesktopTab extends StatelessWidget {
   const _DesktopTab({
     required this.tab,
@@ -448,9 +405,13 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
   /// Map a SiteOps dropdown row to the E&M depot code (`MBMT`), never a UUID.
   String _enmCodeFor(Map<String, dynamic> j, List<Site> enmSites) {
     final raw = (j['code'] ?? j['site_code'])?.toString().trim().toUpperCase() ?? '';
-    // Reject empty strings and UUID-shaped values from SiteOps.
+    // Reject empty strings and UUID-shaped values from SiteOps. A non-UUID
+    // raw code is still SiteOps's OWN code (e.g. "WC-003"), not necessarily
+    // ours — only trust it if it is actually one of our site codes.
     final looksLikeUuid = raw.contains('-') && raw.length >= 32;
-    if (raw.isNotEmpty && !looksLikeUuid) return raw;
+    if (raw.isNotEmpty && !looksLikeUuid && enmSites.any((s) => s.code == raw)) {
+      return raw;
+    }
 
     final name = (j['name']?.toString() ?? '').trim().toLowerCase();
     if (name.isEmpty) {
@@ -472,7 +433,9 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
 
   Future<void> _loadSites() async {
     try {
-      final json = await ref.read(siteOpsClientProvider).get('/onboarding/sites/dropdown');
+      // Proxied through our own backend, which holds the SiteOps service
+      // key — no per-user SiteOps session required just to populate this.
+      final json = await ref.read(apiClientProvider).get('/siteops/sites');
       final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
 
       // E&M sites keyed by code — SiteOps only supplies the UUID + display name.
@@ -494,11 +457,22 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
         setState(() {
           _sites = sites;
           if (sites.isNotEmpty) {
-            _selected = sites.first;
-            ref.read(selectedSiteProvider.notifier).select(sites.first.id, sites.first.name);
+            // Default to the depot's real site rather than whichever SiteOps
+            // happens to list first — that is often an empty test site.
+            // "Ghodbandar1" and other near-duplicates exist too, so prefer an
+            // exact name match before falling back to a loose one.
+            final defaultSite = sites.firstWhere(
+                  (s) => s.name.trim().toLowerCase() == 'ghodbandar',
+                  orElse: () => sites.firstWhere(
+                        (s) => s.name.toLowerCase().contains('ghodb'),
+                        orElse: () => sites.first,
+                      ),
+                );
+            _selected = defaultSite;
+            ref.read(selectedSiteProvider.notifier).select(defaultSite.id, defaultSite.name);
             // Never push a SiteOps UUID into session — E&M APIs key on MBMT etc.
-            if (sites.first.code.isNotEmpty) {
-              ref.read(sessionProvider.notifier).switchSite(sites.first.code);
+            if (defaultSite.code.isNotEmpty) {
+              ref.read(sessionProvider.notifier).switchSite(defaultSite.code);
             }
           }
           _loading = false;
@@ -544,7 +518,7 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: T.green.withOpacity(0.12),
+                        color: T.green.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
