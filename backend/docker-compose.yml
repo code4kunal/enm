@@ -29,6 +29,8 @@ services:
       # Explicit origins only — "*" + credentials is rejected by browsers.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8089,http://127.0.0.1:8080,http://127.0.0.1:8089}
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
+      # Server-side only — never passed to the `web` build args below.
+      SITEOPS_SERVICE_KEY: ${SITEOPS_SERVICE_KEY:-}
       SEED_ON_START: ${SEED_ON_START:-true}
       ENVIRONMENT: development
       # Microsoft SSO (leave blank to disable /auth/sso)
@@ -53,14 +55,16 @@ services:
     container_name: enm_frontend
     build:
       context: ../app
-      args:
-        # The browser calls this URL — NOT http://api:8000. Must be reachable
-        # from the user's machine (localhost, dev host, or reverse proxy).
-        # Rebuild required after changing: docker compose build --no-cache web
-        API_BASE_URL: ${WEB_API_BASE_URL:-${API_PUBLIC_URL:-http://localhost:8123/api/v1}}
-        SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
-        # production|prod + localhost API_BASE_URL fails the image build (see app/Dockerfile)
-        ENVIRONMENT: ${ENVIRONMENT:-development}
+    environment:
+      # The browser calls this URL — NOT http://api:8000. Must be reachable
+      # from the user's machine (localhost, dev host, or reverse proxy).
+      # Read at container START by docker-entrypoint.sh, not baked into the
+      # image — change these and `docker compose up -d web` picks it up,
+      # no rebuild.
+      API_BASE_URL: ${WEB_API_BASE_URL:-${API_PUBLIC_URL:-http://localhost:8123/api/v1}}
+      SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
+      # production|prod + localhost API_BASE_URL refuses to start the container (see app/docker-entrypoint.sh)
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       api:
         condition: service_healthy

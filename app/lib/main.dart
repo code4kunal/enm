@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'data/api/runtime_config.dart';
 import 'router.dart';
 import 'state/session.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Before anything touches ApiClient/SiteOpsClient, so the resolved base
+  // URLs are in place before the first provider reads them.
+  await loadRuntimeConfig();
   // Home's date line renders in en_IN.
   await initializeDateFormatting('en_IN');
   runApp(const ProviderScope(child: TransvoltEmApp()));

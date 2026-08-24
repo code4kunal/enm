@@ -7,12 +7,17 @@ import '../repositories.dart';
 
 /// SiteOps platform API — vehicle master, site dropdown, onboarding.
 ///
-/// Base URL from `--dart-define=SITEOPS_BASE_URL=...` ([SiteOpsConfig.baseUrl]).
-/// Auth tokens are written by [ApiAuthRepository.signInWithCredentials], which
-/// signs in against SiteOps and persists the bearer token under the same keys
-/// as [ApiClient].
+/// Base URL for [SiteOpsConfig.baseUrl] — see [ApiConfig.baseUrl]'s doc for
+/// the `config.json` / `--dart-define` precedence, which applies here too.
+/// SiteOps issues its own JWTs, distinct from [ApiClient]'s — the E&M backend
+/// rejects a SiteOps token and SiteOps rejects an E&M one — so this client
+/// keeps a storage key of its own rather than sharing [ApiClient]'s. The
+/// token is written by [ApiAuthRepository.signInWithCredentials], which signs
+/// in against SiteOps in parallel with the E&M backend.
 abstract final class SiteOpsConfig {
-  static const String baseUrl = String.fromEnvironment(
+  /// Overwritten once at startup by [loadRuntimeConfig] if `config.json`
+  /// provides a non-empty value. Mutable for exactly that reason.
+  static String baseUrl = const String.fromEnvironment(
     'SITEOPS_BASE_URL',
     defaultValue: 'https://dev-siteops-platform.transvolt.org/api/v1',
   );
@@ -27,11 +32,22 @@ class SiteOpsClient {
   final String baseUrl;
   final http.Client _http;
 
-  static const _accessKey = 'transvolt.access_token';
+  static const _accessKey = 'transvolt.siteops_access_token';
 
   Future<String?> _accessToken() async {
     final prefs = await _prefs();
     return prefs?.getString(_accessKey);
+  }
+
+  /// Stores the SiteOps-issued bearer token, obtained from a direct SiteOps
+  /// sign-in alongside the E&M backend one — see [ApiAuthRepository].
+  static Future<void> setToken(String? token) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (token == null) {
+      await prefs.remove(_accessKey);
+    } else {
+      await prefs.setString(_accessKey, token);
+    }
   }
 
   Future<SharedPreferences?> _prefs() async {

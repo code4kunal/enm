@@ -8,19 +8,26 @@ import '../repositories.dart';
 
 /// Where the API lives.
 ///
-/// From `--dart-define` so a build can be pointed at a different backend
-/// without a code change:
+/// Two ways to set this, checked in order:
 ///
-/// ```sh
-/// flutter run -d chrome \
-///   --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
-///   --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
-/// ```
+/// 1. `config.json`, fetched once at startup by [loadRuntimeConfig] — the
+///    deployed path. One Docker image serves every environment; see
+///    `docker-entrypoint.sh`, which writes that file from `API_BASE_URL` at
+///    container start, not build time. No rebuild to repoint an environment.
+/// 2. `--dart-define`, for the local dev loop where nothing serves
+///    `config.json`:
+///    ```sh
+///    flutter run -d chrome \
+///      --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
+///      --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+///    ```
 ///
 /// There is no offline mode. Every screen reads from the database through this
 /// client; nothing is served from fixtures.
 abstract final class ApiConfig {
-  static const String baseUrl = String.fromEnvironment(
+  /// Overwritten once at startup by [loadRuntimeConfig] if `config.json`
+  /// provides a non-empty value. Mutable for exactly that reason.
+  static String baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:8123/api/v1',
   );
