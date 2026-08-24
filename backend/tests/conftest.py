@@ -12,6 +12,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("NOTIFICATIONS_ENABLED", "true")
 os.environ.setdefault("BREAKDOWN_SLA_ENABLED", "false")
 os.environ.setdefault("MEDIA_ROOT", "/tmp/enm-test-media")
+os.environ.setdefault("ENM_FEED_TOKEN", "test-feed-token")
 
 from collections.abc import AsyncIterator  # noqa: E402
 
@@ -67,6 +68,7 @@ async def _clean() -> AsyncIterator[None]:
                 "site_import_runs, site_import_mappings, site_import_profiles, "
                 "service_plans, shift_windows, site_configs, odometer_readings, "
                 "user_site_access, users, vehicles, defect_sources, defect_types, "
+                "sync_cursors, "
                 "sites RESTART IDENTITY CASCADE"
             )
         )
@@ -140,6 +142,17 @@ async def _seed() -> None:
                     role=Role.executive,
                     password_hash=hash_password(PASSWORD),
                     site_links=[UserSiteAccess(site_code="MBMT")],
+                ),
+                # app.services.streams.SYSTEM_USER_ID — attributes entries
+                # ingested from fleet-streams, which has no human to name.
+                # Inactive and password-less: it never logs in.
+                User(
+                    name="fleet-streams",
+                    user_id="FLEETSTREAMS",
+                    role=Role.executive,
+                    password_hash=None,
+                    is_active=False,
+                    site_links=[],
                 ),
             ]
         )

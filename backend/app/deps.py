@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -85,6 +86,25 @@ async def current_user(request: Request, session: SessionDep) -> User:
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+
+
+def fleet_streams_auth(request: Request) -> None:
+    """Bearer-token auth for the fleet-streams ingest routes.
+
+    Not a session — there is no user on the other end, just serving's own
+    process, so this compares a shared secret rather than decoding a JWT.
+    Unset `ENM_FEED_TOKEN` refuses every call rather than accepting none,
+    the same "misconfigured is not open" stance `assert_production_ready`
+    takes for JWT_SECRET.
+    """
+    if not settings.enm_feed_token:
+        raise Unauthorized("Fleet-streams ingest is not configured on this server")
+    token = _bearer(request)
+    if not hmac.compare_digest(token, settings.enm_feed_token):
+        raise Unauthorized("Invalid fleet-streams token")
+
+
+FleetStreamsAuth = Annotated[None, Depends(fleet_streams_auth)]
 
 
 async def require_manager(user: CurrentUser) -> User:

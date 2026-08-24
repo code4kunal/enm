@@ -31,6 +31,10 @@ services:
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
       # Server-side only — never passed to the `web` build args below.
       SITEOPS_SERVICE_KEY: ${SITEOPS_SERVICE_KEY:-}
+      # fleet-streams ingest — same value on both sides, unset refuses the
+      # /integrations/fleet-streams/* routes entirely.
+      ENM_FEED_TOKEN: ${ENM_FEED_TOKEN:-}
+      FLEET_STREAMS_BASE_URL: ${FLEET_STREAMS_BASE_URL:-}
       SEED_ON_START: ${SEED_ON_START:-true}
       ENVIRONMENT: development
       # Microsoft SSO (leave blank to disable /auth/sso)

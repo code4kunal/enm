@@ -19,6 +19,7 @@ from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
+from app.services.streams import replay_on_startup
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -32,6 +33,11 @@ async def lifespan(_app: FastAPI):
     # Before anything binds a port or opens a pool: a placeholder secret or a
     # wildcard CORS policy is a compromise, not a warning.
     settings.assert_production_ready()
+
+    # Catch-up only, not the live path — if fleet-streams isn't configured
+    # this returns immediately. Never raises: a fleet-streams outage must
+    # not be a reason ENM itself fails to come up.
+    await replay_on_startup()
 
     scheduler: AsyncIOScheduler | None = None
     jobs = settings.notifications_enabled and settings.breakdown_sla_enabled

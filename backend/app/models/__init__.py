@@ -38,6 +38,7 @@ from app.models.site_import import (
     SiteImportProfile,
     SiteImportRun,
 )
+from app.models.sync import SyncCursor
 from app.models.user import DeviceToken, RefreshToken, User, UserSiteAccess
 
 __all__ = [
@@ -73,6 +74,7 @@ __all__ = [
     "SiteImportMapping",
     "SiteImportProfile",
     "SiteImportRun",
+    "SyncCursor",
     "User",
     "UnitType",
     "UserSiteAccess",

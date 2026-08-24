@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     odometer_sync_enabled: bool = True
     odometer_scan_minutes: int = 5
 
+    # --- fleet-streams ingest ---
+    #: Shared secret fleet-streams' `serving` process sends as
+    #: `Authorization: Bearer`. Compared with `hmac.compare_digest` in
+    #: `app/deps.py::fleet_streams_auth`. Unset means the ingest routes are
+    #: refused entirely, not open.
+    enm_feed_token: str | None = None
+    #: Base URL of fleet-streams' own API, used only for the one-shot replay
+    #: GET on startup if ENM was down when an event fired. Unset skips replay.
+    fleet_streams_base_url: str | None = None
+
     @field_validator("cors_origins", "allowed_photo_types", mode="before")
     @classmethod
     def _split_csv(cls, v: object) -> object:

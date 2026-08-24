@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -237,6 +238,11 @@ class DriverComplaintEntry(Base):
 
 class BreakdownEntry(Base):
     __tablename__ = "breakdown_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "streams_breakdown_id", name="uq_breakdown_entries_streams_breakdown_id"
+        ),
+    )
 
     entry_id: Mapped[str] = _entry_fk()
     # What kind of failure it was. The Daily Maintenance Report splits
@@ -267,6 +273,18 @@ class BreakdownEntry(Base):
     )
     # set when the SLA nudge has fired, so it fires at most once per breakdown
     sla_notified_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+
+    # Set only when this breakdown was opened by fleet-streams rather than
+    # typed by hand. The idempotency key for the ingest routes: `open` is a
+    # find-or-create on this column, so a retried POST re-applies the same
+    # fields instead of minting a second breakdown.
+    streams_breakdown_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    eta_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    lon: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="breakdown")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
