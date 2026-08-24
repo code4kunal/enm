@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import NotFound, ValidationError
+from app.errors import ValidationError
 from app.models.master import Site, Vehicle
 from app.models.user import User, UserSiteAccess
 from app.schemas.site import SiteOut, VehicleOut

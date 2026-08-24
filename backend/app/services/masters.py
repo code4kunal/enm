@@ -15,7 +15,14 @@ def normalize_registration_no(raw: str) -> str:
 async def resolve_vehicle(
     session: AsyncSession, *, registration_no: str, site_code: str
 ) -> Vehicle:
-    """The vehicle must be on this site's fleet. Server normalizes case/spaces."""
+    """The vehicle must be on this site's fleet. Server normalizes case/spaces.
+
+    Never conjures a vehicle from entry text — a typo or another site's bus
+    would silently join this site's master (registration numbers are unique
+    across the whole fleet, so a bus already owned elsewhere would 500 rather
+    than fail cleanly). A bus joins the fleet through Vehicle Master or an
+    import, not by being typed into a register.
+    """
     normalized = normalize_registration_no(registration_no)
     vehicle = await session.scalar(
         select(Vehicle).where(
@@ -23,15 +30,10 @@ async def resolve_vehicle(
         )
     )
     if vehicle is None:
-        vehicle = Vehicle(
-            registration_no=normalized,
-            site_code=site_code,
-            is_active=True,
-            make="",
-            model="",
+        raise ValidationError(
+            f"{normalized} is not on the {site_code} fleet",
+            {"bus_no": "unknown vehicle"},
         )
-        session.add(vehicle)
-        await session.flush()
     if not vehicle.is_active:
         raise ValidationError(
             f"{normalized} is retired", {"bus_no": "vehicle is retired"}
