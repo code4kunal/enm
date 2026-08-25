@@ -60,6 +60,13 @@ class ChecklistList(BaseModel):
     items: list[ChecklistOut]
 
 
+class ChecklistCatalogueSyncResult(BaseModel):
+    """How many lines the standard catalogue added — 0 means every template
+    this site has already carried lines of its own."""
+
+    added: int
+
+
 class ChecklistUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
     variant: str | None = Field(default=None, max_length=40)

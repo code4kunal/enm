@@ -505,3 +505,46 @@ async def test_onboarding_never_overwrites_a_depots_own_checklist(
         if t["work_type_code"] == "D.I" and t["variant"] == di["variant"]
     )
     assert [i["label"] for i in mine["items"]] == ["Only line this depot wants"]
+
+
+async def test_sync_catalogue_backfills_a_site_missing_its_checklists(
+    client: AsyncClient,
+) -> None:
+    """The manual recovery path for a site that predates a catalogue module —
+    e.g. it was onboarded before P.M. docking existed, or a bug once made
+    apply_catalogue skip it. Same catalogue apply_catalogue applies at
+    onboarding, callable any time after, without touching lines the depot
+    already wrote."""
+    from app.models.master import Site
+
+    async with SessionLocal() as session:
+        session.add(Site(code="GHOST", name="Ghost site"))
+        session.add(
+            WorkType(code="P.M", name="Preventive maintenance docking", is_inspection=True)
+        )
+        await session.commit()
+    await _work_types()
+
+    h = await auth_headers(client, SUPER_ADMIN)
+    before = (await client.get("/sites/GHOST/checklists", headers=h)).json()["items"]
+    assert all(not t["items"] for t in before), before
+
+    synced = await client.post("/sites/GHOST/checklists/sync-catalogue", headers=h)
+    assert synced.status_code == 200, synced.text
+    assert synced.json()["added"] > 0
+
+    after = (await client.get("/sites/GHOST/checklists", headers=h)).json()["items"]
+    by_code = {t["work_type_code"] for t in after if t["items"]}
+    assert {"D.I", "10 DAYS SERVICE", "P.M"} <= by_code
+
+    # Idempotent: nothing left to add the second time.
+    again = await client.post("/sites/GHOST/checklists/sync-catalogue", headers=h)
+    assert again.json()["added"] == 0
+
+
+async def test_sync_catalogue_is_manager_only(client: AsyncClient) -> None:
+    supervisor = await auth_headers(client, "TV4102")
+    r = await client.post(
+        "/sites/MBMT/checklists/sync-catalogue", headers=supervisor
+    )
+    assert r.status_code == 403

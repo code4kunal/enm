@@ -11,6 +11,7 @@ from app.models.checklist import ChecklistTemplate, InspectionEntry
 from app.models.enums import AuditAction
 from app.models.master import Vehicle, WorkType
 from app.schemas.checklist import (
+    ChecklistCatalogueSyncResult,
     ChecklistItemIO,
     ChecklistList,
     ChecklistOut,
@@ -120,6 +121,35 @@ async def list_checklists(
             out.append(_checklist_out(template))
     await session.commit()
     return ChecklistList(items=out)
+
+
+@router.post(
+    "/sites/{code}/checklists/sync-catalogue",
+    response_model=ChecklistCatalogueSyncResult,
+)
+async def sync_catalogue(
+    code: str, user: CurrentUser, session: SessionDep
+) -> ChecklistCatalogueSyncResult:
+    """Give this site the standard D.I./10-day/docking checklists it's missing.
+
+    Same call `apply_catalogue` runs during onboarding — exposed here for a
+    site that got its first vehicle, import profile or config before anyone
+    ever visited the onboarding screen, or that predates a catalogue module
+    added since. Safe to run any time: a template that already has lines is
+    never touched.
+    """
+    site_code = assert_site_admin(user, code)
+    added = await checklists.apply_catalogue(session, site_code)
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.checklist_catalogue_synced,
+        object_type="site",
+        object_id=site_code,
+        after={"items_added": added},
+    )
+    await session.commit()
+    return ChecklistCatalogueSyncResult(added=added)
 
 
 @router.put("/sites/{code}/checklists/{work_type_id}", response_model=ChecklistOut)

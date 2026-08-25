@@ -180,6 +180,7 @@ class AuditAction(StrEnum):
     alert_acknowledged = "alert_acknowledged"
     inspection_recorded = "inspection_recorded"
     checklist_updated = "checklist_updated"
+    checklist_catalogue_synced = "checklist_catalogue_synced"
     dmr_updated = "dmr_updated"
 
 
