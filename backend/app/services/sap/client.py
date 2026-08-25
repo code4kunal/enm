@@ -80,8 +80,14 @@ async def create_order(*, notification_no: str) -> str:
 async def add_components(
     *, order_no: str, components: list[dict[str, str | Decimal]]
 ) -> None:
+    # `json=` serializes via stdlib json, which rejects Decimal outright —
+    # stringify here rather than trust callers, same as `confirm`'s `hours`.
+    body = [
+        {k: (str(v) if isinstance(v, Decimal) else v) for k, v in c.items()}
+        for c in components
+    ]
     await _request(
-        "POST", f"/orders/{order_no}/components", json={"components": components}
+        "POST", f"/orders/{order_no}/components", json={"components": body}
     )
 
 

@@ -16,14 +16,35 @@ services:
       timeout: 3s
       retries: 10
 
+  sap-mock:
+    container_name: enm_sap_mock
+    build: ./mock_sap
+    environment:
+      MOCK_SAP_TOKEN: ${MOCK_SAP_TOKEN:-dev-sap-token}
+    ports:
+      - "${SAP_MOCK_PORT:-9100}:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9000/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     container_name: enm_backend
     build: .
     depends_on:
       db:
         condition: service_healthy
+      sap-mock:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://enm:enm@db:5432/enm
+      # Stand-in SAP server (backend/mock_sap) — not real SAP, there is no
+      # official lightweight one. Wired by default so `docker compose up`
+      # gives a working SAP integration to test against out of the box; set
+      # SAP_BASE_URL to a real endpoint to point at an actual system instead.
+      SAP_BASE_URL: ${SAP_BASE_URL:-http://sap-mock:9000}
+      SAP_SERVICE_KEY: ${SAP_SERVICE_KEY:-dev-sap-token}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       # Explicit origins only — "*" + credentials is rejected by browsers.

@@ -122,6 +122,8 @@ async def test_materials_opens_and_posts_a_job_card(
     assert len(job_card.components) == 1
     assert job_card.components[0].sap_material_no == "MAT-1"
     assert job_card.components[0].qty_required == Decimal("2.00")
+    # qty_issued only advances via the nightly reconcile step, not posting.
+    assert job_card.components[0].qty_issued == Decimal("0.00")
 
 
 async def test_a_failed_step_resumes_without_reposting_notification(

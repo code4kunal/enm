@@ -68,7 +68,9 @@ class JobCardSource(StrEnum):
 
 class JobCardStatus(StrEnum):
     """`draft` through every posting step; `posted` only once all four have
-    succeeded. `issued`/`teco` are SAP updates flowing back, not ENM writes."""
+    succeeded. `issued`/`teco` are SAP updates flowing back, not ENM writes —
+    `app.services.sap.recon.reconcile_from_sap` promotes them nightly, right
+    before recon runs, using the same SAP read."""
 
     draft = "draft"
     posted = "posted"

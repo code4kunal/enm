@@ -12,7 +12,7 @@ from app.models.job_card import JobCard, JobCardComponent, JobCardReconException
 from app.models.master import Vehicle
 from app.models.user import User
 from app.services.sap import client as sap_client
-from app.services.sap.recon import run_daily_recon
+from app.services.sap.recon import reconcile_from_sap, run_daily_recon
 from tests.conftest import SUPER_ADMIN, auth_headers
 
 
@@ -125,6 +125,69 @@ async def test_recon_finds_nothing_when_in_sync(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(sap_client, "list_orders_created_since", fake_list_orders)
 
     async with SessionLocal() as session:
+        raised = await run_daily_recon(session, "MBMT")
+        await session.commit()
+        assert raised == 0
+
+
+async def test_reconcile_promotes_posted_to_issued_and_writes_qty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_card_id = await _make_posted_job_card(order_no="ORDER-R4", qty_issued=Decimal("0"))
+
+    async def fake_read_order(order_no):
+        return {"status": "REL", "qty_issued": {"MAT-R": 1}}
+
+    monkeypatch.setattr(sap_client, "read_order", fake_read_order)
+
+    async with SessionLocal() as session:
+        advanced = await reconcile_from_sap(session, "MBMT")
+        await session.commit()
+        assert advanced == 1
+
+        card = await session.get(JobCard, job_card_id)
+        assert card.status is JobCardStatus.issued
+        assert card.components[0].qty_issued == Decimal("1")
+
+
+async def test_reconcile_promotes_to_teco(monkeypatch: pytest.MonkeyPatch) -> None:
+    job_card_id = await _make_posted_job_card(
+        order_no="ORDER-R5", qty_issued=Decimal("1"), status=JobCardStatus.issued
+    )
+
+    async def fake_read_order(order_no):
+        return {"status": "TECO", "qty_issued": {"MAT-R": 1}}
+
+    monkeypatch.setattr(sap_client, "read_order", fake_read_order)
+
+    async with SessionLocal() as session:
+        advanced = await reconcile_from_sap(session, "MBMT")
+        await session.commit()
+        assert advanced == 1
+
+        card = await session.get(JobCard, job_card_id)
+        assert card.status is JobCardStatus.teco
+
+
+async def test_reconcile_then_recon_finds_nothing_for_that_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The routine case: a freshly-posted card that SAP has since progressed
+    on shouldn't still be sitting in recon's exception list the same run —
+    reconcile is meant to close that gap before recon ever evaluates it."""
+    await _make_posted_job_card(order_no="ORDER-R6", qty_issued=Decimal("0"))
+
+    async def fake_read_order(order_no):
+        return {"status": "REL", "qty_issued": {"MAT-R": 1}}
+
+    async def fake_list_orders(since):
+        return [{"order_no": "ORDER-R6"}]
+
+    monkeypatch.setattr(sap_client, "read_order", fake_read_order)
+    monkeypatch.setattr(sap_client, "list_orders_created_since", fake_list_orders)
+
+    async with SessionLocal() as session:
+        await reconcile_from_sap(session, "MBMT")
         raised = await run_daily_recon(session, "MBMT")
         await session.commit()
         assert raised == 0

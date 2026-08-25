@@ -1,13 +1,20 @@
 """Daily two-way recon between ENM job cards and SAP orders.
 
-An exception list, not a third editor — see
+`run_daily_recon` is an exception list, not a third editor — see
 docs/superpowers/specs/2026-08-24-sap-pm-enm-integration-design.md, section 4.
-Nothing here writes to `job_cards` or SAP; a person resolves what's found.
+Nothing in it writes to `job_cards` or SAP; a person resolves what's found.
+
+`reconcile_from_sap` is the "poll SAP order" return path section 3 describes
+(map TECO -> teco, goods issue > 0 -> issued) — a separate function, run
+right before recon in the same nightly job rather than on its own schedule,
+so recon only ever flags genuine drift instead of the routine posted-not-
+yet-issued gap every card starts in.
 """
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +25,56 @@ from app.services import notifications
 from app.services.sap import client as sap_client
 
 logger = logging.getLogger("enm.sap")
+
+
+async def reconcile_from_sap(session: AsyncSession, site_code: str) -> int:
+    """Promotes status/qty_issued from SAP for cards still short of `teco`.
+    Returns how many cards it advanced."""
+    cards = (
+        await session.scalars(
+            select(JobCard).where(
+                JobCard.site_code == site_code,
+                JobCard.sap_order_no.is_not(None),
+                JobCard.status.in_((JobCardStatus.posted, JobCardStatus.issued)),
+            )
+        )
+    ).all()
+    advanced = 0
+
+    for card in cards:
+        try:
+            order = await sap_client.read_order(card.sap_order_no)
+        except Exception as exc:  # noqa: BLE001 — one order's failure must not skip the rest
+            logger.warning(
+                "reconcile: could not read SAP order %s: %s", card.sap_order_no, exc
+            )
+            continue
+
+        sap_status = order.get("status")
+        qty_issued = order.get("qty_issued") or {}
+        changed = False
+
+        for component in card.components:
+            sap_qty = qty_issued.get(component.sap_material_no)
+            if sap_qty is not None and float(sap_qty) != float(component.qty_issued):
+                component.qty_issued = Decimal(str(sap_qty))
+                changed = True
+
+        if sap_status == "TECO" and card.status is not JobCardStatus.teco:
+            card.status = JobCardStatus.teco
+            changed = True
+        elif card.status is JobCardStatus.posted and any(
+            float(q) > 0 for q in qty_issued.values()
+        ):
+            card.status = JobCardStatus.issued
+            changed = True
+
+        if changed:
+            advanced += 1
+
+    if advanced:
+        await session.flush()
+    return advanced
 
 
 async def run_daily_recon(session: AsyncSession, site_code: str) -> int:
@@ -116,6 +173,7 @@ async def run_daily_recon_all_sites() -> None:
         site_codes = (await session.scalars(select(Site.code))).all()
         for code in site_codes:
             try:
+                await reconcile_from_sap(session, code)
                 raised = await run_daily_recon(session, code)
                 if raised:
                     await notifications.notify_recon_exceptions(session, code, raised)
