@@ -25,6 +25,13 @@ async def load_site(session: AsyncSession, code: str) -> Site:
         )
         session.add(site)
         await session.flush()
+        # A site can spring into existence here first — e.g. a vehicle or
+        # import profile created for a SiteOps code before anyone ever visits
+        # the "onboard site" screen — not just through POST /sites. Without
+        # this, that site's mechanics open a permanently empty checklist.
+        from app.services import checklists
+
+        await checklists.apply_catalogue(session, site.code)
     return site
 
 

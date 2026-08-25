@@ -49,6 +49,75 @@ async def test_onboarding_a_site_is_super_admin_only(client: AsyncClient) -> Non
     assert (await client.post("/sites", json=body, headers=admin)).status_code == 409
 
 
+async def test_onboarding_a_site_seeds_every_checklist_catalogue(
+    client: AsyncClient,
+) -> None:
+    """A site created after the seed migrations still gets D.I., 10-day, and
+    docking (P.M.) checklists — apply_catalogue must cover every seed module a
+    migration has ever applied, not just the first one."""
+    from app.db import SessionLocal
+    from app.models.master import WorkType
+
+    async with SessionLocal() as session:
+        for code, name in (
+            ("D.I", "Daily inspection"),
+            ("10 DAYS SERVICE", "10 day inspection"),
+            ("P.M", "Preventive maintenance docking"),
+        ):
+            session.add(WorkType(code=code, name=name, is_inspection=True))
+        await session.commit()
+
+    admin = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post(
+        "/sites", json={"code": "PNQ2", "name": "Pune Two"}, headers=admin
+    )
+    assert r.status_code == 201, r.text
+
+    checklists = (
+        await client.get("/sites/PNQ2/checklists", headers=admin)
+    ).json()["items"]
+    by_code = {c["work_type_code"]: c for c in checklists if c["items"]}
+    assert "D.I" in by_code
+    assert "10 DAYS SERVICE" in by_code
+    assert "P.M" in by_code
+
+
+async def test_a_site_auto_created_by_adding_a_vehicle_still_gets_checklists(
+    client: AsyncClient,
+) -> None:
+    """A site can spring into existence outside the onboarding screen — e.g. a
+    vehicle added for a SiteOps-mapped code that was never POSTed to /sites.
+    load_site()'s silent auto-create must seed checklists too, or that site's
+    mechanics open a permanently empty form with no onboarding step to blame."""
+    from app.db import SessionLocal
+    from app.models.master import WorkType
+
+    async with SessionLocal() as session:
+        for code, name in (
+            ("D.I", "Daily inspection"),
+            ("10 DAYS SERVICE", "10 day inspection"),
+            ("P.M", "Preventive maintenance docking"),
+        ):
+            session.add(WorkType(code=code, name=name, is_inspection=True))
+        await session.commit()
+
+    admin = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post(
+        "/sites/PNQ5/vehicles",
+        json={"registration_no": "MH12AB1234"},
+        headers=admin,
+    )
+    assert r.status_code == 201, r.text
+
+    checklists = (
+        await client.get("/sites/PNQ5/checklists", headers=admin)
+    ).json()["items"]
+    by_code = {c["work_type_code"]: c for c in checklists if c["items"]}
+    assert "D.I" in by_code
+    assert "10 DAYS SERVICE" in by_code
+    assert "P.M" in by_code
+
+
 async def test_site_code_is_upper_cased_and_validated(client: AsyncClient) -> None:
     admin = await auth_headers(client, SUPER_ADMIN)
     r = await client.post("/sites", json={"code": " pnq ", "name": "Pune"}, headers=admin)

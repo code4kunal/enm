@@ -81,9 +81,9 @@ async def create_site(
     )
     session.add(site)
     await session.flush()
-    # Migration 0014 gave the standard checklists to every site that existed
-    # when it ran; a site created afterwards is past it and would open an empty
-    # inspection form without this.
+    # Migrations 0014/0015/0016 gave the standard checklists to every site that
+    # existed when they ran; a site created afterwards is past all of them and
+    # would open an empty inspection form without this.
     await checklists.apply_catalogue(session, site.code)
     await audit.record(
         session,

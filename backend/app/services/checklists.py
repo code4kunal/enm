@@ -101,14 +101,22 @@ async def variants_of(
 async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
     """Give a newly onboarded site the standard inspection checklists.
 
-    Migration 0014 puts these in the database for every site that existed when
-    it ran. A site created afterwards is past that migration, so it needs the
-    same catalogue applied here or its mechanics open an empty form.
+    Migrations 0014 (D.I. / 10-day, `checklists_v1`), 0015 (P.M. docking 9M,
+    `checklists_v2`) and 0016 (P.M. docking 12M AC/Non-AC, `checklists_v3`)
+    put these in the database for every site that existed when each ran. A
+    site created afterwards is past all three, so it needs the same
+    catalogue applied here or its mechanics open an empty form — this must
+    stay in sync with every seed module a migration has ever applied, not
+    just the first one.
 
     Never overwrites: a template that already has lines belongs to the depot,
     whether it edited ours or wrote its own.
     """
-    from app.seeds.checklists_v1 import CHECKLISTS
+    from app.seeds.checklists_v1 import CHECKLISTS as CHECKLISTS_V1
+    from app.seeds.checklists_v2 import CHECKLISTS as CHECKLISTS_V2
+    from app.seeds.checklists_v3 import CHECKLISTS as CHECKLISTS_V3
+
+    CHECKLISTS = CHECKLISTS_V1 + CHECKLISTS_V2 + CHECKLISTS_V3
 
     codes = {t["work_type_code"] for t in CHECKLISTS}
     work_types = {
