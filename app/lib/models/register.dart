@@ -56,6 +56,7 @@ class FieldDef {
     this.placeholder,
     this.unit,
     this.rows = 2,
+    this.resolvePhase = false,
   });
 
   final String key;
@@ -83,6 +84,13 @@ class FieldDef {
 
   /// Line count for a [FieldType.area].
   final int rows;
+
+  /// Only knowable once the job is actually done — a breakdown's attended
+  /// time, what was fixed, parts used. The report form never asks for these;
+  /// the resolve step is where they're captured. Every other register is
+  /// filled in retroactively (already-done work, entered same session), so
+  /// this only means anything for `breakdown`.
+  final bool resolvePhase;
 
   bool get isMasterBacked => master || type == FieldType.bus;
 }

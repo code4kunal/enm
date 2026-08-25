@@ -215,6 +215,21 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
 
     _initialise(register, existing);
 
+    // A breakdown report only knows what's true the moment it's filed — who
+    // fixed it, what was done, and any parts used are only knowable once
+    // it's actually resolved, so those fields (and materials) belong to the
+    // resolve step instead. Editing an existing entry still shows everything.
+    final isNewBreakdown = existing == null && register.id == kBreakdownRegisterId;
+    final formRegister = isNewBreakdown
+        ? RegisterDef(
+            id: register.id,
+            code: register.code,
+            name: register.name,
+            color: register.color,
+            fields: register.fields.where((f) => !f.resolvePhase).toList(),
+          )
+        : register;
+
     return FadeUp(
       key: ValueKey<String>('form-${register.id}-${widget.entryId ?? 'new'}'),
       child: Center(
@@ -267,7 +282,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   border: Border.all(color: T.border),
                 ),
                 child: _FieldGrid(
-                  register: register,
+                  register: formRegister,
                   master: master,
                   technicianStaff: technicianStaff,
                   supervisorStaff: supervisorStaff,
@@ -283,7 +298,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                       setState(() => _photoAttached = !_photoAttached),
                 ),
               ),
-              if (_editing == null) ...<Widget>[
+              if (_editing == null && !isNewBreakdown) ...<Widget>[
                 const SizedBox(height: 16),
                 MaterialsBlock(
                   catalog: ref.watch(sapMaterialCatalogProvider).valueOrNull ??
@@ -307,7 +322,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   Expanded(
                     child: FilledActionButton(
                       label: _saving ? 'Saving…' : 'Save entry',
-                      onPressed: _saving ? null : () => _save(register),
+                      onPressed: _saving ? null : () => _save(formRegister),
                       fontSize: 16.5,
                       elevated: true,
                       padding: const EdgeInsets.symmetric(

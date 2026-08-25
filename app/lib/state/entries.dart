@@ -144,13 +144,20 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     return saved;
   }
 
-  Future<void> resolveBreakdown(String entryId) async {
+  /// Any [materials] line opens a job card and posts it to SAP once the
+  /// breakdown resolves; an empty list (the default) never touches SAP.
+  Future<RegisterEntry> resolveBreakdown(
+    String entryId, {
+    Map<String, String> data = const <String, String>{},
+    List<MaterialLine> materials = const <MaterialLine>[],
+  }) async {
     final saved = await ref
         .read(entryRepositoryProvider)
-        .setStatus(entryId, EntryStatus.done);
+        .resolveBreakdown(entryId, data: data, materials: materials);
     _replaceAll(
       (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
     );
+    return saved;
   }
 
   void _replaceAll(

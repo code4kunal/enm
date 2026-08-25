@@ -587,11 +587,17 @@ class ApiEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
-    if (status != EntryStatus.done) {
-      throw const ApiException('Only resolving a breakdown is supported');
-    }
-    final json = await _api.post('/entries/$entryId/resolve');
+  Future<RegisterEntry> resolveBreakdown(
+    String entryId, {
+    Map<String, String> data = const <String, String>{},
+    List<MaterialLine> materials = const <MaterialLine>[],
+  }) async {
+    final wireData = RegisterFieldMap.toWire('breakdown', data);
+    final json = await _api.post('/entries/$entryId/resolve', body: <String, dynamic>{
+      if (wireData.isNotEmpty) 'data': wireData,
+      if (materials.isNotEmpty)
+        'materials': materials.map((m) => m.toJson()).toList(),
+    });
     return _fromWire(json as Map<String, dynamic>);
   }
 

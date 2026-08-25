@@ -165,11 +165,19 @@ class FakeEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
+  Future<RegisterEntry> resolveBreakdown(
+    String entryId, {
+    Map<String, String> data = const <String, String>{},
+    List<MaterialLine> materials = const <MaterialLine>[],
+  }) async {
     await Future<void>.delayed(_latency);
     final i = _store.entries.indexWhere((e) => e.id == entryId);
     if (i == -1) throw ApiException('Entry $entryId not found');
-    final updated = _store.entries[i].copyWith(status: status);
+    final merged = Map<String, String>.of(_store.entries[i].data)..addAll(data);
+    final updated = _store.entries[i].copyWith(
+      status: EntryStatus.done,
+      data: merged,
+    );
     _store.entries[i] = updated;
     return updated;
   }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_headers
@@ -27,13 +28,13 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
     }
 
 
-def breakdown() -> dict:
+def breakdown(bus: str = "MH40LY1895") -> dict:
     return {
         "register": "breakdown",
         "site": "MBMT",
         "date": TODAY,
         "data": {
-            "bus_no": "MH40LY1895",
+            "bus_no": bus,
             "driver_id": "DRV221",
             "route": "7",
             "location": "Kashimira signal",
@@ -112,6 +113,101 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     again = await client.post(f"/entries/{entry['id']}/resolve", headers=h)
     assert again.status_code == 409
     assert again.json()["error"]["code"] == "CONFLICT"
+
+
+async def test_resolve_can_carry_attended_details_and_materials(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The report never asks for attended time / materials — only knowable
+    once the bus is actually fixed. This is the one place they're captured."""
+    from app.services.sap import client as sap_client
+
+    calls: list[str] = []
+
+    async def fake_create_notification(**kwargs):
+        calls.append("notification")
+        return "NOTIF-BD1"
+
+    async def fake_create_order(**kwargs):
+        calls.append("order")
+        return "ORDER-BD1"
+
+    async def fake_add_components(**kwargs):
+        calls.append("components")
+
+    async def fake_confirm(**kwargs):
+        calls.append("confirm")
+
+    monkeypatch.setattr(sap_client, "create_notification", fake_create_notification)
+    monkeypatch.setattr(sap_client, "create_order", fake_create_order)
+    monkeypatch.setattr(sap_client, "add_components", fake_add_components)
+    monkeypatch.setattr(sap_client, "confirm", fake_confirm)
+
+    h = await auth_headers(client)
+    created = await client.post(
+        "/entries", json=breakdown(bus="MH40LY1894"), headers=h
+    )
+    assert created.status_code == 201
+    entry = created.json()
+    assert entry["data"].get("attended_details") is None
+
+    resolved = await client.post(
+        f"/entries/{entry['id']}/resolve",
+        json={
+            "data": {
+                "attended_time": "15:10",
+                "attended_details": "Replaced HV contactor",
+                "supervisor": "R. Iyer",
+            },
+            "materials": [{"sap_material_no": "MAT-CONT-1", "qty_required": "1.00"}],
+        },
+        headers=h,
+    )
+    assert resolved.status_code == 200, resolved.text
+    body = resolved.json()
+    assert body["status"] == "resolved"
+    assert body["data"]["attended_details"] == "Replaced HV contactor"
+    assert body["data"]["attended_time"] == "15:10"
+    # Untouched fields from the original report survive the merge.
+    assert body["data"]["complaint"] == "HV contactor tripped, bus immobile"
+    assert calls == ["notification", "order", "components", "confirm"]
+
+
+async def test_resolve_rejects_materials_already_logged_at_report_time(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Materials at report time is still technically possible (e.g. an
+    older client, or a caller that already knows the part). Resolving with
+    materials too must not silently open a second job card for one
+    breakdown — the unique (source, source_id) constraint backs this, but
+    the route should refuse cleanly rather than surface a raw 500."""
+    from app.services.sap import client as sap_client
+
+    async def fake_ok(**kwargs):
+        return "X"
+
+    async def fake_none(**kwargs):
+        return None
+
+    monkeypatch.setattr(sap_client, "create_notification", fake_ok)
+    monkeypatch.setattr(sap_client, "create_order", fake_ok)
+    monkeypatch.setattr(sap_client, "add_components", fake_none)
+    monkeypatch.setattr(sap_client, "confirm", fake_none)
+
+    h = await auth_headers(client)
+    payload = breakdown(bus="MH40LY1894")
+    payload["materials"] = [{"sap_material_no": "MAT-X", "qty_required": "1.00"}]
+    created = await client.post("/entries", json=payload, headers=h)
+    assert created.status_code == 201, created.text
+    entry_id = created.json()["id"]
+
+    resolved = await client.post(
+        f"/entries/{entry_id}/resolve",
+        json={"materials": [{"sap_material_no": "MAT-Y", "qty_required": "1.00"}]},
+        headers=h,
+    )
+    assert resolved.status_code == 409
+    assert resolved.json()["error"]["code"] == "CONFLICT"
 
 
 async def test_a_breakdown_can_be_written_back_unchanged(

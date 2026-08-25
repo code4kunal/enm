@@ -14,8 +14,16 @@ from app.deps import CurrentUser, PageDep, SessionDep, SiteDep, assert_site_acce
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import BreakdownEntry, Entry
 from app.models.enums import AuditAction, EntryStatus, JobCardSource, Register, Role
+from app.models.job_card import JobCard
 from app.schemas.common import Page
-from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
+from app.schemas.entry import (
+    EntryCreate,
+    EntryOut,
+    EntryUpdate,
+    PhotoOut,
+    ResolveBreakdownIn,
+    SummaryOut,
+)
 from app.services import audit, notifications, storage
 from app.services import entries as svc
 from app.services.common import today_ist
@@ -294,7 +302,10 @@ async def update_entry(
 
 @router.post("/{entry_id}/resolve", response_model=EntryOut)
 async def resolve_breakdown(
-    entry_id: str, user: CurrentUser, session: SessionDep
+    entry_id: str,
+    user: CurrentUser,
+    session: SessionDep,
+    payload: ResolveBreakdownIn = ResolveBreakdownIn(),
 ) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_access(user, entry.site_code)
@@ -303,12 +314,46 @@ async def resolve_breakdown(
     if entry.status is EntryStatus.resolved:
         raise Conflict("Breakdown is already resolved")
 
+    # What was only knowable once the bus was actually fixed — attended
+    # time, what was done, parts used — layered onto what the report already
+    # has. Never sent at report time; this is the one place it's asked.
+    if payload.data:
+        await svc.update_entry(
+            session,
+            entry,
+            entry_date=None,
+            entry_time=None,
+            raw_data={**svc.serialize_data(entry), **payload.data},
+        )
+
     now = datetime.now(UTC)
     entry.status = EntryStatus.resolved
     entry.updated_at = now
     detail: BreakdownEntry = entry.breakdown
     detail.resolved_at = now
     detail.resolved_by_id = user.id
+
+    if payload.materials:
+        existing_card = await session.scalar(
+            select(JobCard).where(
+                JobCard.source == JobCardSource.breakdown,
+                JobCard.source_id == entry.id,
+            )
+        )
+        if existing_card is not None:
+            raise Conflict("Materials were already logged for this breakdown")
+        await sap_posting.open_job_card(
+            session,
+            source=JobCardSource.breakdown,
+            source_id=entry.id,
+            site_code=entry.site_code,
+            vehicle=entry.vehicle,
+            materials=[
+                MaterialLine(m.sap_material_no, m.qty_required)
+                for m in payload.materials
+            ],
+            actor=user,
+        )
 
     await audit.record(
         session,

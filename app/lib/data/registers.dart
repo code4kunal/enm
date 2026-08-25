@@ -266,6 +266,7 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         label: 'Bus Attended Time',
         type: FieldType.time,
         width: FieldWidth.third,
+        resolvePhase: true,
       ),
       FieldDef(
         key: 'loss',
@@ -273,12 +274,14 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         type: FieldType.number,
         unit: 'km',
         width: FieldWidth.half,
+        resolvePhase: true,
       ),
       FieldDef(
         key: 'attended',
         label: 'Bus Attended Details',
         type: FieldType.area,
         placeholder: 'What was done on site',
+        resolvePhase: true,
       ),
       FieldDef(
         key: 'supervisor',
@@ -287,6 +290,7 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         optionsFrom: MasterList.staff,
         master: true,
         width: FieldWidth.half,
+        resolvePhase: true,
       ),
       FieldDef(
         key: 'remarks',
@@ -294,6 +298,7 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         type: FieldType.text,
         placeholder: 'Optional',
         width: FieldWidth.half,
+        resolvePhase: true,
       ),
     ],
   ),

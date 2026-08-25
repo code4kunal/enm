@@ -12,6 +12,7 @@ import 'screens/register_form_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/registers_screen.dart';
 import 'screens/reports_screen.dart';
+import 'screens/resolve_breakdown_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/site_screen.dart';
@@ -39,6 +40,8 @@ abstract final class Routes {
   static String newInspection(int workTypeId) => '/inspection/new/$workTypeId';
 
   static String editEntry(String entryId) => '/entry/edit/$entryId';
+
+  static String resolveBreakdown(String entryId) => '/breakdown/resolve/$entryId';
 }
 
 /// Bridges Riverpod's session state to GoRouter's refresh mechanism so the
@@ -190,6 +193,17 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: PageBody(
                 child: RegisterFormScreen(
                   entryId: state.pathParameters['entryId'],
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/breakdown/resolve/:entryId',
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: ResolveBreakdownScreen(
+                  entryId: state.pathParameters['entryId']!,
                 ),
               ),
             ),

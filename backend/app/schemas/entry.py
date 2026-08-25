@@ -113,6 +113,15 @@ class EntryCreate(BaseModel):
         return v.strip().upper()
 
 
+class ResolveBreakdownIn(BaseModel):
+    """What's only knowable once the breakdown is actually fixed — attended
+    time, what was done, parts used. The report itself never asks for these."""
+
+    data: dict[str, Any] = Field(default_factory=dict)
+    #: Any line here opens a job card and posts it to SAP after resolving.
+    materials: list[MaterialIn] = Field(default_factory=list)
+
+
 class EntryUpdate(BaseModel):
     date: date_t | None = None
     entry_time: HHMM | None = None

@@ -7,7 +7,6 @@ import '../models/entry.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
-import '../state/toast.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/dates.dart';
@@ -76,11 +75,6 @@ class _BreakdownCard extends ConsumerWidget {
     final d = entry.data;
     final busName = ref.watch(vehicleNameProvider(entry.busNumber));
 
-    Future<void> resolve() async {
-      await ref.read(entriesProvider.notifier).resolveBreakdown(entry.id);
-      ref.read(toastProvider.notifier).show('Breakdown marked resolved');
-    }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       decoration: BoxDecoration(
@@ -116,7 +110,8 @@ class _BreakdownCard extends ConsumerWidget {
                 const SizedBox(width: 10),
                 OutlineActionButton(
                   label: 'Mark resolved',
-                  onPressed: resolve,
+                  onPressed: () =>
+                      context.go(Routes.resolveBreakdown(entry.id)),
                   foreground: T.green,
                   borderColor: T.green,
                   accent: T.green,

@@ -560,8 +560,15 @@ abstract interface class EntryRepository {
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);
 
-  /// Used by the breakdown tracker's "Mark resolved".
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status);
+  /// Closes a breakdown, carrying whatever's only knowable once it's fixed —
+  /// attended time, what was done, parts used. [data] uses the same app keys
+  /// as [createEntry]; empty values are dropped, same as everywhere else.
+  /// Any [materials] line opens a job card and posts it to SAP.
+  Future<RegisterEntry> resolveBreakdown(
+    String entryId, {
+    Map<String, String> data = const <String, String>{},
+    List<MaterialLine> materials = const <MaterialLine>[],
+  });
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────
