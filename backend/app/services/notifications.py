@@ -13,6 +13,8 @@ from app.models.enums import NotificationType, Role
 from app.models.notification import Notification
 from app.models.user import DeviceToken, User, UserSiteAccess
 from app.services import fcm
+from app.services.channels import email as channel_email
+from app.services.channels import whatsapp
 
 logger = logging.getLogger("enm.notifications")
 
@@ -99,6 +101,17 @@ async def fan_out(
         },
     )
     await _prune_dead_tokens(session, dead)
+
+    # Two more best-effort channels, each independently optional — a user
+    # with no WhatsApp number or no email just doesn't get that one.
+    if whatsapp.configured():
+        for user in users:
+            if user.whatsapp_number:
+                await whatsapp.send_text(user.whatsapp_number, f"{title}\n{body}")
+    if channel_email.configured():
+        for user in users:
+            if user.email:
+                await channel_email.send_html(user.email, title, f"<p>{body}</p>")
 
 
 # --- domain triggers -------------------------------------------------------
@@ -263,6 +276,28 @@ async def notify_schedule_alerts(session: AsyncSession, site_code: str) -> int:
         type_=NotificationType.schedule_alert,
         title=f"{site_code} · {len(rows)} to look at",
         body=", ".join(parts) + ". Open Alerts for the list.",
+        entry_id=None,
         site_code=site_code,
     )
     return len(rows)
+
+
+async def notify_recon_exceptions(
+    session: AsyncSession, site_code: str, count: int
+) -> None:
+    """One summary push, same shape as `notify_schedule_alerts` — a
+    supervisor reads "12 to review," not twelve separate pushes."""
+    if count == 0:
+        return
+    users = await _recipients_for_site(session, site_code, SUPERVISORY_ROLES)
+    if not users:
+        return
+    await fan_out(
+        session,
+        users=users,
+        type_=NotificationType.job_card_recon,
+        title=f"{site_code} · {count} job card{'s' if count != 1 else ''} to review",
+        body="Daily SAP recon found a mismatch. Open Job Cards → Recon.",
+        entry_id=None,
+        site_code=site_code,
+    )

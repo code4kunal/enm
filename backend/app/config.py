@@ -133,6 +133,29 @@ class Settings(BaseSettings):
     #: step's checkpoint is still unset.
     sap_posting_retry_enabled: bool = True
     sap_posting_retry_minutes: int = 15
+    sap_master_sync_enabled: bool = True
+    sap_master_sync_hour: int = 2
+    sap_master_sync_minute: int = 0
+    #: Runs a few minutes after the DMR freeze, matching dmr_snapshot's own
+    #: "read after the day's numbers are final" timing.
+    sap_recon_enabled: bool = True
+
+    # --- WhatsApp + email channels ---
+    # Meta Cloud API. Unset means the outbound send and the inbound webhook
+    # both no-op — in-app notifications still work, same as FCM today.
+    whatsapp_token: str | None = None
+    whatsapp_phone_id: str | None = None
+    #: Answers Meta's GET verification handshake when the webhook is first
+    #: registered — a one-time check, distinct from app_secret below.
+    whatsapp_verify_token: str | None = None
+    #: Signs every inbound POST's X-Hub-Signature-256 header. This, not
+    #: verify_token, is what's checked on every webhook call.
+    whatsapp_app_secret: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_address: str | None = None
 
     @field_validator("cors_origins", "allowed_photo_types", mode="before")
     @classmethod

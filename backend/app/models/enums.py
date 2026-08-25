@@ -77,6 +77,17 @@ class JobCardStatus(StrEnum):
     error = "error"
 
 
+class JobCardReconKind(StrEnum):
+    """Which of the two systems the daily recon caught disagreeing.
+    `sap_only` should never happen — job cards are only ever born in ENM —
+    but it's still checked for, not assumed away."""
+
+    sap_only = "sap_only"
+    enm_only = "enm_only"
+    qty_mismatch = "qty_mismatch"
+    status_mismatch = "status_mismatch"
+
+
 class Platform(StrEnum):
     android = "android"
     ios = "ios"
@@ -89,6 +100,7 @@ class NotificationType(StrEnum):
     breakdown_resolved = "breakdown_resolved"
     breakdown_sla_breach = "breakdown_sla_breach"
     account = "account"
+    job_card_recon = "job_card_recon"
 
 
 class ImportTarget(StrEnum):
@@ -200,6 +212,7 @@ class AuditAction(StrEnum):
     job_card_created = "job_card_created"
     job_card_posted = "job_card_posted"
     job_card_post_failed = "job_card_post_failed"
+    job_card_recon_acknowledged = "job_card_recon_acknowledged"
     inspection_recorded = "inspection_recorded"
     checklist_updated = "checklist_updated"
     dmr_updated = "dmr_updated"
@@ -238,3 +251,4 @@ PLATFORM_ENUM = "platform_enum"
 NOTIFICATION_TYPE_ENUM = "notification_type_enum"
 JOB_CARD_SOURCE_ENUM = "job_card_source_enum"
 JOB_CARD_STATUS_ENUM = "job_card_status_enum"
+JOB_CARD_RECON_KIND_ENUM = "job_card_recon_kind_enum"

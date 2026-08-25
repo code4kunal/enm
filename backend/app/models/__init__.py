@@ -16,11 +16,12 @@ from app.models.entry import (
     WorkDoneEntry,
 )
 from app.models.inspection import Alert, InspectionPlan, InspectionSlot
-from app.models.job_card import JobCard, JobCardComponent
+from app.models.job_card import JobCard, JobCardComponent, JobCardReconException
 from app.models.master import (
     DefectSource,
     DefectType,
     OdometerReading,
+    SapMaterial,
     Site,
     Vehicle,
     WorkType,
@@ -65,11 +66,13 @@ __all__ = [
     "InspectionSlot",
     "JobCard",
     "JobCardComponent",
+    "JobCardReconException",
     "Notification",
     "OffRoadCase",
     "OdometerReading",
     "PMScheduleEntry",
     "RefreshToken",
+    "SapMaterial",
     "ServicePlan",
     "ShiftWindow",
     "Site",

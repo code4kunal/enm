@@ -19,7 +19,9 @@ from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
+from app.services.sap.masters import sync_all_sites
 from app.services.sap.posting import retry_errored_job_cards
+from app.services.sap.recon import run_daily_recon_all_sites
 from app.services.streams import replay_on_startup
 
 logging.basicConfig(
@@ -47,6 +49,8 @@ async def lifespan(_app: FastAPI):
         or settings.odometer_sync_enabled
         or settings.schedule_generator_enabled
         or settings.sap_posting_retry_enabled
+        or settings.sap_master_sync_enabled
+        or settings.sap_recon_enabled
     ):
         scheduler = AsyncIOScheduler(timezone=settings.timezone)
     if scheduler and jobs:
@@ -109,6 +113,21 @@ async def lifespan(_app: FastAPI):
             settings.schedule_generator_minute,
             settings.timezone,
         )
+    if scheduler and settings.sap_recon_enabled:
+        # A few minutes after the DMR freeze, so recon reads the day's
+        # settled job-card state, not one still mid-write.
+        scheduler.add_job(
+            run_daily_recon_all_sites,
+            CronTrigger(
+                hour=settings.schedule_generator_hour,
+                minute=min(settings.schedule_generator_minute + 10, 59),
+                timezone=settings.timezone,
+            ),
+            id="sap_daily_recon",
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("SAP daily recon after the DMR freeze")
     if scheduler and settings.sap_posting_retry_enabled:
         scheduler.add_job(
             retry_errored_job_cards,
@@ -119,6 +138,24 @@ async def lifespan(_app: FastAPI):
         )
         logger.info(
             "SAP posting retry every %dm", settings.sap_posting_retry_minutes
+        )
+    if scheduler and settings.sap_master_sync_enabled:
+        scheduler.add_job(
+            sync_all_sites,
+            CronTrigger(
+                hour=settings.sap_master_sync_hour,
+                minute=settings.sap_master_sync_minute,
+                timezone=settings.timezone,
+            ),
+            id="sap_master_sync",
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info(
+            "SAP master sync daily at %02d:%02d %s",
+            settings.sap_master_sync_hour,
+            settings.sap_master_sync_minute,
+            settings.timezone,
         )
     if scheduler:
         scheduler.start()

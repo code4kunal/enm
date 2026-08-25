@@ -48,6 +48,8 @@ class Site(Base):
         String(255), nullable=False, default="", server_default=""
     )
     commissioned_on: Mapped[date_t | None] = mapped_column(Date, nullable=True)
+    #: SAP functional location, from the nightly master sync.
+    sap_floc: Mapped[str | None] = mapped_column(String(60), nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
@@ -211,6 +213,26 @@ class WorkType(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
+
+class SapMaterial(Base):
+    """The platform's material master — spares the depot may use on a job
+    card. Read-only from ENM's side: the nightly SAP master sync upserts on
+    `sap_material_no`, and a material SAP stops mentioning stays (never
+    deleted) so it keeps resolving on any job card that already named it."""
+
+    __tablename__ = "sap_materials"
+    __table_args__ = (
+        UniqueConstraint("sap_material_no", name="uq_sap_materials_sap_material_no"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    sap_material_no: Mapped[str] = mapped_column(String(40), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    uom: Mapped[str] = mapped_column(String(20), nullable=False, default="", server_default="")
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

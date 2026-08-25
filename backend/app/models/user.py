@@ -30,6 +30,9 @@ class User(Base):
     user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     # optional; presence enables Microsoft SSO
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: E.164, e.g. "+919876543210". Unset means this user never gets a
+    #: WhatsApp push — the same graceful-skip every other channel gets.
+    whatsapp_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[Role] = mapped_column(
         Enum(Role, name=ROLE_ENUM, values_callable=lambda e: [m.value for m in e]),

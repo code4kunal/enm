@@ -12,6 +12,20 @@ def normalize_registration_no(raw: str) -> str:
     return "".join(raw.split()).upper()
 
 
+async def find_vehicle_by_registration(
+    session: AsyncSession, raw_registration: str
+) -> Vehicle | None:
+    """Registration numbers are unique across the whole fleet (not per
+    site), so unlike `resolve_vehicle` this needs no site to search within.
+    Returns `None` rather than raising — every caller (fleet-streams
+    ingest, the WhatsApp `DOWN`/`STATUS` commands) treats an unrecognized
+    plate as a soft miss, never an auto-created vehicle."""
+    normalized = normalize_registration_no(raw_registration)
+    return await session.scalar(
+        select(Vehicle).where(Vehicle.registration_no == normalized)
+    )
+
+
 async def resolve_vehicle(
     session: AsyncSession, *, registration_no: str, site_code: str
 ) -> Vehicle:

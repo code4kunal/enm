@@ -15,6 +15,7 @@ and `app/services/siteops.py` — no ABC, no injected fake).
 """
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -103,3 +104,38 @@ async def read_order(order_no: str) -> dict[str, Any]:
     exact shape TBD once BASIS confirms the connector; this is the contract
     `app.services.sap.posting` currently reads against."""
     return await _request("GET", f"/orders/{order_no}")
+
+
+# --- master data reads (app.services.sap.masters) ---------------------------
+
+
+async def list_equipment() -> list[dict[str, Any]]:
+    """`[{"equipment_no": ..., "registration_no": ...}, ...]` — matched onto
+    `vehicles.registration_no` by `app.services.sap.masters.sync_site`."""
+    body = await _request("GET", "/equipment")
+    return body.get("items", [])
+
+
+async def list_materials() -> list[dict[str, Any]]:
+    """`[{"material_no": ..., "description": ..., "uom": ...}, ...]`."""
+    body = await _request("GET", "/materials")
+    return body.get("items", [])
+
+
+async def list_functional_locations() -> list[dict[str, Any]]:
+    """`[{"floc": ..., "site_code": ...}, ...]` — matched onto `sites.code`."""
+    body = await _request("GET", "/functional-locations")
+    return body.get("items", [])
+
+
+# --- recon reads (app.services.sap.recon) -----------------------------------
+
+
+async def list_orders_created_since(since: datetime) -> list[dict[str, Any]]:
+    """`[{"order_no": ..., "created_at": ...}, ...]` — every order this
+    interface user created from `since` onward, for detecting an order SAP
+    has that no local job card points at (`sap_only` in the daily recon)."""
+    body = await _request(
+        "GET", "/orders", params={"created_since": since.isoformat()}
+    )
+    return body.get("items", [])

@@ -31,7 +31,7 @@ from app.schemas.streams import (
 from app.services import audit, notifications, odometer
 from app.services import entries as entries_svc
 from app.services.common import IST
-from app.services.masters import normalize_registration_no, resolve_defect_type
+from app.services.masters import find_vehicle_by_registration, resolve_defect_type
 from app.services.sites import assert_date_is_plausible, assert_site_accepts_entries
 
 logger = logging.getLogger("enm.streams")
@@ -55,16 +55,6 @@ async def _system_user(session: AsyncSession) -> User:
     return user
 
 
-async def _find_vehicle(session: AsyncSession, raw_registration: str) -> Vehicle | None:
-    """Registration numbers are unique across the whole fleet (not per site),
-    so unlike `resolve_vehicle` this needs no site to search within — the
-    POST body doesn't carry one."""
-    normalized = normalize_registration_no(raw_registration)
-    return await session.scalar(
-        select(Vehicle).where(Vehicle.registration_no == normalized)
-    )
-
-
 async def _find_breakdown(
     session: AsyncSession, streams_breakdown_id: str
 ) -> Entry | None:
@@ -83,7 +73,7 @@ async def _find_breakdown(
 async def ingest_event(
     session: AsyncSession, payload: FleetStreamsEventIn
 ) -> FleetStreamsEventOut:
-    vehicle = await _find_vehicle(session, payload.vehicle_id)
+    vehicle = await find_vehicle_by_registration(session, payload.vehicle_id)
     if vehicle is None:
         logger.warning(
             "fleet-streams event for unknown registration %s (breakdown_id=%s)",
@@ -248,7 +238,7 @@ async def ingest_odometers(
     """Returns how many of the batch were actually applied."""
     applied = 0
     for reading in payload.readings:
-        vehicle = await _find_vehicle(session, reading.vehicle_id)
+        vehicle = await find_vehicle_by_registration(session, reading.vehicle_id)
         if vehicle is None:
             logger.warning(
                 "fleet-streams odometer for unknown registration %s", reading.vehicle_id

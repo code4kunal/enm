@@ -13,6 +13,7 @@ from app.api import (
     master,
     notifications,
     reports,
+    sap,
     siteops,
     sites,
 )
@@ -32,5 +33,6 @@ api_router.include_router(notifications.router)
 api_router.include_router(siteops.router)
 api_router.include_router(integrations.router)
 api_router.include_router(job_cards.router)
+api_router.include_router(sap.router)
 
 __all__ = ["api_router"]

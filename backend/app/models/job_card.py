@@ -15,8 +15,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime, created_at_col, new_uuid, pk_uuid
 from app.models.enums import (
+    JOB_CARD_RECON_KIND_ENUM,
     JOB_CARD_SOURCE_ENUM,
     JOB_CARD_STATUS_ENUM,
+    JobCardReconKind,
     JobCardSource,
     JobCardStatus,
 )
@@ -125,3 +127,35 @@ class JobCardComponent(Base):
     )
 
     job_card: Mapped[JobCard] = relationship(back_populates="components")
+
+
+class JobCardReconException(Base):
+    """One disagreement the daily recon found between ENM and SAP. A person
+    resolves it; nothing here ever edits `job_cards` or SAP — this is an
+    exception list, not a third editor."""
+
+    __tablename__ = "job_card_recon_exceptions"
+
+    id: Mapped[str] = pk_uuid()
+    site_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("sites.code", ondelete="RESTRICT"), nullable=False
+    )
+    #: Null for a sap_only exception — there is no ENM card to point at.
+    job_card_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("job_cards.id", ondelete="SET NULL"), nullable=True
+    )
+    sap_order_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    kind: Mapped[JobCardReconKind] = mapped_column(
+        Enum(
+            JobCardReconKind,
+            name=JOB_CARD_RECON_KIND_ENUM,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    detected_at: Mapped[datetime] = created_at_col()
+    resolved_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    resolved_by_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
