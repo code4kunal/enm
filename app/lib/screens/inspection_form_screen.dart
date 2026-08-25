@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../data/repositories.dart';
 import '../models/checklist.dart';
+import '../models/job_card.dart';
 import '../models/site.dart';
 import '../router.dart';
 import '../state/inspections.dart';
@@ -18,6 +19,7 @@ import '../widgets/chips.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../widgets/materials_block.dart';
 import '../widgets/sub_tabs.dart';
 
 /// Data entry for one inspection.
@@ -44,6 +46,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   String _supervisor = '';
   bool _saving = false;
   String? _error;
+  List<MaterialLine> _materials = const <MaterialLine>[];
 
   final TextEditingController _odometer = TextEditingController();
   final TextEditingController _remarks = TextEditingController();
@@ -102,6 +105,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
             odometerKm: int.tryParse(_odometer.text.trim()),
             remarks: _remarks.text.trim(),
             results: results,
+            materials: _materials,
           );
       ref.read(toastProvider.notifier).show(
             entry.isClean
@@ -278,6 +282,12 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 16),
+              MaterialsBlock(
+                catalog: ref.watch(sapMaterialCatalogProvider).valueOrNull ??
+                    const <SapMaterialOption>[],
+                onChanged: (lines) => _materials = lines,
               ),
               if (_error != null) InlineError(message: _error!),
               const SizedBox(height: 20),

@@ -1,5 +1,6 @@
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/job_card.dart';
 import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'fake_store.dart';
@@ -132,7 +133,10 @@ class FakeEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<RegisterEntry> createEntry(RegisterEntry entry) async {
+  Future<RegisterEntry> createEntry(
+    RegisterEntry entry, {
+    List<MaterialLine> materials = const <MaterialLine>[],
+  }) async {
     await Future<void>.delayed(_latency);
     // Mirrors the server's rule: a dropdown value must exist on its master list.
     assertMasterValue(_store, entry);

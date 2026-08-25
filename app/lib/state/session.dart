@@ -53,6 +53,8 @@ class SessionState {
 
   bool get canAdministerUsers => user?.canAdministerUsers ?? false;
 
+  bool get canActOnJobCards => user?.canActOnJobCards ?? false;
+
   /// The account was created or reset by an admin and owes a password change.
   bool get mustResetPassword => user?.mustResetPassword ?? false;
 

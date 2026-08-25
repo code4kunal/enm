@@ -4,6 +4,7 @@ import '../data/api/api_client.dart';
 import '../data/api/api_repositories.dart';
 import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
+import '../models/job_card.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
 import 'selected_site.dart';
@@ -277,4 +278,38 @@ final siteConfigProvider = FutureProvider<SiteConfig>((ref) {
     return Future<SiteConfig>.value(SiteConfig.empty(''));
   }
   return ref.watch(siteConfigRepositoryProvider).fetchConfig(site);
+});
+
+final jobCardRepositoryProvider = Provider<JobCardRepository>(
+  (ref) => ApiJobCardRepository(ref.watch(apiClientProvider)),
+);
+
+final sapSyncRepositoryProvider = Provider<SapSyncRepository>(
+  (ref) => ApiSapSyncRepository(ref.watch(apiClientProvider)),
+);
+
+/// Today's job cards for the active site.
+final jobCardsProvider = FutureProvider<List<JobCard>>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) return Future<List<JobCard>>.value(const <JobCard>[]);
+  return ref.watch(jobCardRepositoryProvider).fetchJobCards(site);
+});
+
+/// Open recon exceptions for the active site.
+final jobCardReconProvider = FutureProvider<List<JobCardReconException>>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) {
+    return Future<List<JobCardReconException>>.value(const <JobCardReconException>[]);
+  }
+  return ref.watch(jobCardRepositoryProvider).fetchReconExceptions(site);
+});
+
+/// The synced material catalog, for the materials picker on entry/inspection
+/// forms. Search-and-tap against this list, never free text.
+final sapMaterialCatalogProvider = FutureProvider<List<SapMaterialOption>>((ref) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) {
+    return Future<List<SapMaterialOption>>.value(const <SapMaterialOption>[]);
+  }
+  return ref.watch(jobCardRepositoryProvider).materialCatalog(site);
 });

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/registers.dart';
 import '../data/repositories.dart';
 import '../models/checklist.dart';
+import '../models/job_card.dart';
 import 'providers.dart';
 import '../utils/dates.dart';
 import 'entries.dart';
@@ -122,6 +123,7 @@ class InspectionController {
     int? odometerKm,
     String? remarks,
     required List<InspectionResult> results,
+    List<MaterialLine> materials = const <MaterialLine>[],
   }) async {
     final entry = await _repo.recordInspection(
       siteCode: _site,
@@ -134,6 +136,7 @@ class InspectionController {
       odometerKm: odometerKm,
       remarks: remarks,
       results: results,
+      materials: materials,
     );
     // A sweep discharges a booking and can move the odometer, so the calendar
     // and the fleet are both stale now.

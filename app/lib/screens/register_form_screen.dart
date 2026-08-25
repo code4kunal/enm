@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../data/registers.dart';
 import '../data/repositories.dart';
 import '../models/entry.dart';
+import '../models/job_card.dart';
 import '../models/register.dart';
 import '../router.dart';
 import '../state/entries.dart';
@@ -19,6 +20,7 @@ import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../widgets/materials_block.dart';
 
 /// New-entry and edit-entry form. Exactly one of [registerId] / [entryId] is
 /// supplied; on edit the register is derived from the entry.
@@ -43,6 +45,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   bool _photoAttached = false;
   bool _saving = false;
   bool _initialised = false;
+  List<MaterialLine> _materials = const <MaterialLine>[];
 
   /// The entry being edited, resolved once from the store.
   RegisterEntry? _editing;
@@ -144,7 +147,11 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
             .read(toastProvider.notifier)
             .show('Entry updated in ${register.name} register');
       } else {
-        await entries.create(registerId: register.id, data: data);
+        await entries.create(
+          registerId: register.id,
+          data: data,
+          materials: _materials,
+        );
         ref
             .read(toastProvider.notifier)
             .show('Entry saved to ${register.name} register');
@@ -276,6 +283,14 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                       setState(() => _photoAttached = !_photoAttached),
                 ),
               ),
+              if (_editing == null) ...<Widget>[
+                const SizedBox(height: 16),
+                MaterialsBlock(
+                  catalog: ref.watch(sapMaterialCatalogProvider).valueOrNull ??
+                      const <SapMaterialOption>[],
+                  onChanged: (lines) => _materials = lines,
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: <Widget>[

@@ -36,6 +36,7 @@ class ShellScreen extends ConsumerWidget {
         MediaQuery.sizeOf(context).width < T.mobileBreakpoint;
     final session = ref.watch(sessionProvider);
     final openBreakdowns = ref.watch(openBreakdownsProvider).length;
+    final openRecon = ref.watch(jobCardReconProvider).valueOrNull?.length ?? 0;
 
     // Keeping the odometers current is what makes the maintenance schedule
     // mean anything, so the poller is mounted by the shell rather than by the
@@ -46,6 +47,7 @@ class ShellScreen extends ConsumerWidget {
       const _Tab('Home', Routes.home),
       const _Tab('Registers', Routes.registers),
       const _Tab('Breakdowns', Routes.breakdowns),
+      const _Tab('Job Cards', Routes.jobCards),
       const _Tab('Schedule', Routes.schedule),
       const _Tab('Vehicle Master', Routes.vehicleMaster),
       const _Tab('Reports', Routes.reports),
@@ -74,6 +76,7 @@ class ShellScreen extends ConsumerWidget {
                 tabs: tabs,
                 activeRoute: activeRoute,
                 openBreakdowns: openBreakdowns,
+                openRecon: openRecon,
               ),
               // A bounded box, and nothing else: `child` is the ShellRoute's
               // Navigator, which cannot lay out against an unbounded height.
@@ -90,6 +93,7 @@ class ShellScreen extends ConsumerWidget {
                 tabs: tabs,
                 activeRoute: activeRoute,
                 openBreakdowns: openBreakdowns,
+                openRecon: openRecon,
               ),
             ),
           AppToast(isMobile: isMobile),
@@ -105,12 +109,14 @@ class _Header extends ConsumerWidget {
     required this.tabs,
     required this.activeRoute,
     required this.openBreakdowns,
+    required this.openRecon,
   });
 
   final bool isMobile;
   final List<_Tab> tabs;
   final String activeRoute;
   final int openBreakdowns;
+  final int openRecon;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -213,9 +219,11 @@ class _Header extends ConsumerWidget {
                             _DesktopTab(
                               tab: t,
                               active: t.route == activeRoute,
-                              badge: t.route == Routes.breakdowns
-                                  ? openBreakdowns
-                                  : 0,
+                              badge: switch (t.route) {
+                                Routes.breakdowns => openBreakdowns,
+                                Routes.jobCards => openRecon,
+                                _ => 0,
+                              },
                             ),
                         ],
                       ),
@@ -281,11 +289,13 @@ class _BottomNav extends StatelessWidget {
     required this.tabs,
     required this.activeRoute,
     required this.openBreakdowns,
+    required this.openRecon,
   });
 
   final List<_Tab> tabs;
   final String activeRoute;
   final int openBreakdowns;
+  final int openRecon;
 
   @override
   Widget build(BuildContext context) {
@@ -304,7 +314,11 @@ class _BottomNav extends StatelessWidget {
                 child: _BottomNavItem(
                   tab: t,
                   active: t.route == activeRoute,
-                  badge: t.route == Routes.breakdowns ? openBreakdowns : 0,
+                  badge: switch (t.route) {
+                    Routes.breakdowns => openBreakdowns,
+                    Routes.jobCards => openRecon,
+                    _ => 0,
+                  },
                 ),
               ),
           ],

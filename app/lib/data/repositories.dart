@@ -13,6 +13,7 @@ import '../models/checklist.dart';
 import '../models/inspection.dart';
 import '../models/report.dart';
 import '../models/site_import.dart';
+import '../models/job_card.dart';
 
 /// Contracts the UI is written against. Every implementation in `data/fake/` is
 /// a stub; swapping in HTTP clients is a change to `state/providers.dart` and
@@ -365,6 +366,7 @@ abstract interface class ChecklistRepository {
     int? odometerKm,
     String? remarks,
     required List<InspectionResult> results,
+    List<MaterialLine> materials = const <MaterialLine>[],
   });
 
   Future<List<InspectionEntry>> fetchInspections(
@@ -549,7 +551,12 @@ class ReportFile {
 abstract interface class EntryRepository {
   Future<List<RegisterEntry>> fetchEntries({required String site});
 
-  Future<RegisterEntry> createEntry(RegisterEntry entry);
+  /// Any material line opens a job card and posts it to SAP after the entry
+  /// saves; an empty list (the default) never touches SAP.
+  Future<RegisterEntry> createEntry(
+    RegisterEntry entry, {
+    List<MaterialLine> materials = const <MaterialLine>[],
+  });
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);
 
@@ -617,4 +624,32 @@ abstract interface class AuthRepository {
   });
 
   Future<void> signOut();
+}
+
+// ─── Job cards + SAP ────────────────────────────────────────────────────────
+
+/// Job cards born from materials named on an entry or inspection, and the
+/// daily recon that catches ENM/SAP disagreeing. See
+/// docs/superpowers/specs/2026-08-24-sap-pm-enm-integration-design.md.
+abstract interface class JobCardRepository {
+  Future<List<JobCard>> fetchJobCards(String siteCode);
+
+  /// Resumes posting from whichever step's checkpoint is still unset.
+  /// Supervisor+ on the server; never mints a second SAP notification.
+  Future<JobCard> retry(String jobCardId);
+
+  Future<List<JobCardReconException>> fetchReconExceptions(String siteCode);
+
+  /// Never edits the job card or SAP — a person resolving the exception is
+  /// the only thing this call does.
+  Future<JobCardReconException> acknowledgeRecon(String exceptionId);
+
+  /// Feeds the materials picker. Search-and-tap, not free text.
+  Future<List<SapMaterialOption>> materialCatalog(String siteCode);
+}
+
+/// SAP master-data sync status for the Site → Sync panel. Never a secret
+/// value — configured yes/no and a timestamp only.
+abstract interface class SapSyncRepository {
+  Future<SapSyncStatus> syncNow(String siteCode);
 }

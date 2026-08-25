@@ -31,6 +31,14 @@ enum UserRole {
   /// May reach the user-administration screens at all.
   bool get canAdministerUsers => canManageSites;
 
+  /// Floor authority, not site administration: retrying a failed SAP post
+  /// or acknowledging a recon exception, matching the server's own
+  /// `require_supervisor` gate.
+  bool get canActOnJobCards =>
+      this == UserRole.superAdmin ||
+      this == UserRole.manager ||
+      this == UserRole.supervisor;
+
   /// Roles this role is allowed to hand out.
   ///
   /// A manager staffs its own sites but cannot mint peers or super admins —
@@ -106,6 +114,8 @@ class AppUser {
   bool get canManageSites => role.canManageSites;
 
   bool get canAdministerUsers => role.canAdministerUsers;
+
+  bool get canActOnJobCards => role.canActOnJobCards;
 
   /// Super admins reach every site; everyone else needs an explicit grant.
   bool canAccess(String siteCode) =>

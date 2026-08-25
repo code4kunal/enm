@@ -13,6 +13,7 @@ import 'site/docking_pane.dart';
 import 'site/fleet_pane.dart';
 import 'site/import_pane.dart';
 import 'site/master_data_pane.dart';
+import 'site/sync_pane.dart';
 
 /// Everything a manager maintains for the site they are standing in.
 ///
@@ -34,6 +35,7 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
     'Checklists',
     'Docking',
     'Import',
+    'Sync',
   ];
 
   @override
@@ -68,7 +70,8 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
             1 => const MasterDataPane(),
             2 => const ChecklistsPane(),
             3 => const DockingPane(),
-            _ => const ImportPane(),
+            4 => const ImportPane(),
+            _ => const SyncPane(),
           },
         ],
       ),

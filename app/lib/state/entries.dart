@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/registers.dart';
 import '../models/entry.dart';
+import '../models/job_card.dart';
 import '../utils/dates.dart';
 import 'providers.dart';
 import 'session.dart';
@@ -90,9 +91,13 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
   }
 
   /// Saves a new entry. Breakdowns open; everything else is done on save.
+  ///
+  /// Any [materials] line opens a job card and posts it to SAP once the
+  /// entry saves; an empty list (the default) never touches SAP.
   Future<RegisterEntry> create({
     required String registerId,
     required Map<String, String> data,
+    List<MaterialLine> materials = const <MaterialLine>[],
   }) async {
     final session = ref.read(sessionProvider);
     final normalised = _normalise(data);
@@ -110,7 +115,9 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
           : EntryStatus.done,
     );
 
-    final created = await ref.read(entryRepositoryProvider).createEntry(draft);
+    final created = await ref
+        .read(entryRepositoryProvider)
+        .createEntry(draft, materials: materials);
     _replaceAll((list) => <RegisterEntry>[created, ...list]);
     return created;
   }

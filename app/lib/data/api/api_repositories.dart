@@ -7,6 +7,7 @@ import '../../models/app_user.dart';
 import '../../models/entry.dart';
 import '../../models/checklist.dart';
 import '../../models/inspection.dart';
+import '../../models/job_card.dart';
 import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
@@ -557,13 +558,18 @@ class ApiEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<RegisterEntry> createEntry(RegisterEntry entry) async {
+  Future<RegisterEntry> createEntry(
+    RegisterEntry entry, {
+    List<MaterialLine> materials = const <MaterialLine>[],
+  }) async {
     final json = await _api.post('/entries', body: <String, dynamic>{
       'register': _registerToWire[entry.registerId],
       'site': entry.site,
       'date': entry.date,
       'entry_time': entry.time,
       'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
+      if (materials.isNotEmpty)
+        'materials': materials.map((m) => m.toJson()).toList(),
     });
     return _fromWire(json as Map<String, dynamic>);
   }
@@ -972,6 +978,7 @@ class ApiChecklistRepository implements ChecklistRepository {
     int? odometerKm,
     String? remarks,
     required List<InspectionResult> results,
+    List<MaterialLine> materials = const <MaterialLine>[],
   }) async {
     final json = await _api.post(
       '/sites/$siteCode/inspections',
@@ -985,6 +992,8 @@ class ApiChecklistRepository implements ChecklistRepository {
         if (odometerKm != null) 'odometer_km': odometerKm,
         if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
         'results': results.map((r) => r.toJson()).toList(),
+        if (materials.isNotEmpty)
+          'materials': materials.map((m) => m.toJson()).toList(),
       },
     );
     return InspectionEntry.fromJson(json as Map<String, dynamic>);
@@ -1331,5 +1340,53 @@ class ApiReportRepository implements ReportRepository {
     };
     final stem = <String>[site, kind, period].where((p) => p.isNotEmpty).join('-');
     return '${stem.toLowerCase()}.pdf';
+  }
+}
+
+class ApiJobCardRepository implements JobCardRepository {
+  ApiJobCardRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<List<JobCard>> fetchJobCards(String siteCode) async {
+    final json = await _api.get('/sites/$siteCode/job-cards');
+    return itemsOf(json).map(JobCard.fromJson).toList();
+  }
+
+  @override
+  Future<JobCard> retry(String jobCardId) async {
+    final json = await _api.post('/job-cards/$jobCardId/retry');
+    return JobCard.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<JobCardReconException>> fetchReconExceptions(String siteCode) async {
+    final json = await _api.get('/sites/$siteCode/job-card-recon');
+    return itemsOf(json).map(JobCardReconException.fromJson).toList();
+  }
+
+  @override
+  Future<JobCardReconException> acknowledgeRecon(String exceptionId) async {
+    final json = await _api.post('/job-card-recon/$exceptionId/acknowledge');
+    return JobCardReconException.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<SapMaterialOption>> materialCatalog(String siteCode) async {
+    final json = await _api.get('/sites/$siteCode/sap/materials');
+    return itemsOf(json).map(SapMaterialOption.fromJson).toList();
+  }
+}
+
+class ApiSapSyncRepository implements SapSyncRepository {
+  ApiSapSyncRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<SapSyncStatus> syncNow(String siteCode) async {
+    final json = await _api.post('/sites/$siteCode/sap/sync');
+    return SapSyncStatus.fromJson(json as Map<String, dynamic>);
   }
 }
