@@ -1,7 +1,5 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:http/http.dart' as http;
 
 import '../../models/app_user.dart';
 import '../../models/entry.dart';
@@ -52,21 +50,73 @@ class ApiMasterDataRepository implements MasterDataRepository {
           .toList();
 
   @override
-  Future<List<String>> vehicleNumbers({required String siteCode}) async {
-    // Our own backend, not SiteOps — see ApiVehicleRepository.fetchVehicles.
-    try {
-      final json = await _api.get(
-        '/sites/$siteCode/vehicles',
-        query: const <String, String>{'active': 'true'},
-      );
-      return itemsOf(json)
-          .map(Vehicle.fromJson)
-          .map((v) => v.registrationNo)
-          .where((v) => v.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const <String>[];
+  Future<List<String>> vehicleNumbers({
+    required String siteCode,
+    String? siteOpsSiteId,
+  }) async {
+    // Header switcher is SiteOps-sourced. Pull that site's fleet via the E&M
+    // proxy (service key) so Coal Mines / GTI / … Bus No lists match Vehicle
+    // Master even before an E&M depot code is onboarded.
+    if (siteOpsSiteId != null && siteOpsSiteId.isNotEmpty) {
+      try {
+        final fromSiteOps = await _vehicleNumbersFromSiteOps(siteOpsSiteId);
+        if (fromSiteOps.isNotEmpty) return fromSiteOps;
+      } catch (_) {
+        // Fall through to E&M when the proxy/key is down.
+      }
     }
+
+    if (siteCode.isEmpty) return const <String>[];
+
+    // E&M site code only (MBMT) — never pass a SiteOps UUID here (404).
+    final json = await _api.get(
+      '/sites/$siteCode/vehicles',
+      query: const <String, String>{'active': 'true'},
+    );
+    return itemsOf(json)
+        .map(Vehicle.fromJson)
+        .map((v) => v.registrationNo)
+        .where((v) => v.isNotEmpty)
+        .toList();
+  }
+
+  /// Walk SiteOps vehicle pages for one site UUID (page_size capped at 100).
+  Future<List<String>> _vehicleNumbersFromSiteOps(String siteOpsSiteId) async {
+    final out = <String>[];
+    var page = 1;
+    const maxPages = 50;
+    while (page <= maxPages) {
+      final json = await _api.get(
+        '/siteops/vehicles',
+        query: <String, String>{
+          'site_id': siteOpsSiteId,
+          'page': '$page',
+          'page_size': '100',
+        },
+      );
+      if (json is! Map) break;
+      final data = json['data'];
+      if (data is List) {
+        for (final raw in data.whereType<Map>()) {
+          final m = Map<String, dynamic>.from(raw);
+          final rawNo = (m['vehicle_no'] ??
+                  m['registration_no'] ??
+                  m['code'] ??
+                  '')
+              .toString()
+              .trim();
+          if (rawNo.isEmpty) continue;
+          // Same normalisation as E&M vehicle regs (uppercase, no spaces).
+          out.add(rawNo.toUpperCase().replaceAll(RegExp(r'\s+'), ''));
+        }
+      }
+      final pag = json['pagination'];
+      final hasNext =
+          pag is Map && (pag['has_next'] == true || pag['hasNext'] == true);
+      if (!hasNext) break;
+      page += 1;
+    }
+    return out;
   }
 
   @override
@@ -88,77 +138,48 @@ class ApiMasterDataRepository implements MasterDataRepository {
 
   @override
   Future<List<String>> technicianStaff({required String siteName, String? siteId}) async {
-    try {
-      final resolvedSiteId = siteId?.isNotEmpty == true
-          ? siteId!
-          : await _resolveSiteOpsSiteId(siteName);
-      if (resolvedSiteId.isEmpty) {
-        return const <String>[];
-      }
-
-      final json = await siteOpsClient.get(
-        '/users/',
-        query: <String, String>{
-          'page': '1',
-          'page_size': '100',
-          'pagination': 'false',
-          'is_active': 'true',
-          'site_id': resolvedSiteId,
-          'role_id': _technicianRoleId,
-        },
-      );
-
-      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
-      return data
-          .map((j) => (j as Map<String, dynamic>)['full_name']?.toString() ?? '')
-          .where((v) => v.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const <String>[];
-    }
+    final fromSiteOps = await _siteOpsStaff(
+      siteName: siteName,
+      siteId: siteId,
+      roleId: _technicianRoleId,
+    );
+    if (fromSiteOps.isNotEmpty) return fromSiteOps;
+    // E&M roster — works when SiteOps UUID/token is missing after a reload.
+    return staff(siteCode: siteName);
   }
 
   @override
   Future<List<String>> supervisorStaff({required String siteName, String? siteId}) async {
-    try {
-      final resolvedSiteId = siteId?.isNotEmpty == true
-          ? siteId!
-          : await _resolveSiteOpsSiteId(siteName);
-      if (resolvedSiteId.isEmpty) {
-        return const <String>[];
-      }
-
-      final json = await siteOpsClient.get(
-        '/users/',
-        query: <String, String>{
-          'page': '1',
-          'page_size': '100',
-          'pagination': 'false',
-          'is_active': 'true',
-          'site_id': resolvedSiteId,
-          'role_id': _supervisorRoleId,
-        },
-      );
-
-      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
-      return data
-          .map((j) => (j as Map<String, dynamic>)['full_name']?.toString() ?? '')
-          .where((v) => v.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const <String>[];
-    }
+    final fromSiteOps = await _siteOpsStaff(
+      siteName: siteName,
+      siteId: siteId,
+      roleId: _supervisorRoleId,
+    );
+    if (fromSiteOps.isNotEmpty) return fromSiteOps;
+    return staff(siteCode: siteName);
   }
 
   @override
   Future<List<String>> mechanicStaff({required String siteName, String? siteId}) async {
+    final fromSiteOps = await _siteOpsStaff(
+      siteName: siteName,
+      siteId: siteId,
+      roleId: _mechanicRoleId,
+    );
+    if (fromSiteOps.isNotEmpty) return fromSiteOps;
+    return staff(siteCode: siteName);
+  }
+
+  Future<List<String>> _siteOpsStaff({
+    required String siteName,
+    String? siteId,
+    required String roleId,
+  }) async {
     try {
       final resolvedSiteId = siteId?.isNotEmpty == true
           ? siteId!
           : await _resolveSiteOpsSiteId(siteName);
-      if (resolvedSiteId.isEmpty) {
-        return const <String>[];
-      }
+      if (resolvedSiteId.isEmpty) return const <String>[];
 
       final json = await siteOpsClient.get(
         '/users/',
@@ -168,7 +189,7 @@ class ApiMasterDataRepository implements MasterDataRepository {
           'pagination': 'false',
           'is_active': 'true',
           'site_id': resolvedSiteId,
-          'role_id': _mechanicRoleId,
+          'role_id': roleId,
         },
       );
 
@@ -183,6 +204,24 @@ class ApiMasterDataRepository implements MasterDataRepository {
   }
 
   Future<String> _resolveSiteOpsSiteId(String siteName) async {
+    // Prefer the E&M proxy (service key) so reload does not depend on a
+    // browser SiteOps JWT that may have expired.
+    try {
+      final json = await _api.get('/siteops/sites');
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      final needle = siteName.trim().toLowerCase();
+      for (final item in data) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final name = map['name']?.toString().trim().toLowerCase() ?? '';
+        final id = map['id']?.toString().trim().toLowerCase() ?? '';
+        final code = (map['code'] ?? map['site_code'])?.toString().trim().toLowerCase() ?? '';
+        if (name == needle || id == needle || code == needle) {
+          return map['id']?.toString() ?? '';
+        }
+      }
+    } catch (_) {
+      // Fall through to direct SiteOps dropdown.
+    }
     try {
       final json = await siteOpsClient.get('/onboarding/sites/dropdown');
       final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
@@ -738,10 +777,15 @@ class ApiUserRepository implements UserRepository {
 // ─── Auth ─────────────────────────────────────────────────────────────────
 
 class ApiAuthRepository implements AuthRepository {
-  ApiAuthRepository(this._api, {MicrosoftSignIn? sso})
-      : _sso = sso ?? MicrosoftSignIn(_api);
+  ApiAuthRepository(
+    this._api, {
+    MicrosoftSignIn? sso,
+    SiteOpsClient? siteOps,
+  })  : _sso = sso ?? MicrosoftSignIn(_api),
+        _siteOps = siteOps ?? SiteOpsClient();
 
   final ApiClient _api;
+  final SiteOpsClient _siteOps;
   final MicrosoftSignIn _sso;
 
   @override
@@ -772,43 +816,67 @@ class ApiAuthRepository implements AuthRepository {
     required String userId,
     required String password,
   }) async {
-    final json = await _api.post('/auth/login', body: <String, dynamic>{
-      'user_id': userId.trim().toUpperCase(),
-      'password': password,
-    }) as Map<String, dynamic>;
+    // Credential authority is SiteOps — the browser POSTs to
+    // SITEOPS_BASE_URL/auth/login first (not E&M). Local-only seed accounts
+    // that SiteOps does not know still fall through to the E&M login below.
+    ApiException? siteOpsError;
+    try {
+      await _siteOps.loginWithPassword(
+        username: userId,
+        password: password,
+      );
+    } on ApiException catch (e) {
+      siteOpsError = e;
+    }
 
-    await _api.setTokens(
-      json['access_token'] as String?,
-      json['refresh_token'] as String?,
-    );
-    // Best-effort: SiteOps issues its own token, which the vehicle master
-    // and site dropdown need but the E&M backend above does not return.
-    // Not every account has SiteOps access, so a failure here is silent —
-    // those two features degrade, the rest of sign-in already succeeded.
-    unawaited(_trySiteOpsLogin(userId, password));
-    return ApiUserRepository(_api)
-        ._userFromWire(json['user'] as Map<String, dynamic>);
+    // Mint an E&M session so ApiClient can call registers / entries / etc.
+    // There is no SiteOps-token exchange: E&M /auth/login re-checks SiteOps
+    // server-side (or falls back to the local user table) and returns E&M
+    // JWTs. SiteOps tokens are not accepted by the E&M API.
+    try {
+      final json = await _api.post('/auth/login', body: <String, dynamic>{
+        'user_id': userId.trim().toUpperCase(),
+        'password': password,
+      }) as Map<String, dynamic>;
+
+      await _api.setTokens(
+        json['access_token'] as String?,
+        json['refresh_token'] as String?,
+      );
+      return ApiUserRepository(_api)
+          ._userFromWire(json['user'] as Map<String, dynamic>);
+    } on ApiException catch (e) {
+      // Prefer the SiteOps message when both reject — that is the IdP the
+      // browser is meant to hit. If SiteOps already succeeded, keep the
+      // E&M error (often CORS / network on enm-service).
+      if (siteOpsError != null) throw siteOpsError;
+      final msg = e.message;
+      if (msg.contains('CORS_ORIGINS') || msg.contains('Failed to fetch')) {
+        throw ApiException(
+          'SiteOps sign-in succeeded, but minting an E&M session failed. $msg',
+        );
+      }
+      rethrow;
+    }
   }
 
-  Future<void> _trySiteOpsLogin(String userId, String password) async {
+  @override
+  Future<AppUser?> restoreSession() async {
+    await _api.restoreSession();
+    if (!_api.isAuthenticated) return null;
     try {
-      final response = await http.post(
-        Uri.parse('${SiteOpsConfig.baseUrl}/auth/login'),
-        headers: <String, String>{
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: <String, String>{
-          'username': userId.trim(),
-          'password': password,
-        },
-      );
-      if (response.statusCode >= 400) return;
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      final data = json['data'] as Map<String, dynamic>?;
-      final token = data?['access_token'] as String?;
-      if (token != null) await SiteOpsClient.setToken(token);
-    } catch (_) {
-      // Platform features degrade gracefully; see the call site.
+      // GET /auth/me — ApiClient refreshes once on 401, so an expired access
+      // token with a live refresh token still restores silently.
+      final json = await _api.get('/auth/me') as Map<String, dynamic>;
+      final user = ApiUserRepository(_api)._userFromWire(json);
+      if (!user.active) {
+        await _api.clearTokens();
+        return null;
+      }
+      return user;
+    } on ApiException {
+      await _api.clearTokens();
+      return null;
     }
   }
 

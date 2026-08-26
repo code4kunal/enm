@@ -16,7 +16,13 @@ backend/secrets/*
 
 # Env and secrets — never commit these
 .env
+.env.dev
+.env.prod
 backend/.env
+backend/.env.dev
+backend/.env.prod
+# Keep templates tracked:
+#   .env.example, .env.dev.example, .env.prod.example
 *.pem
 *.key
 

@@ -5,16 +5,31 @@ Base URL: `/api/v1`. Interactive docs: `/api/v1/docs`.
 
 ## Quick start
 
+**Local development** (separate env file — preferred):
+
 ```bash
-cp .env.example .env          # edit JWT_SECRET at minimum
-docker compose up --build -d  # migrates + seeds + serves on :8000
-curl localhost:8000/api/v1/health
+cp .env.dev.example .env.dev   # once; edit JWT_SECRET if you like
+docker compose --env-file .env.dev up -d --build
+curl localhost:8123/api/v1/health
+# Web UI: http://localhost:8089  (WEB_PORT in .env.dev)
 ```
+
+**Alternative** — copy into the default compose env file:
+
+```bash
+cp .env.dev.example .env       # or: cp .env.example .env
+docker compose up --build -d
+```
+
+`.env.example` is the documented general template (includes public-host notes).
+`.env.dev` / `.env.dev.example` are local-only defaults (`ENVIRONMENT=development`,
+ports `8123` / `8089` / `5433`, `SEED_ON_START=false`). Do not commit `.env` or `.env.dev`.
 
 Bootstrap manager (from the seed): **`TV4021` / `Transvolt@123`** — change it before
 anything reaches a real depot. Override with `BOOTSTRAP_USER_ID` / `BOOTSTRAP_PASSWORD`.
 
-Port 8000 busy? `API_PORT=8123 PUBLIC_BASE_URL=http://localhost:8123 docker compose up -d`.
+Port 8000 busy? Local `.env.dev` already maps API to `8123`. Override with
+`API_PORT` / `PUBLIC_BASE_URL` in the env file you pass to compose.
 
 ### Local dev + tests
 

@@ -18,7 +18,7 @@ class SiteOpsUnavailable(AppError):
     http_status = 502
 
 
-async def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
+async def _get(path: str, params: dict[str, Any]) -> Any:
     if not settings.siteops_service_key:
         raise ValidationError("SiteOps service key is not configured on this server")
     url = f"{settings.siteops_base_url.rstrip('/')}{path}"
@@ -39,13 +39,25 @@ async def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
 async def _get_all_pages(
     path: str, extra_params: dict[str, Any] | None = None
 ) -> list[dict[str, Any]]:
-    """SiteOps caps page_size at 100 — walk `has_next` to collect every row."""
+    """SiteOps caps page_size at 100 — walk `has_next` to collect every row.
+
+    Also accepts a bare JSON list (dropdown endpoints) so the header switcher
+    does not go empty when SiteOps skips the `{data, pagination}` envelope.
+    """
     rows: list[dict[str, Any]] = []
     page = 1
     while page <= _MAX_PAGES:
         params = {"page_size": _MAX_PAGE_SIZE, "page": page, **(extra_params or {})}
         body = await _get(path, params)
-        rows.extend(body.get("data") or [])
+        if isinstance(body, list):
+            return [r for r in body if isinstance(r, dict)]
+        if not isinstance(body, dict):
+            return rows
+        chunk = body.get("data")
+        if isinstance(chunk, list):
+            rows.extend(r for r in chunk if isinstance(r, dict))
+        elif isinstance(chunk, dict) and isinstance(chunk.get("items"), list):
+            rows.extend(r for r in chunk["items"] if isinstance(r, dict))
         pagination = body.get("pagination")
         if not pagination or not pagination.get("has_next"):
             break
@@ -54,7 +66,19 @@ async def _get_all_pages(
 
 
 async def list_sites() -> list[dict[str, Any]]:
-    """Every onboarded site, unscoped to any one user's access grants."""
+    """Every onboarded site, for mapping onto E&M site codes.
+
+    Prefer the compact dropdown feed (what the Flutter client used before the
+    proxy). Fall back to the paginated onboarding list when dropdown is empty
+    or unavailable — an empty list previously hid the header site switcher.
+    """
+    try:
+        rows = await _get_all_pages("/onboarding/sites/dropdown")
+        if rows:
+            return rows
+    except (SiteOpsUnavailable, ValidationError, TypeError, AttributeError):
+        pass
+
     return await _get_all_pages("/onboarding/sites")
 
 

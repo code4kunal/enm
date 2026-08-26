@@ -1,0 +1,51 @@
+{
+  "family": "enm-frontend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::654654496534:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::654654496534:role/ecsTaskExecutionRole",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "enm-frontend",
+      "image": "654654496534.dkr.ecr.ap-south-1.amazonaws.com/enm-frontend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "ENVIRONMENT", "value": "production" },
+        { "name": "API_BASE_URL", "value": "https://enm.transvolt.org/api/v1" },
+        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/enm-frontend",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "web",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://localhost/ >/dev/null || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 3,
+        "retries": 3,
+        "startPeriod": 10
+      }
+    }
+  ]
+}

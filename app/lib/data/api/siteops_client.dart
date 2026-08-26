@@ -5,15 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../repositories.dart';
 
-/// SiteOps platform API — vehicle master, site dropdown, onboarding.
+/// SiteOps platform API — credential login, vehicle master, site dropdown.
 ///
 /// Base URL for [SiteOpsConfig.baseUrl] — see [ApiConfig.baseUrl]'s doc for
 /// the `config.json` / `--dart-define` precedence, which applies here too.
 /// SiteOps issues its own JWTs, distinct from [ApiClient]'s — the E&M backend
 /// rejects a SiteOps token and SiteOps rejects an E&M one — so this client
 /// keeps a storage key of its own rather than sharing [ApiClient]'s. The
-/// token is written by [ApiAuthRepository.signInWithCredentials], which signs
-/// in against SiteOps in parallel with the E&M backend.
+/// token is written by [loginWithPassword], called from
+/// [ApiAuthRepository.signInWithCredentials] before the E&M session is minted.
 abstract final class SiteOpsConfig {
   /// Overwritten once at startup by [loadRuntimeConfig] if `config.json`
   /// provides a non-empty value. Mutable for exactly that reason.
@@ -39,15 +39,93 @@ class SiteOpsClient {
     return prefs?.getString(_accessKey);
   }
 
-  /// Stores the SiteOps-issued bearer token, obtained from a direct SiteOps
-  /// sign-in alongside the E&M backend one — see [ApiAuthRepository].
+  /// Stores the SiteOps-issued bearer token from [loginWithPassword].
+  /// Also loads any previously persisted token into memory on first use.
   static Future<void> setToken(String? token) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (token == null) {
-      await prefs.remove(_accessKey);
-    } else {
-      await prefs.setString(_accessKey, token);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (token == null) {
+        await prefs.remove(_accessKey);
+      } else {
+        await prefs.setString(_accessKey, token);
+      }
+    } on Exception {
+      // No platform channel under `dart test` — in-memory only until next call.
+    } on Error {
+      // Same degradation as [ApiClient.setTokens].
     }
+  }
+
+  /// True when a SiteOps bearer is already in local storage (post-login / reload).
+  static Future<bool> hasStoredToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final t = prefs.getString(_accessKey);
+      return t != null && t.isNotEmpty;
+    } on Exception {
+      return false;
+    } on Error {
+      return false;
+    }
+  }
+
+  /// Credential sign-in against SiteOps (`POST /auth/login`, form body).
+  ///
+  /// SiteOps expects `application/x-www-form-urlencoded` with `username` /
+  /// `password` — not the JSON body the E&M API uses. On success the bearer
+  /// token is stored for later SiteOps calls and the `data` object is returned.
+  Future<Map<String, dynamic>> loginWithPassword({
+    required String username,
+    required String password,
+  }) async {
+    final uri = _uri('/auth/login', null);
+    http.Response response;
+    try {
+      response = await _http.post(
+        uri,
+        headers: const <String, String>{
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: <String, String>{
+          'username': username.trim(),
+          'password': password,
+        },
+      );
+    } on Exception catch (e) {
+      throw ApiException('Cannot reach SiteOps at $baseUrl — $e');
+    }
+
+    if (response.statusCode >= 400) {
+      var message = 'Invalid User ID or password';
+      try {
+        final err = jsonDecode(response.body);
+        if (err is Map<String, dynamic>) {
+          message = err['message'] as String? ??
+              (err['error'] is Map
+                  ? (err['error'] as Map)['message'] as String?
+                  : null) ??
+              message;
+        }
+      } on FormatException {
+        // keep default
+      }
+      throw ApiException(message);
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    if (json['result'] == false) {
+      throw ApiException(
+        json['message'] as String? ?? 'Invalid User ID or password',
+      );
+    }
+    final data = json['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('SiteOps login returned no user data');
+    }
+    final token = data['access_token'] as String?;
+    if (token != null) await setToken(token);
+    return data;
   }
 
   Future<SharedPreferences?> _prefs() async {

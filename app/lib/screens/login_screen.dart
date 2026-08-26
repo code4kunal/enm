@@ -66,7 +66,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           const _LoginMasthead(),
-                          if (session.stage == AuthStage.choosingSite)
+                          if (session.restoring)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 48),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: T.green,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else if (session.stage == AuthStage.choosingSite)
                             _SiteStage(session: session)
                           else
                             _SsoStage(

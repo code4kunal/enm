@@ -119,14 +119,32 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final master = ref.watch(masterDataProvider).valueOrNull;
-    final fleet = ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
+    final masterRaw = ref.watch(masterDataProvider).valueOrNull;
+    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final master = (masterRaw != null && masterRaw.siteCode == site)
+        ? masterRaw
+        : null;
+    final fleetRaw =
+        ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
+    // siteVehiclesProvider always refetches for session.site; still filter in
+    // case a previous AsyncData briefly lingers across a switch.
+    final fleet =
+        fleetRaw.where((v) => site.isEmpty || v.siteCode == site).toList();
     final active = fleet.where((v) => v.isActive).toList();
 
     final mechanics = ref.watch(mechanicStaffProvider).valueOrNull ?? const <String>[];
     final supervisors = ref.watch(supervisorStaffProvider).valueOrNull ?? const <String>[];
     final mechanicOptions = mechanics.isNotEmpty ? mechanics : (master?.staff ?? const <String>[]);
     final supervisorOptions = supervisors.isNotEmpty ? supervisors : (master?.staff ?? const <String>[]);
+
+    ref.listen<String>(sessionProvider.select((s) => s.site), (prev, next) {
+      if (prev == null || prev.isEmpty || prev == next) return;
+      setState(() {
+        _vehicleId = '';
+        _doneBy = '';
+        _supervisor = '';
+      });
+    });
 
     // The checklist follows the bus, so it changes the moment one is picked.
     final variant = fleet

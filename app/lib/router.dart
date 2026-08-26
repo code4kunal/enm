@@ -43,14 +43,14 @@ abstract final class Routes {
 /// redirect re-runs on sign-in and sign-out.
 class _SessionRefresh extends ChangeNotifier {
   _SessionRefresh(this._ref) {
-    _sub = _ref.listen<AuthStage>(
-      sessionProvider.select((s) => s.stage),
+    _sub = _ref.listen<SessionState>(
+      sessionProvider,
       (_, __) => notifyListeners(),
     );
   }
 
   final Ref _ref;
-  late final ProviderSubscription<AuthStage> _sub;
+  late final ProviderSubscription<SessionState> _sub;
 
   @override
   void dispose() {
@@ -67,8 +67,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: Routes.login,
     refreshListenable: refresh,
     redirect: (context, state) {
-      final stage = ref.read(sessionProvider).stage;
+      final session = ref.read(sessionProvider);
+      // Hold navigation until tokens are restored — otherwise a reload always
+      // looks signed-out and bounces to /login before /auth/me returns.
+      if (session.restoring) return null;
+
       final atLogin = state.matchedLocation == Routes.login;
+      final stage = session.stage;
 
       // The site picker lives on the login card, so anything short of
       // signedIn belongs there.

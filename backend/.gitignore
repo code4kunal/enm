@@ -3,6 +3,9 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.dev
+.env.prod
+# Keep .env.example / .env.dev.example / .env.prod.example tracked
 .pytest_cache/
 .ruff_cache/
 media/

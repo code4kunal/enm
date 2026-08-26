@@ -165,7 +165,14 @@ abstract interface class MasterDataRepository {
   Future<List<String>> siteCodes();
 
   /// Active registration numbers for the site's entry dropdown.
-  Future<List<String>> vehicleNumbers({required String siteCode});
+  ///
+  /// Prefer [siteOpsSiteId] (header switcher UUID → SiteOps proxy) so Bus No
+  /// tracks the selected SiteOps site even when no E&M depot code is mapped
+  /// yet. Fall back to E&M `/sites/{siteCode}/vehicles` when SiteOps is empty.
+  Future<List<String>> vehicleNumbers({
+    required String siteCode,
+    String? siteOpsSiteId,
+  });
 
   Future<List<String>> defectSources();
 
@@ -198,6 +205,7 @@ abstract interface class MasterDataRepository {
 @immutable
 class MasterData {
   const MasterData({
+    this.siteCode = '',
     required this.sites,
     required this.vehicles,
     required this.defectSources,
@@ -207,6 +215,11 @@ class MasterData {
     this.supervisorStaff = const <String>[],
     this.mechanicStaff = const <String>[],
   });
+
+  /// E&M depot this bundle was fetched for. Forms discard a stale bundle when
+  /// the header site has already moved on (Riverpod keeps previous AsyncData
+  /// while the next fetch is in flight).
+  final String siteCode;
 
   final List<String> sites;
 
@@ -228,6 +241,7 @@ class MasterData {
   final List<String> mechanicStaff;
 
   static const empty = MasterData(
+    siteCode: '',
     sites: <String>[],
     vehicles: <String>[],
     defectSources: <String>[],
@@ -611,6 +625,12 @@ abstract interface class AuthRepository {
     required String userId,
     required String password,
   });
+
+  /// Reload path: pull stored tokens and validate with `/auth/me`.
+  ///
+  /// Null when there is no session, refresh failed, or the account is inactive.
+  /// A successful call leaves the client authenticated for subsequent requests.
+  Future<AppUser?> restoreSession();
 
   /// Clears `must_reset_password` and revokes other devices.
   Future<void> changePassword({

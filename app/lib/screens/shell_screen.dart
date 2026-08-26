@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../router.dart';
 import '../models/site.dart';
+import '../data/repositories.dart';
 import '../state/entries.dart';
 import '../state/odometer_sync.dart';
 import '../state/session.dart';
@@ -14,6 +15,9 @@ import '../widgets/chips.dart';
 import '../widgets/code_square.dart';
 import '../state/providers.dart';
 import '../state/selected_site.dart';
+import '../state/sites.dart';
+import '../state/toast.dart';
+import '../utils/siteops_enm_map.dart';
 
 /// One navigation destination, shared by the desktop tab row and the mobile
 /// bottom nav.
@@ -395,100 +399,243 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
   List<_SiteItem> _sites = [];
   _SiteItem? _selected;
   bool _loading = true;
+  String? _error;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSites();
+    // First attempt after the first frame; build()'s listen covers restore
+    // finishing after the shell mounts.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final session = ref.read(sessionProvider);
+      if (!_started &&
+          !session.restoring &&
+          session.stage == AuthStage.signedIn) {
+        _started = true;
+        _loadSites();
+      }
+    });
   }
 
-  /// Map a SiteOps dropdown row to the E&M depot code (`MBMT`), never a UUID.
-  String _enmCodeFor(Map<String, dynamic> j, List<Site> enmSites) {
-    final raw = (j['code'] ?? j['site_code'])?.toString().trim().toUpperCase() ?? '';
-    // Reject empty strings and UUID-shaped values from SiteOps. A non-UUID
-    // raw code is still SiteOps's OWN code (e.g. "WC-003"), not necessarily
-    // ours — only trust it if it is actually one of our site codes.
-    final looksLikeUuid = raw.contains('-') && raw.length >= 32;
-    if (raw.isNotEmpty && !looksLikeUuid && enmSites.any((s) => s.code == raw)) {
-      return raw;
+  String _enmCodeFor(Map<String, dynamic> j, List<Site> enmSites) =>
+      enmCodeForSiteOpsRow(j, enmSites);
+
+  Future<List<Map<String, dynamic>>> _fetchSiteOpsRows() async {
+    // 1) E&M proxy (service key) — preferred; no SiteOps user JWT required.
+    try {
+      final json = await ref.read(apiClientProvider).get('/siteops/sites');
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      final rows = [
+        for (final raw in data.whereType<Map>())
+          Map<String, dynamic>.from(raw),
+      ];
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {
+      // Fall through to direct SiteOps dropdown.
     }
 
-    final name = (j['name']?.toString() ?? '').trim().toLowerCase();
-    if (name.isEmpty) {
-      return enmSites.length == 1 ? enmSites.first.code : '';
-    }
+    // 2) SiteOps platform dropdown with the user's SiteOps bearer (from login).
+    final json =
+        await ref.read(siteOpsClientProvider).get('/onboarding/sites/dropdown');
+    final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+    return [
+      for (final raw in data.whereType<Map>()) Map<String, dynamic>.from(raw),
+    ];
+  }
 
-    for (final s in enmSites) {
-      final enmName = s.name.trim().toLowerCase();
-      final enmCode = s.code.toLowerCase();
-      if (enmName == name || enmCode == name) return s.code;
-      if (enmName.contains(name) || name.contains(enmName)) return s.code;
-      if (name.contains(enmCode) || enmName.contains(enmCode)) return s.code;
-    }
+  /// Drop every site-scoped list so Bus No / staff cannot keep the previous
+  /// depot's options after the header switcher moves.
+  void _invalidateSiteScoped() {
+    ref.invalidate(masterDataProvider);
+    ref.invalidate(siteVehiclesProvider);
+    ref.invalidate(vehiclesProvider);
+    ref.invalidate(technicianStaffProvider);
+    ref.invalidate(supervisorStaffProvider);
+    ref.invalidate(mechanicStaffProvider);
+    ref.invalidate(siteConfigProvider);
+  }
 
-    // Single-depot installs: SiteOps name may not match E&M wording.
-    if (enmSites.length == 1) return enmSites.first.code;
-    return '';
+  Future<void> _applySelection(_SiteItem site) async {
+    setState(() => _selected = site);
+    // Session first: vehicle providers key off E&M code. Updating SiteOps id
+    // before session used to rebuild masterData with the *old* site code.
+    ref.read(sessionProvider.notifier).switchSite(site.code);
+    await ref.read(selectedSiteProvider.notifier).select(
+          site.id,
+          site.name,
+          enmCode: site.code,
+        );
+    _invalidateSiteScoped();
+    if (site.code.isEmpty) {
+      ref.read(toastProvider.notifier).show(
+            '“${site.name}” has no E&M site code yet — onboard it under '
+            'Admin → Sites so Bus No / registers can load.',
+          );
+    }
   }
 
   Future<void> _loadSites() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
-      // Proxied through our own backend, which holds the SiteOps service
-      // key — no per-user SiteOps session required just to populate this.
-      final json = await ref.read(apiClientProvider).get('/siteops/sites');
-      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
-
-      // E&M sites keyed by code — SiteOps only supplies the UUID + display name.
-      final enmSites = await ref.read(siteRepositoryProvider).fetchSites();
-
-      final sites = data
-          .cast<Map<String, dynamic>>()
-          .map((j) {
-            final name = j['name']?.toString() ?? '';
-            return _SiteItem(
-              id: j['id']?.toString() ?? '',
-              name: name,
-              siteType: j['site_type']?.toString() ?? '',
-              code: _enmCodeFor(j, enmSites),
-            );
-          })
-          .toList();
-      if (mounted) {
-        setState(() {
-          _sites = sites;
-          if (sites.isNotEmpty) {
-            // Default to the depot's real site rather than whichever SiteOps
-            // happens to list first — that is often an empty test site.
-            // "Ghodbandar1" and other near-duplicates exist too, so prefer an
-            // exact name match before falling back to a loose one.
-            final defaultSite = sites.firstWhere(
-                  (s) => s.name.trim().toLowerCase() == 'ghodbandar',
-                  orElse: () => sites.firstWhere(
-                        (s) => s.name.toLowerCase().contains('ghodb'),
-                        orElse: () => sites.first,
-                      ),
-                );
-            _selected = defaultSite;
-            ref.read(selectedSiteProvider.notifier).select(defaultSite.id, defaultSite.name);
-            // Never push a SiteOps UUID into session — E&M APIs key on MBMT etc.
-            if (defaultSite.code.isNotEmpty) {
-              ref.read(sessionProvider.notifier).switchSite(defaultSite.code);
-            }
-          }
-          _loading = false;
-        });
-      }
+      await ref.read(selectedSiteProvider.notifier).ready;
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      // Continue — selection just won't restore.
+    }
+
+    List<Site> enmSites = const <Site>[];
+    try {
+      enmSites = (await ref.read(siteRepositoryProvider).fetchSites())
+          .where((s) => s.isActive)
+          .toList();
+    } catch (_) {
+      // Mapping will be weaker without E&M sites; still show SiteOps rows.
+    }
+
+    final sessionCode = ref.read(sessionProvider).site;
+    final remembered = ref.read(selectedSiteProvider);
+
+    List<_SiteItem> sites = [];
+    String? loadError;
+
+    try {
+      final rows = await _fetchSiteOpsRows();
+      sites = [
+        for (final j in rows)
+          _SiteItem(
+            id: j['id']?.toString() ?? '',
+            name: j['name']?.toString() ?? '',
+            siteType: j['site_type']?.toString() ?? '',
+            code: _enmCodeFor(j, enmSites),
+          ),
+      ]..removeWhere((s) => s.id.isEmpty && s.name.isEmpty);
+
+      if (sites.isEmpty) {
+        loadError = 'SiteOps returned no sites';
+      }
+    } catch (e) {
+      loadError = e is ApiException
+          ? e.message
+          : 'Could not load SiteOps sites';
+    }
+
+    if (!mounted) return;
+
+    _SiteItem? pick;
+    if (sites.isNotEmpty) {
+      final byId = sites.where(
+        (s) =>
+            remembered.id != null &&
+            remembered.id!.isNotEmpty &&
+            s.id == remembered.id,
+      );
+      final byEnm = sites.where(
+        (s) =>
+            s.code.isNotEmpty &&
+            (s.code == remembered.enmCode || s.code == sessionCode),
+      );
+      if (byId.isNotEmpty) {
+        pick = byId.first;
+      } else if (byEnm.isNotEmpty) {
+        pick = byEnm.first;
+      } else {
+        pick = sites.firstWhere(
+          (s) => s.name.trim().toLowerCase() == 'ghodbandar',
+          orElse: () => sites.firstWhere(
+            (s) => s.name.toLowerCase().contains('ghodb'),
+            orElse: () => sites.first,
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _sites = sites;
+      _error = loadError;
+      _loading = false;
+      _selected = pick;
+    });
+
+    if (pick != null) {
+      // Same order as [_applySelection]: E&M session code, then SiteOps id.
+      ref.read(sessionProvider.notifier).switchSite(pick.code);
+      await ref.read(selectedSiteProvider.notifier).select(
+            pick.id,
+            pick.name,
+            enmCode: pick.code,
+          );
+      _invalidateSiteScoped();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Keep listening so a late restore still kicks off the SiteOps fetch.
+    ref.listen<SessionState>(sessionProvider, (prev, next) {
+      if (!_started &&
+          !next.restoring &&
+          next.stage == AuthStage.signedIn) {
+        _started = true;
+        _loadSites();
+      }
+    });
+
     if (_loading) {
-      return const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
     }
-    if (_sites.isEmpty) return const SizedBox.shrink();
+
+    if (_sites.isEmpty) {
+      return Tooltip(
+        message: _error ?? 'No SiteOps sites loaded',
+        child: InkWell(
+          onTap: _loadSites,
+          borderRadius: T.controlShape,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: T.subtleFill,
+              borderRadius: T.controlShape,
+              border: Border.all(
+                color: T.red.withValues(alpha: 0.4),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _error ?? 'Sites failed',
+                  style: AppText.sans(
+                    size: 12,
+                    color: T.red,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.refresh, size: 16, color: T.red),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Dropdown value is the SiteOps UUID — the platform list is the source of
+    // truth for the header. E&M code is mapped alongside for session/master.
+    final selectedId = _selected?.id;
+    final ids = _sites.map((s) => s.id).toSet();
+    final value =
+        selectedId != null && ids.contains(selectedId) ? selectedId : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -499,7 +646,7 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: _selected?.id,
+          value: value,
           isDense: true,
           borderRadius: T.controlShape,
           dropdownColor: T.card,
@@ -516,29 +663,33 @@ class _SiteOpsDropdownState extends ConsumerState<_SiteOpsDropdown> {
                     Text(s.name, style: AppText.sans(size: 13)),
                     const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: T.green.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        s.siteType,
-                        style: AppText.mono(size: 10, color: T.green, weight: FontWeight.w700),
+                        s.siteType.isNotEmpty
+                            ? s.siteType
+                            : (s.code.isNotEmpty ? s.code : 'SITE'),
+                        style: AppText.mono(
+                          size: 10,
+                          color: T.green,
+                          weight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
           ],
-          onChanged: (id) {
-            if (id != null) {
-              final site = _sites.firstWhere((s) => s.id == id);
-              setState(() => _selected = site);
-              ref.read(selectedSiteProvider.notifier).select(site.id, site.name);
-              if (site.code.isNotEmpty) {
-                ref.read(sessionProvider.notifier).switchSite(site.code);
-              }
-            }
+          onChanged: (id) async {
+            if (id == null) return;
+            final site = _sites.firstWhere((s) => s.id == id);
+            await _applySelection(site);
           },
         ),
       ),

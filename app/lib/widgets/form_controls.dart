@@ -218,6 +218,7 @@ class AppSelect extends StatelessWidget {
     required this.options,
     required this.onChanged,
     this.placeholder = 'Select…',
+    this.emptyHint = 'No options loaded',
     this.mono = false,
   });
 
@@ -225,6 +226,8 @@ class AppSelect extends StatelessWidget {
   final List<String> options;
   final ValueChanged<String?> onChanged;
   final String placeholder;
+  /// Shown instead of [placeholder] when [options] is empty.
+  final String emptyHint;
   final bool mono;
 
   @override
@@ -239,6 +242,9 @@ class AppSelect extends StatelessWidget {
     final style = mono
         ? AppText.mono(size: 16, weight: FontWeight.w600)
         : AppText.input;
+
+    final empty = options.isEmpty;
+    final hintText = empty ? emptyHint : placeholder;
 
     // A plain DropdownButton inside an InputDecorator rather than a
     // DropdownButtonFormField: the latter only takes an *initial* value, and
@@ -256,12 +262,16 @@ class AppSelect extends StatelessWidget {
           child: DropdownButton<String>(
             value: current,
             isExpanded: true,
-            icon: const Icon(Icons.expand_more, color: T.secondary, size: 22),
+            icon: Icon(
+              Icons.expand_more,
+              color: empty ? T.muted : T.secondary,
+              size: 22,
+            ),
             style: style,
             dropdownColor: T.card,
             borderRadius: T.controlShape,
             hint: Text(
-              placeholder,
+              hintText,
               style: AppText.sans(size: 16, color: T.muted),
             ),
             items: <DropdownMenuItem<String>>[
@@ -271,7 +281,9 @@ class AppSelect extends StatelessWidget {
                   child: Text(o, style: style, overflow: TextOverflow.ellipsis),
                 ),
             ],
-            onChanged: onChanged,
+            // Empty menus look "broken" (click does nothing useful) — disable
+            // so the hint is the signal rather than a dead control.
+            onChanged: empty ? null : onChanged,
           ),
         ),
       ),

@@ -117,6 +117,24 @@ void main() {
       expect(vehicles.every((v) => v.siteCode == 'MBMT'), isTrue);
     });
 
+    test('switchSite refreshes Bus No master data for the new depot', () async {
+      final container = await signedIn('TV4021');
+      final before = await container.read(masterDataProvider.future);
+      expect(before.siteCode, 'MBMT');
+      expect(before.vehicles, isNotEmpty);
+      expect(before.vehicles.every((v) => v.startsWith('MH40')), isTrue);
+
+      container.read(sessionProvider.notifier).switchSite('UMT');
+      final after = await container.read(masterDataProvider.future);
+      expect(after.siteCode, 'UMT');
+      expect(after.vehicles, isNotEmpty);
+      expect(after.vehicles, isNot(equals(before.vehicles)));
+      expect(after.vehicles.every((v) => v.startsWith('MH12')), isTrue);
+
+      final fleet = await container.read(vehiclesProvider.future);
+      expect(fleet.every((v) => v.siteCode == 'UMT'), isTrue);
+    });
+
     test('adding a vehicle normalises its registration', () async {
       final container = await signedIn('TV4021');
       await container.read(vehiclesProvider.future);

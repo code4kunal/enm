@@ -103,6 +103,7 @@ void main() {
 
       final s = container.read(sessionProvider);
       expect(s.stage, AuthStage.signedOut);
+      expect(s.restoring, isFalse);
       expect(s.signingIn, isFalse);
       expect(s.error, isNull);
     });
@@ -124,6 +125,17 @@ void main() {
       controller.switchSite('UMT');
       expect(container.read(sessionProvider).site, 'UMT');
       expect(container.read(sessionProvider).stage, AuthStage.signedIn);
+    });
+
+    test('switchSite clears when E&M mapping is empty', () async {
+      final container = makeContainer();
+      final controller = container.read(sessionProvider.notifier);
+      await controller.signInWithCredentials('TV4021', kSeedPassword);
+      controller.enterApp();
+      expect(container.read(sessionProvider).site, isNotEmpty);
+
+      controller.switchSite('');
+      expect(container.read(sessionProvider).site, isEmpty);
     });
   });
 
@@ -153,6 +165,35 @@ void main() {
       expect(s.stage, AuthStage.signedOut);
       expect(s.user, isNull);
       expect(s.site, '');
+    });
+  });
+
+  group('session restore', () {
+    test('restoreFromStorage re-enters when a user is already current',
+        () async {
+      final container = makeContainer();
+      final controller = container.read(sessionProvider.notifier);
+      await controller.signInWithCredentials('TV4021', kSeedPassword);
+      controller.enterApp();
+      expect(container.read(sessionProvider).stage, AuthStage.signedIn);
+
+      // Fake auth keeps currentUser after sign-in — restore should land
+      // back in the app without the site picker.
+      await controller.restoreFromStorage();
+      final s = container.read(sessionProvider);
+      expect(s.restoring, isFalse);
+      expect(s.stage, AuthStage.signedIn);
+      expect(s.user?.userId, 'TV4021');
+      expect(s.site, isNotEmpty);
+    });
+
+    test('restoreFromStorage signs out when nothing is stored', () async {
+      final container = makeContainer();
+      await container.read(sessionProvider.notifier).restoreFromStorage();
+      final s = container.read(sessionProvider);
+      expect(s.restoring, isFalse);
+      expect(s.stage, AuthStage.signedOut);
+      expect(s.user, isNull);
     });
   });
 }

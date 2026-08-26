@@ -1,3 +1,8 @@
+# Local development:
+#   docker compose --env-file .env.dev up -d --build
+# Or copy a template first:
+#   cp .env.dev.example .env.dev
+# Default `docker compose` also loads `.env` in this directory when present.
 services:
   db:
     container_name: enm_db
@@ -7,7 +12,7 @@ services:
       POSTGRES_PASSWORD: enm
       POSTGRES_DB: enm
     ports:
-      - "${DB_PORT:-5434}:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +30,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://enm:enm@db:5432/enm
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8123}
       # Explicit origins only — "*" + credentials is rejected by browsers.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:8000,http://localhost:8008,http://localhost:8080,http://localhost:8089,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8080,http://127.0.0.1:8089,http://127.0.0.1:5173}
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}
@@ -35,7 +40,7 @@ services:
       BOOTSTRAP_SUPERADMIN_USER_ID: ${BOOTSTRAP_SUPERADMIN_USER_ID:-${BOOTSTRAP_USER_ID:-ADMIN}}
       BOOTSTRAP_SUPERADMIN_PASSWORD: ${BOOTSTRAP_SUPERADMIN_PASSWORD:-${BOOTSTRAP_PASSWORD:-admin123}}
       BOOTSTRAP_SUPERADMIN_NAME: ${BOOTSTRAP_SUPERADMIN_NAME:-Super Admin}
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       # Microsoft SSO (leave blank to disable /auth/sso)
       MS_TENANT_ID: ${MS_TENANT_ID:-}
       MS_CLIENT_ID: ${MS_CLIENT_ID:-}
@@ -43,8 +48,7 @@ services:
       FCM_CREDENTIALS_FILE: ${FCM_CREDENTIALS_FILE:-}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
     ports:
-      - "8123:8000"
-      - "8000:8000"
+      - "${API_PORT:-8123}:8000"
     volumes:
       - media:/srv/media
       - ./secrets:/srv/secrets:ro
@@ -72,7 +76,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-8089}:80"
+      - "${WEB_PORT:-8080}:80"
 
 volumes:
   pgdata:

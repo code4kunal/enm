@@ -158,7 +158,7 @@ class ApiClient {
     try {
       response = await attempt();
     } on Exception catch (e) {
-      throw ApiException('Cannot reach the server at $baseUrl — $e');
+      throw ApiException(_unreachableMessage(e));
     }
     if (response.statusCode == 401 && await _refresh()) {
       response = await attempt();
@@ -200,7 +200,7 @@ class ApiClient {
     try {
       response = await attempt();
     } on Exception catch (e) {
-      throw ApiException('Cannot reach the server at $baseUrl — $e');
+      throw ApiException(_unreachableMessage(e));
     }
 
     // One refresh, then one retry. A second 401 means the session is gone.
@@ -220,6 +220,21 @@ class ApiClient {
         ...query,
       },
     );
+  }
+
+  /// Browser "Failed to fetch" is almost always CORS or a dead host — not a
+  /// wrong password. Name that so operators do not chase SiteOps when the
+  /// E&M API simply refused the Origin header.
+  String _unreachableMessage(Object error) {
+    final text = error.toString();
+    if (text.contains('Failed to fetch') ||
+        text.contains('XMLHttpRequest') ||
+        text.contains('NetworkError')) {
+      return 'Cannot reach $baseUrl (browser blocked the request — check '
+          'CORS_ORIGINS allows this page\'s origin, and that the API host '
+          'resolves). $error';
+    }
+    return 'Cannot reach the server at $baseUrl — $error';
   }
 
   Future<bool> _refresh() async {

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/repositories.dart';
@@ -8,7 +8,7 @@ import '../utils/dates.dart';
 import 'providers.dart';
 import 'session.dart';
 
-// ─── Site onboarding ──────────────────────────────────────────────────────
+// â”€â”€â”€ Site onboarding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Working copy behind the create/edit site card. A null [code] means new.
 @immutable
@@ -90,7 +90,7 @@ class SitesController extends AsyncNotifier<List<Site>> {
     }
     if (!RegExp(r'^[A-Z0-9][A-Z0-9_-]{1,15}$').hasMatch(code)) {
       throw const ApiException(
-        'Site code must be 2–16 characters: letters, digits, - or _',
+        'Site code must be 2â€“16 characters: letters, digits, - or _',
       );
     }
 
@@ -148,7 +148,7 @@ class SitesController extends AsyncNotifier<List<Site>> {
 final sitesAdminProvider =
     AsyncNotifierProvider<SitesController, List<Site>>(SitesController.new);
 
-// ─── Fleet ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Fleet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class VehiclesController extends AsyncNotifier<List<Vehicle>> {
   @override
@@ -238,7 +238,7 @@ final vehiclesProvider =
   VehiclesController.new,
 );
 
-// ─── Master lists ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Master lists â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Rows of one editable dropdown list, including inactive ones.
 final masterListProvider =
@@ -282,7 +282,7 @@ final masterListControllerProvider =
   (ref, kind) => MasterListController(ref, kind),
 );
 
-// ─── Docking configuration ────────────────────────────────────────────────
+// â”€â”€â”€ Docking configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Editable working copy of the active site's config.
 ///
@@ -292,7 +292,7 @@ final masterListControllerProvider =
 class SiteConfigDraftController extends Notifier<SiteConfig?> {
   @override
   SiteConfig? build() {
-    // Discard the draft when the site changes — it belongs to one site.
+    // Discard the draft when the site changes â€” it belongs to one site.
     ref.watch(sessionProvider.select((s) => s.site));
     return null;
   }

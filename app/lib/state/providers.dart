@@ -52,7 +52,10 @@ final userRepositoryProvider = Provider<UserRepository>(
 );
 
 final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => ApiAuthRepository(ref.watch(apiClientProvider)),
+  (ref) => ApiAuthRepository(
+    ref.watch(apiClientProvider),
+    siteOps: ref.watch(siteOpsClientProvider),
+  ),
 );
 
 final siteRepositoryProvider = Provider<SiteRepository>(
@@ -174,7 +177,11 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   final siteOpsSiteId =
       ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
-  if (site.isEmpty) return MasterData.empty;
+  // Need at least an E&M code or a SiteOps UUID to load a fleet.
+  if (site.isEmpty && siteOpsSiteId.isEmpty) return MasterData.empty;
+
+  // Stale-bundle key for the register form: prefer E&M code, else SiteOps id.
+  final scopeKey = site.isNotEmpty ? site : siteOpsSiteId;
 
   Future<List<String>> safe(Future<List<String>> Function() call) async {
     try {
@@ -186,19 +193,25 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
 
   final results = await Future.wait(<Future<List<String>>>[
     safe(() => repo.siteCodes()),
-    // SiteOps vehicles are keyed by UUID; E&M session.site is MBMT.
-    safe(() => repo.vehicleNumbers(
-          siteCode: siteOpsSiteId.isNotEmpty ? siteOpsSiteId : site,
-        )),
+    // SiteOps UUID first (header site), E&M code as fallback — see
+    // [MasterDataRepository.vehicleNumbers].
+    safe(
+      () => repo.vehicleNumbers(
+        siteCode: site,
+        siteOpsSiteId: siteOpsSiteId,
+      ),
+    ),
     safe(() => repo.defectSources()),
     safe(() => repo.defectTypes()),
     safe(() => repo.staff(siteCode: site)),
+    // Staff rosters still come from SiteOps and are keyed by its site UUID.
     safe(() => repo.technicianStaff(siteName: site, siteId: siteOpsSiteId)),
     safe(() => repo.supervisorStaff(siteName: site, siteId: siteOpsSiteId)),
     safe(() => repo.mechanicStaff(siteName: site, siteId: siteOpsSiteId)),
   ]);
 
   return MasterData(
+    siteCode: scopeKey,
     sites: results[0],
     vehicles: results[1],
     defectSources: results[2],

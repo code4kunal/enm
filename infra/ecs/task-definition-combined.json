@@ -1,0 +1,111 @@
+{
+  "family": "enm-combined",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::654654496534:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::654654496534:role/ecsTaskExecutionRole",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "enm-backend",
+      "image": "654654496534.dkr.ecr.ap-south-1.amazonaws.com/enm-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "ENVIRONMENT", "value": "production" },
+        { "name": "DEBUG", "value": "false" },
+        { "name": "SEED_ON_START", "value": "false" },
+        { "name": "PUBLIC_BASE_URL", "value": "https://enm.transvolt.org" },
+        { "name": "CORS_ORIGINS", "value": "https://enm.transvolt.org" },
+        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" },
+        { "name": "MEDIA_ROOT", "value": "/srv/media" }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:ssm:ap-south-1:654654496534:parameter/enm/DATABASE_URL"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-south-1:654654496534:parameter/enm/JWT_SECRET"
+        },
+        {
+          "name": "SITEOPS_SERVICE_KEY",
+          "valueFrom": "arn:aws:ssm:ap-south-1:654654496534:parameter/enm/SITEOPS_SERVICE_KEY"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/enm-combined",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "api",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8000/api/v1/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 90
+      }
+    },
+    {
+      "name": "enm-frontend",
+      "image": "654654496534.dkr.ecr.ap-south-1.amazonaws.com/enm-frontend:latest",
+      "essential": true,
+      "dependsOn": [
+        {
+          "containerName": "enm-backend",
+          "condition": "HEALTHY"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "ENVIRONMENT", "value": "production" },
+        { "name": "API_BASE_URL", "value": "https://enm.transvolt.org/api/v1" },
+        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/enm-combined",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "web",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://localhost/ >/dev/null || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 3,
+        "retries": 3,
+        "startPeriod": 10
+      }
+    }
+  ]
+}

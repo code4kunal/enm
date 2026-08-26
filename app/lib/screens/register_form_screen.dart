@@ -9,6 +9,7 @@ import '../models/register.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
+import '../state/selected_site.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -173,12 +174,44 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   @override
   Widget build(BuildContext context) {
     final entriesAsync = ref.watch(entriesProvider);
-    final master = ref.watch(masterDataProvider).valueOrNull ?? MasterData.empty;
+    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final siteOpsId =
+        ref.watch(selectedSiteProvider.select((s) => s.id)) ?? '';
+    // Same scope key as [masterDataProvider] — E&M code, else SiteOps UUID.
+    final scopeKey = site.isNotEmpty ? site : siteOpsId;
+    final masterRaw =
+        ref.watch(masterDataProvider).valueOrNull ?? MasterData.empty;
+    // Drop a previous depot's bundle while the new site's fetch is in flight.
+    final master =
+        masterRaw.siteCode == scopeKey ? masterRaw : MasterData.empty;
     final technicianStaff = ref.watch(technicianStaffProvider).valueOrNull ?? const <String>[];
     final supervisorStaff = ref.watch(supervisorStaffProvider).valueOrNull ?? const <String>[];
     final mechanicStaff = ref.watch(mechanicStaffProvider).valueOrNull ?? const <String>[];
-    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final siteLabel = ref.watch(siteDisplayNameProvider);
     final isMobile = MediaQuery.sizeOf(context).width < T.mobileBreakpoint;
+
+    // Header site switch must drop bus/staff picks from the previous depot.
+    void clearSitePicks() {
+      setState(() {
+        for (final key in <String>[
+          'bus',
+          'employee',
+          'supervisor',
+          'mechanic',
+        ]) {
+          if (_values.containsKey(key)) _values[key] = '';
+        }
+      });
+    }
+
+    ref.listen<String>(sessionProvider.select((s) => s.site), (prev, next) {
+      if (prev == null || prev.isEmpty || prev == next) return;
+      clearSitePicks();
+    });
+    ref.listen<String?>(selectedSiteProvider.select((s) => s.id), (prev, next) {
+      if (prev == null || prev.isEmpty || prev == next) return;
+      clearSitePicks();
+    });
 
     // On an edit route the entry has to load before the form can seed itself.
     RegisterEntry? existing;
@@ -209,7 +242,9 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
     _initialise(register, existing);
 
     return FadeUp(
-      key: ValueKey<String>('form-${register.id}-${widget.entryId ?? 'new'}'),
+      key: ValueKey<String>(
+        'form-${register.id}-${widget.entryId ?? 'new'}-$scopeKey',
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: T.maxFormWidth),
@@ -239,7 +274,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                           ),
                         ),
                         Text(
-                          '$site site · '
+                          '$siteLabel ($site) · '
                           '${existing == null ? 'New entry' : 'Editing entry'}',
                           style: AppText.sans(size: 13, color: T.secondary),
                         ),
@@ -504,6 +539,7 @@ class _Field extends StatelessWidget {
           options: master.vehicles,
           mono: true,
           placeholder: 'Select bus…',
+          emptyHint: 'No buses at this site — open Vehicle Master or Sync fleet',
           onChanged: (v) => onSet(def.key, v ?? ''),
         );
 
@@ -511,6 +547,9 @@ class _Field extends StatelessWidget {
         return AppSelect(
           value: value,
           options: _options,
+          emptyHint: _options.isEmpty
+              ? 'No people/options for this site'
+              : 'Select…',
           onChanged: (v) => onSet(def.key, v ?? ''),
         );
 

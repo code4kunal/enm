@@ -22,8 +22,12 @@ class FakeMasterDataRepository implements MasterDataRepository {
   }
 
   @override
-  Future<List<String>> vehicleNumbers({required String siteCode}) async {
+  Future<List<String>> vehicleNumbers({
+    required String siteCode,
+    String? siteOpsSiteId,
+  }) async {
     await Future<void>.delayed(_latency);
+    // Fakes have no SiteOps fleet — scope by E&M code only.
     return activeVehicleNumbers(_store, siteCode);
   }
 
@@ -330,6 +334,13 @@ class FakeAuthRepository implements AuthRepository {
       );
     }
     _store.currentUser = user;
+    return user;
+  }
+
+  @override
+  Future<AppUser?> restoreSession() async {
+    final user = _store.currentUser;
+    if (user == null || !user.active) return null;
     return user;
   }
 

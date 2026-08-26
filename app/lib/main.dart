@@ -28,15 +28,15 @@ class _TransvoltEmAppState extends ConsumerState<TransvoltEmApp> {
   @override
   void initState() {
     super.initState();
-    // A Microsoft sign-in finishes on the page load *after* the redirect, so
-    // the first thing the app does is ask whether this is that load.
-    Future<void>.microtask(_resumeSignIn);
+    // Restore stored JWTs (and finish an MS redirect if this load is one)
+    // before the router decides the user is signed out.
+    Future<void>.microtask(_bootstrap);
   }
 
-  Future<void> _resumeSignIn() async {
+  Future<void> _bootstrap() async {
     final config = await ref.read(ssoConfigProvider.future);
     if (!mounted) return;
-    await ref.read(sessionProvider.notifier).resumeMicrosoftSignIn(config);
+    await ref.read(sessionProvider.notifier).bootstrap(config);
   }
 
   @override
