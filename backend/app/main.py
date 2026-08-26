@@ -17,6 +17,7 @@ from app.config import settings
 from app.errors import register_exception_handlers
 from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
+from app.services.masters import sync_all_linked_sites
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
 
@@ -88,6 +89,19 @@ async def lifespan(_app: FastAPI):
                 timezone=settings.timezone,
             ),
             id="dmr_snapshot",
+            max_instances=1,
+            coalesce=True,
+        )
+        # Refresh local fleets from SiteOps for every linked site — new buses
+        # appear in entry dropdowns without a manual Sync click.
+        scheduler.add_job(
+            sync_all_linked_sites,
+            CronTrigger(
+                hour=settings.schedule_generator_hour,
+                minute=min(settings.schedule_generator_minute + 10, 59),
+                timezone=settings.timezone,
+            ),
+            id="siteops_fleet_sync",
             max_instances=1,
             coalesce=True,
         )

@@ -109,14 +109,29 @@ async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
     stay in sync with every seed module a migration has ever applied, not
     just the first one.
 
+    Filtered by the site's `operating_categories` (default bus). Seed modules
+    are frozen history; category tagging is applied here so truck seeds can
+    plug in later without rewriting v1–v3.
+
     Never overwrites: a template that already has lines belongs to the depot,
     whether it edited ours or wrote its own.
     """
     from app.seeds.checklists_v1 import CHECKLISTS as CHECKLISTS_V1
     from app.seeds.checklists_v2 import CHECKLISTS as CHECKLISTS_V2
     from app.seeds.checklists_v3 import CHECKLISTS as CHECKLISTS_V3
+    from app.services import site_config as site_config_svc
 
-    CHECKLISTS = CHECKLISTS_V1 + CHECKLISTS_V2 + CHECKLISTS_V3
+    config = await site_config_svc.get_or_create(session, site_code)
+    categories = set(config.operating_categories or ["bus"])
+
+    # Existing seed modules are bus catalogues. A future truck module tags
+    # entries with category="truck"; until then truck-only sites get nothing
+    # from these three.
+    CHECKLISTS = [
+        {**entry, "category": entry.get("category", "bus")}
+        for entry in (CHECKLISTS_V1 + CHECKLISTS_V2 + CHECKLISTS_V3)
+    ]
+    CHECKLISTS = [e for e in CHECKLISTS if e["category"] in categories]
 
     codes = {t["work_type_code"] for t in CHECKLISTS}
     work_types = {
@@ -124,7 +139,7 @@ async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
         for wt in (
             await session.scalars(select(WorkType).where(WorkType.code.in_(codes)))
         ).all()
-    }
+    } if codes else {}
 
     added = 0
     for entry in CHECKLISTS:

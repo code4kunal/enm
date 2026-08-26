@@ -107,6 +107,7 @@ async def to_io(session: AsyncSession, config: SiteConfig) -> SiteConfigIO:
         reminder_lead_days=config.reminder_lead_days,
         docking_slot_minutes=config.docking_slot_minutes,
         max_vehicles_in_service=config.max_vehicles_in_service,
+        operating_categories=list(config.operating_categories or ["bus"]),
         odometer_sync=OdometerSyncIO(
             enabled=config.odometer_sync_enabled,
             interval_minutes=config.odometer_sync_minutes,
@@ -181,10 +182,14 @@ async def replace(
         raise ValidationError(issues[0], {"config": "; ".join(issues)})
 
     config = await get_or_create(session, site_code)
+    categories_changed = sorted(config.operating_categories or []) != sorted(
+        payload.operating_categories
+    )
     config.reminder_lead_km = payload.reminder_lead_km
     config.reminder_lead_days = payload.reminder_lead_days
     config.docking_slot_minutes = payload.docking_slot_minutes
     config.max_vehicles_in_service = payload.max_vehicles_in_service
+    config.operating_categories = list(payload.operating_categories)
     config.odometer_sync_enabled = payload.odometer_sync.enabled
     config.odometer_sync_minutes = max(
         payload.odometer_sync.interval_minutes, MIN_SYNC_MINUTES
@@ -223,4 +228,8 @@ async def replace(
             )
         )
     await session.flush()
+    if categories_changed:
+        from app.services import checklists
+
+        await checklists.apply_catalogue(session, site_code)
     return config

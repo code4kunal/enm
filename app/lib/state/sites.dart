@@ -6,7 +6,6 @@ import '../models/site.dart';
 import '../models/site_config.dart';
 import '../utils/dates.dart';
 import 'providers.dart';
-import 'selected_site.dart';
 import 'session.dart';
 
 // ─── Site onboarding ──────────────────────────────────────────────────────
@@ -20,6 +19,8 @@ class SiteDraft {
     this.address = '',
     this.timezone = 'Asia/Kolkata',
     this.commissionedOn,
+    this.siteopsSiteId,
+    this.operatingCategories = const <String>['bus'],
     this.isEdit = false,
   });
 
@@ -29,6 +30,8 @@ class SiteDraft {
         address = s.address,
         timezone = s.timezone,
         commissionedOn = s.commissionedOn,
+        siteopsSiteId = s.siteopsSiteId,
+        operatingCategories = const <String>['bus'],
         isEdit = true;
 
   final String code;
@@ -36,6 +39,8 @@ class SiteDraft {
   final String address;
   final String timezone;
   final String? commissionedOn;
+  final String? siteopsSiteId;
+  final List<String> operatingCategories;
   final bool isEdit;
 
   String get title => isEdit ? 'Edit site' : 'Onboard site';
@@ -48,6 +53,9 @@ class SiteDraft {
     String? address,
     String? timezone,
     String? commissionedOn,
+    String? siteopsSiteId,
+    List<String>? operatingCategories,
+    bool clearSiteopsSiteId = false,
   }) =>
       SiteDraft(
         code: code ?? this.code,
@@ -55,6 +63,10 @@ class SiteDraft {
         address: address ?? this.address,
         timezone: timezone ?? this.timezone,
         commissionedOn: commissionedOn ?? this.commissionedOn,
+        siteopsSiteId:
+            clearSiteopsSiteId ? null : (siteopsSiteId ?? this.siteopsSiteId),
+        operatingCategories:
+            operatingCategories ?? this.operatingCategories,
         isEdit: isEdit,
       );
 }
@@ -97,12 +109,21 @@ class SitesController extends AsyncNotifier<List<Site>> {
       return saved;
     }
 
+    if (draft.siteopsSiteId == null || draft.siteopsSiteId!.isEmpty) {
+      throw const ApiException('Pick a SiteOps site to link');
+    }
+    if (draft.operatingCategories.isEmpty) {
+      throw const ApiException('Select bus and/or truck');
+    }
+
     final created = await _repo.createSite(
       code: code,
       name: name,
       timezone: draft.timezone,
       address: draft.address.trim(),
       commissionedOn: draft.commissionedOn,
+      siteopsSiteId: draft.siteopsSiteId,
+      operatingCategories: draft.operatingCategories,
     );
     _patch((list) => <Site>[...list, created]..sort((a, b) => a.code.compareTo(b.code)));
     // A newly onboarded site should be switchable without re-authenticating.
@@ -132,14 +153,12 @@ final sitesAdminProvider =
 class VehiclesController extends AsyncNotifier<List<Vehicle>> {
   @override
   Future<List<Vehicle>> build() async {
-    final siteOpsId = ref.watch(selectedSiteProvider.select((s) => s.id));
+    // E&M site code only — never the SiteOps UUID.
     final site = ref.watch(sessionProvider.select((s) => s.site));
-    final siteKey =
-        (siteOpsId != null && siteOpsId.isNotEmpty) ? siteOpsId : site;
-    if (siteKey.isEmpty) return const <Vehicle>[];
+    if (site.isEmpty) return const <Vehicle>[];
     return ref
         .watch(vehicleRepositoryProvider)
-        .fetchVehicles(siteCode: siteKey, includeInactive: true);
+        .fetchVehicles(siteCode: site, includeInactive: true);
   }
 
   VehicleRepository get _repo => ref.read(vehicleRepositoryProvider);

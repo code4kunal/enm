@@ -49,6 +49,19 @@ class SiteConfigIO(BaseModel):
     reminder_lead_days: int = Field(default=7, ge=0, le=3_650)
     docking_slot_minutes: int = Field(default=120, ge=1, le=10_080)
     max_vehicles_in_service: int = Field(default=0, ge=0, le=10_000)
+    operating_categories: list[str] = Field(default_factory=lambda: ["bus"])
     odometer_sync: OdometerSyncIO = Field(default_factory=OdometerSyncIO)
     updated_at: ISTDateTime | None = None
     updated_by: str = ""
+
+    @field_validator("operating_categories")
+    @classmethod
+    def _categories(cls, v: list[str]) -> list[str]:
+        cleaned = sorted({c.strip().lower() for c in v if c and c.strip()})
+        if not cleaned:
+            raise ValueError("at least one of bus, truck is required")
+        allowed = {"bus", "truck"}
+        bad = [c for c in cleaned if c not in allowed]
+        if bad:
+            raise ValueError(f"unknown operating categories: {bad}")
+        return cleaned

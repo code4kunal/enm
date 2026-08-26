@@ -6,32 +6,18 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import ValidationError
+from app.errors import NotFound, ValidationError
 from app.models.master import Site, Vehicle
 from app.models.user import User, UserSiteAccess
 from app.schemas.site import SiteOut, VehicleOut
 
 
 async def load_site(session: AsyncSession, code: str) -> Site:
+    """Strict getter — unknown codes 404. Sites are created only via POST /sites."""
     clean_code = code.strip().upper()
     site = await session.get(Site, clean_code)
     if site is None:
-        site = Site(
-            code=clean_code,
-            name=f"Site {clean_code[:8]}",
-            is_active=True,
-            timezone="Asia/Kolkata",
-            address="",
-        )
-        session.add(site)
-        await session.flush()
-        # A site can spring into existence here first — e.g. a vehicle or
-        # import profile created for a SiteOps code before anyone ever visits
-        # the "onboard site" screen — not just through POST /sites. Without
-        # this, that site's mechanics open a permanently empty checklist.
-        from app.services import checklists
-
-        await checklists.apply_catalogue(session, site.code)
+        raise NotFound(f"Site {clean_code} not found — onboard it first")
     return site
 
 
@@ -123,6 +109,8 @@ def site_out(
         timezone=site.timezone,
         address=site.address,
         commissioned_on=site.commissioned_on,
+        siteops_site_id=site.siteops_site_id,
+        last_siteops_sync_at=site.last_siteops_sync_at,
         vehicle_count=vehicle_count,
         user_count=user_count,
     )

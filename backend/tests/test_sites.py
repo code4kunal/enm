@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from tests.conftest import SUPER_ADMIN, auth_headers
 
@@ -82,15 +83,33 @@ async def test_onboarding_a_site_seeds_every_checklist_catalogue(
     assert "P.M" in by_code
 
 
-async def test_a_site_auto_created_by_adding_a_vehicle_still_gets_checklists(
+async def test_a_vehicle_on_an_unknown_site_is_rejected(
     client: AsyncClient,
 ) -> None:
-    """A site can spring into existence outside the onboarding screen — e.g. a
-    vehicle added for a SiteOps-mapped code that was never POSTed to /sites.
-    load_site()'s silent auto-create must seed checklists too, or that site's
-    mechanics open a permanently empty form with no onboarding step to blame."""
+    """Sites are created only via POST /sites — load_site no longer auto-vivifies."""
+    admin = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post(
+        "/sites/PNQ5/vehicles",
+        json={"registration_no": "MH12AB1234"},
+        headers=admin,
+    )
+    assert r.status_code == 404, r.text
+
+
+async def test_onboarding_with_siteops_pulls_fleet_and_seeds_bus_checklists(
+    client: AsyncClient, monkeypatch
+) -> None:
     from app.db import SessionLocal
-    from app.models.master import WorkType
+    from app.models.master import Vehicle, WorkType
+    from app.services import siteops
+
+    async def fake_vehicles(site_id: str) -> list[dict]:
+        assert site_id == "siteops-uuid-fresh"
+        return [
+            {"vehicle_no": "MH04LY5501", "make": "EKA", "model": "EV9M", "ac_nac": "9M"},
+        ]
+
+    monkeypatch.setattr(siteops, "list_all_vehicles", fake_vehicles)
 
     async with SessionLocal() as session:
         for code, name in (
@@ -103,19 +122,61 @@ async def test_a_site_auto_created_by_adding_a_vehicle_still_gets_checklists(
 
     admin = await auth_headers(client, SUPER_ADMIN)
     r = await client.post(
-        "/sites/PNQ5/vehicles",
-        json={"registration_no": "MH12AB1234"},
+        "/sites",
+        json={
+            "code": "FRESH",
+            "name": "Fresh Depot",
+            "siteops_site_id": "siteops-uuid-fresh",
+            "operating_categories": ["bus"],
+        },
         headers=admin,
     )
     assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["siteops_site_id"] == "siteops-uuid-fresh"
+
+    async with SessionLocal() as session:
+        regs = list(
+            await session.scalars(
+                select(Vehicle).where(Vehicle.site_code == "FRESH")
+            )
+        )
+    assert [v.registration_no for v in regs] == ["MH04LY5501"]
 
     checklists = (
-        await client.get("/sites/PNQ5/checklists", headers=admin)
+        await client.get("/sites/FRESH/checklists", headers=admin)
     ).json()["items"]
     by_code = {c["work_type_code"]: c for c in checklists if c["items"]}
     assert "D.I" in by_code
-    assert "10 DAYS SERVICE" in by_code
     assert "P.M" in by_code
+
+
+async def test_truck_only_site_gets_no_bus_catalogue_lines(
+    client: AsyncClient,
+) -> None:
+    """Until a truck seed module exists, truck-only sites seed zero checklist lines."""
+    from app.db import SessionLocal
+    from app.models.master import WorkType
+
+    async with SessionLocal() as session:
+        session.add(WorkType(code="D.I", name="Daily inspection", is_inspection=True))
+        await session.commit()
+
+    admin = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post(
+        "/sites",
+        json={
+            "code": "TRUCK1",
+            "name": "Truck Yard",
+            "operating_categories": ["truck"],
+        },
+        headers=admin,
+    )
+    assert r.status_code == 201, r.text
+    checklists = (
+        await client.get("/sites/TRUCK1/checklists", headers=admin)
+    ).json()["items"]
+    assert all(not c["items"] for c in checklists)
 
 
 async def test_site_code_is_upper_cased_and_validated(client: AsyncClient) -> None:

@@ -279,6 +279,8 @@ class ApiSiteRepository implements SiteRepository {
     String timezone = 'Asia/Kolkata',
     String address = '',
     String? commissionedOn,
+    String? siteopsSiteId,
+    List<String> operatingCategories = const <String>['bus'],
   }) async {
     final json = await _api.post('/sites', body: <String, dynamic>{
       'code': code,
@@ -286,6 +288,9 @@ class ApiSiteRepository implements SiteRepository {
       'timezone': timezone,
       'address': address,
       'commissioned_on': commissionedOn,
+      if (siteopsSiteId != null && siteopsSiteId.isNotEmpty)
+        'siteops_site_id': siteopsSiteId,
+      'operating_categories': operatingCategories,
     });
     return Site.fromJson(json as Map<String, dynamic>);
   }

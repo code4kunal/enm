@@ -13,6 +13,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TZDateTime, new_uuid
@@ -61,6 +62,14 @@ class SiteConfig(Base):
     )
     odometer_sync_source: Mapped[str] = mapped_column(
         String(64), nullable=False, default="telematics", server_default="telematics"
+    )
+    #: Nature of operations — checklist catalogue seeds only entries whose
+    #: category is in this set. Default bus matches every site today.
+    operating_categories: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)),
+        nullable=False,
+        default=lambda: ["bus"],
+        server_default="{bus}",
     )
     odometer_last_synced_at: Mapped[datetime | None] = mapped_column(
         TZDateTime, nullable=True

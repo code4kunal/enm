@@ -1,8 +1,11 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories.dart';
 import '../../models/site.dart';
+import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/sites.dart';
 import '../../state/toast.dart';
@@ -14,6 +17,13 @@ import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
 import '../../widgets/sub_tabs.dart';
+
+/// One row from GET /siteops/sites for the onboard picker.
+class _SiteOpsOption {
+  const _SiteOpsOption({required this.id, required this.name});
+  final String id;
+  final String name;
+}
 
 /// Site onboarding. Super admin only — this is the estate roster.
 class SitesPane extends ConsumerStatefulWidget {
@@ -27,6 +37,8 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
   SiteDraft? _draft;
   String? _error;
   bool _saving = false;
+  List<_SiteOpsOption> _siteOpsOptions = const <_SiteOpsOption>[];
+  bool _siteOpsLoading = false;
 
   final _codeController = TextEditingController();
   final _nameController = TextEditingController();
@@ -40,6 +52,38 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
     super.dispose();
   }
 
+  Future<void> _loadSiteOpsOptions() async {
+    setState(() => _siteOpsLoading = true);
+    try {
+      final json = await ref.read(apiClientProvider).get('/siteops/sites');
+      final data = (json is Map ? json['data'] : json) as List<dynamic>? ?? [];
+      final options = data
+          .cast<Map<String, dynamic>>()
+          .map(
+            (j) => _SiteOpsOption(
+              id: j['id']?.toString() ?? '',
+              name: j['name']?.toString() ?? '',
+            ),
+          )
+          .where((o) => o.id.isNotEmpty)
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      if (mounted) {
+        setState(() {
+          _siteOpsOptions = options;
+          _siteOpsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _siteOpsOptions = const <_SiteOpsOption>[];
+          _siteOpsLoading = false;
+        });
+      }
+    }
+  }
+
   void _open(SiteDraft draft) {
     _codeController.text = draft.code;
     _nameController.text = draft.name;
@@ -48,6 +92,9 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
       _draft = draft;
       _error = null;
     });
+    if (!draft.isEdit) {
+      unawaited(_loadSiteOpsOptions());
+    }
   }
 
   void _close() => setState(() {
@@ -75,7 +122,9 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
       ref.read(toastProvider.notifier).show(
             draft.isEdit
                 ? '${saved.code} updated'
-                : '${saved.code} onboarded — assign users to it next',
+                : '${saved.code} onboarded — checklists seeded'
+                    '${saved.isLinkedToSiteOps ? ', fleet synced from SiteOps' : ''}'
+                    ' — assign users next',
           );
       _close();
     } on ApiException catch (e) {
@@ -114,8 +163,8 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
       children: <Widget>[
         ScreenHeader(
           title: 'Sites',
-          subtitle: '$active active of ${sites.length}. Onboarding a site makes '
-              'it available to assign users, vehicles and a docking plan.',
+          subtitle: '$active active of ${sites.length}. Onboarding links a '
+              'SiteOps site, seeds checklists for bus/truck, and pulls vehicles.',
           action: FilledActionButton(
             label: '+ Onboard site',
             onPressed: () => _open(const SiteDraft()),
@@ -132,8 +181,19 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
             addressController: _addressController,
             error: _error,
             saving: _saving,
+            siteOpsOptions: _siteOpsOptions,
+            siteOpsLoading: _siteOpsLoading,
             onCommissionedChanged: (d) =>
                 setState(() => _draft = _draft!.copyWith(commissionedOn: d)),
+            onSiteOpsChanged: (id) => setState(
+              () => _draft = _draft!.copyWith(
+                siteopsSiteId: id,
+                clearSiteopsSiteId: id == null,
+              ),
+            ),
+            onCategoriesChanged: (cats) => setState(
+              () => _draft = _draft!.copyWith(operatingCategories: cats),
+            ),
             onCancel: _close,
             onSave: _save,
           ),
@@ -173,7 +233,11 @@ class _SiteForm extends StatelessWidget {
     required this.addressController,
     required this.error,
     required this.saving,
+    required this.siteOpsOptions,
+    required this.siteOpsLoading,
     required this.onCommissionedChanged,
+    required this.onSiteOpsChanged,
+    required this.onCategoriesChanged,
     required this.onCancel,
     required this.onSave,
   });
@@ -184,9 +248,24 @@ class _SiteForm extends StatelessWidget {
   final TextEditingController addressController;
   final String? error;
   final bool saving;
+  final List<_SiteOpsOption> siteOpsOptions;
+  final bool siteOpsLoading;
   final ValueChanged<String> onCommissionedChanged;
+  final ValueChanged<String?> onSiteOpsChanged;
+  final ValueChanged<List<String>> onCategoriesChanged;
   final VoidCallback onCancel;
   final VoidCallback onSave;
+
+  void _toggleCategory(String category, bool selected) {
+    final next = {...draft.operatingCategories};
+    if (selected) {
+      next.add(category);
+    } else {
+      next.remove(category);
+    }
+    if (next.isEmpty) return;
+    onCategoriesChanged(next.toList()..sort());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +313,82 @@ class _SiteForm extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (!draft.isEdit) ...<Widget>[
+                    SizedBox(
+                      width: half,
+                      child: _field(
+                        const FieldLabel(
+                          label: 'SiteOps site',
+                          required: true,
+                          hint: '— vehicles pull from here',
+                        ),
+                        siteOpsLoading
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: LinearProgressIndicator(color: T.green),
+                              )
+                            : DropdownButtonFormField<String>(
+                                value: draft.siteopsSiteId,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                ),
+                                hint: Text(
+                                  siteOpsOptions.isEmpty
+                                      ? 'No SiteOps sites available'
+                                      : 'Select SiteOps site',
+                                  style: AppText.sans(size: 14, color: T.muted),
+                                ),
+                                items: [
+                                  for (final o in siteOpsOptions)
+                                    DropdownMenuItem<String>(
+                                      value: o.id,
+                                      child: Text(
+                                        o.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                                onChanged: saving ? null : onSiteOpsChanged,
+                              ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: half,
+                      child: _field(
+                        const FieldLabel(
+                          label: 'Operations',
+                          required: true,
+                          hint: '— which checklists to seed',
+                        ),
+                        Row(
+                          children: <Widget>[
+                            FilterChip(
+                              label: const Text('Bus'),
+                              selected:
+                                  draft.operatingCategories.contains('bus'),
+                              onSelected: saving
+                                  ? null
+                                  : (v) => _toggleCategory('bus', v),
+                            ),
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              label: const Text('Truck'),
+                              selected:
+                                  draft.operatingCategories.contains('truck'),
+                              onSelected: saving
+                                  ? null
+                                  : (v) => _toggleCategory('truck', v),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   SizedBox(
                     width: half,
                     child: _field(
@@ -402,6 +557,12 @@ class _SiteRow extends ConsumerWidget {
                   foreground: T.secondary,
                   border: T.border,
                 ),
+                if (site.isLinkedToSiteOps)
+                  const TagBadge(
+                    label: 'SITEOPS',
+                    background: T.blueTint,
+                    foreground: T.blue,
+                  ),
                 if (!site.isCommissioned)
                   const TagBadge(
                     label: 'NOT COMMISSIONED',

@@ -259,13 +259,19 @@ async def seed() -> None:
             f"work types: +{work}, unit types: +{units}"
         )
 
-        handle = os.environ.get("BOOTSTRAP_SUPERADMIN_USER_ID", "KUNAL").upper()
-        password = os.environ.get("BOOTSTRAP_SUPERADMIN_PASSWORD", "admin")
-        name = os.environ.get("BOOTSTRAP_SUPERADMIN_NAME", "Kunal Saxena")
+        handle = os.environ.get("BOOTSTRAP_SUPERADMIN_USER_ID", "ADMIN").upper()
+        password = os.environ.get("BOOTSTRAP_SUPERADMIN_PASSWORD", "admin123")
+        name = os.environ.get("BOOTSTRAP_SUPERADMIN_NAME", "Super Admin")
 
-        exists = await session.scalar(select(User.id).where(User.user_id == handle))
-        if exists:
-            print(f"  super admin {handle}: already present")
+        existing = await session.scalar(select(User).where(User.user_id == handle))
+        if existing is not None:
+            existing.password_hash = hash_password(password)
+            existing.role = Role.super_admin
+            existing.is_active = True
+            existing.must_reset_password = False
+            if name:
+                existing.name = name
+            print(f"  super admin {handle}: password refreshed")
         else:
             session.add(
                 User(

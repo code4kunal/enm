@@ -11,6 +11,7 @@ class Site {
     this.timezone = 'Asia/Kolkata',
     this.address = '',
     this.commissionedOn,
+    this.siteopsSiteId,
     this.vehicleCount = 0,
     this.userCount = 0,
   });
@@ -31,11 +32,16 @@ class Site {
   /// `yyyy-MM-dd`, when the site went live. Null until commissioned.
   final String? commissionedOn;
 
+  /// Persisted SiteOps site UUID. Null until linked at onboard / sync.
+  final String? siteopsSiteId;
+
   /// Rollups shown on the site list; not authoritative.
   final int vehicleCount;
   final int userCount;
 
   bool get isCommissioned => commissionedOn != null;
+  bool get isLinkedToSiteOps =>
+      siteopsSiteId != null && siteopsSiteId!.isNotEmpty;
 
   Site copyWith({
     String? name,
@@ -43,6 +49,7 @@ class Site {
     String? timezone,
     String? address,
     String? commissionedOn,
+    String? siteopsSiteId,
     int? vehicleCount,
     int? userCount,
     bool clearCommissionedOn = false,
@@ -55,6 +62,7 @@ class Site {
       address: address ?? this.address,
       commissionedOn:
           clearCommissionedOn ? null : (commissionedOn ?? this.commissionedOn),
+      siteopsSiteId: siteopsSiteId ?? this.siteopsSiteId,
       vehicleCount: vehicleCount ?? this.vehicleCount,
       userCount: userCount ?? this.userCount,
     );
@@ -67,6 +75,7 @@ class Site {
         'timezone': timezone,
         'address': address,
         'commissioned_on': commissionedOn,
+        'siteops_site_id': siteopsSiteId,
       };
 
   factory Site.fromJson(Map<String, dynamic> json) => Site(
@@ -76,6 +85,7 @@ class Site {
         timezone: json['timezone'] as String? ?? 'Asia/Kolkata',
         address: json['address'] as String? ?? '',
         commissionedOn: json['commissioned_on'] as String?,
+        siteopsSiteId: json['siteops_site_id'] as String?,
         vehicleCount: json['vehicle_count'] as int? ?? 0,
         userCount: json['user_count'] as int? ?? 0,
       );

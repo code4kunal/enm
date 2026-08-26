@@ -31,6 +31,8 @@ class FakeSiteRepository implements SiteRepository {
     String timezone = 'Asia/Kolkata',
     String address = '',
     String? commissionedOn,
+    String? siteopsSiteId,
+    List<String> operatingCategories = const <String>['bus'],
   }) async {
     await Future<void>.delayed(_latency);
     final normalised = code.trim().toUpperCase();
@@ -47,6 +49,7 @@ class FakeSiteRepository implements SiteRepository {
       timezone: timezone,
       address: address.trim(),
       commissionedOn: commissionedOn,
+      siteopsSiteId: siteopsSiteId,
     );
     _store.sites.add(site);
     return site;

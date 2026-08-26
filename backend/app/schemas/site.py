@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.schemas.common import DecimalOut, ISTDateTime
 
 SITE_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{1,15}$")
+ALLOWED_OPERATING_CATEGORIES = frozenset({"bus", "truck"})
 
 
 def _upper_code(v: str) -> str:
@@ -34,6 +35,8 @@ class SiteOut(BaseModel):
     timezone: str
     address: str
     commissioned_on: date_t | None = None
+    siteops_site_id: str | None = None
+    last_siteops_sync_at: ISTDateTime | None = None
     #: rollups for the site list; not authoritative
     vehicle_count: int = 0
     user_count: int = 0
@@ -49,6 +52,10 @@ class SiteCreate(BaseModel):
     timezone: str = Field(default="Asia/Kolkata", max_length=64)
     address: str = Field(default="", max_length=255)
     commissioned_on: date_t | None = None
+    #: Link to SiteOps at create time — triggers an immediate fleet sync.
+    siteops_site_id: str | None = Field(default=None, min_length=1, max_length=64)
+    #: Which checklist catalogues to seed. Default bus-only.
+    operating_categories: list[str] = Field(default_factory=lambda: ["bus"])
 
     @field_validator("code")
     @classmethod
@@ -59,6 +66,25 @@ class SiteCreate(BaseModel):
     @classmethod
     def _strip(cls, v: str) -> str:
         return v.strip()
+
+    @field_validator("siteops_site_id")
+    @classmethod
+    def _siteops_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned or None
+
+    @field_validator("operating_categories")
+    @classmethod
+    def _categories(cls, v: list[str]) -> list[str]:
+        cleaned = sorted({c.strip().lower() for c in v if c and c.strip()})
+        if not cleaned:
+            raise ValueError("at least one of bus, truck is required")
+        bad = [c for c in cleaned if c not in ALLOWED_OPERATING_CATEGORIES]
+        if bad:
+            raise ValueError(f"unknown operating categories: {bad}")
+        return cleaned
 
 
 class SiteUpdate(BaseModel):
@@ -144,9 +170,9 @@ class OdometerSyncOut(BaseModel):
 
 
 class FleetSyncIn(BaseModel):
-    #: SiteOps' own site UUID — the client already holds this from the site
-    #: switcher's own dropdown call, so it is passed rather than re-resolved.
-    siteops_site_id: str = Field(min_length=1, max_length=64)
+    #: Optional: set/overwrite the site's SiteOps link, then sync. Prefer
+    #: linking at create time; this remains for repair / first-time link.
+    siteops_site_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class FleetSyncOut(BaseModel):

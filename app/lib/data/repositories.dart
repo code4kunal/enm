@@ -34,6 +34,8 @@ abstract interface class SiteRepository {
     String timezone,
     String address,
     String? commissionedOn,
+    String? siteopsSiteId,
+    List<String> operatingCategories,
   });
 
   Future<Site> updateSite(Site site);

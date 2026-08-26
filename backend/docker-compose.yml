@@ -32,6 +32,9 @@ services:
       # Server-side only — never passed to the `web` build args below.
       SITEOPS_SERVICE_KEY: ${SITEOPS_SERVICE_KEY:-}
       SEED_ON_START: ${SEED_ON_START:-true}
+      BOOTSTRAP_SUPERADMIN_USER_ID: ${BOOTSTRAP_SUPERADMIN_USER_ID:-${BOOTSTRAP_USER_ID:-ADMIN}}
+      BOOTSTRAP_SUPERADMIN_PASSWORD: ${BOOTSTRAP_SUPERADMIN_PASSWORD:-${BOOTSTRAP_PASSWORD:-admin123}}
+      BOOTSTRAP_SUPERADMIN_NAME: ${BOOTSTRAP_SUPERADMIN_NAME:-Super Admin}
       ENVIRONMENT: development
       # Microsoft SSO (leave blank to disable /auth/sso)
       MS_TENANT_ID: ${MS_TENANT_ID:-}

@@ -112,6 +112,51 @@ async def sync_vehicles_from_siteops(
     return result
 
 
+async def sync_all_linked_sites() -> list[dict]:
+    """Nightly: refresh local fleets for every site linked to SiteOps.
+
+    Per-site failures are recorded on the site row and do not abort the run.
+    """
+    from datetime import UTC, datetime
+
+    from app.db import SessionLocal
+    from app.models.master import Site
+    from app.services.siteops import SiteOpsUnavailable
+
+    outcomes: list[dict] = []
+    async with SessionLocal() as session:
+        linked = list(
+            (
+                await session.scalars(
+                    select(Site).where(Site.siteops_site_id.is_not(None))
+                )
+            ).all()
+        )
+        for site in linked:
+            assert site.siteops_site_id is not None
+            try:
+                result = await sync_vehicles_from_siteops(
+                    session, site.code, site.siteops_site_id
+                )
+                payload = {
+                    "created": result.created,
+                    "already_present": result.already_present,
+                    "variant_backfilled": result.variant_backfilled,
+                    "owned_elsewhere": result.owned_elsewhere,
+                    "skipped_no_registration": result.skipped_no_registration,
+                    "ok": True,
+                }
+            except SiteOpsUnavailable as e:
+                payload = {"ok": False, "error": str(e)}
+            except Exception as e:  # noqa: BLE001 — never abort the batch
+                payload = {"ok": False, "error": str(e)}
+            site.last_siteops_sync_at = datetime.now(UTC)
+            site.last_siteops_sync_result = payload
+            outcomes.append({"site_code": site.code, **payload})
+        await session.commit()
+    return outcomes
+
+
 async def resolve_vehicle(
     session: AsyncSession, *, registration_no: str, site_code: str
 ) -> Vehicle:

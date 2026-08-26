@@ -75,29 +75,66 @@ async def create_site(
         raise Conflict(
             f"Site {payload.code} already exists", {"code": "duplicate"}
         )
+    if payload.siteops_site_id:
+        taken = await session.scalar(
+            select(Site).where(Site.siteops_site_id == payload.siteops_site_id)
+        )
+        if taken is not None:
+            raise Conflict(
+                f"SiteOps site already linked to {taken.code}",
+                {"siteops_site_id": "duplicate"},
+            )
     site = Site(
         code=payload.code,
         name=payload.name,
         timezone=payload.timezone,
         address=payload.address,
         commissioned_on=payload.commissioned_on,
+        siteops_site_id=payload.siteops_site_id,
     )
     session.add(site)
     await session.flush()
-    # Migrations 0014/0015/0016 gave the standard checklists to every site that
-    # existed when they ran; a site created afterwards is past all of them and
-    # would open an empty inspection form without this.
+
+    config = await site_config.get_or_create(session, site.code)
+    config.operating_categories = list(payload.operating_categories)
+
+    # Seed checklists for the declared categories (bus by default).
     await checklists.apply_catalogue(session, site.code)
+
+    sync_after: dict | None = None
+    if payload.siteops_site_id:
+        result = await masters.sync_vehicles_from_siteops(
+            session, site.code, payload.siteops_site_id
+        )
+        sync_after = {
+            "created": result.created,
+            "already_present": result.already_present,
+            "variant_backfilled": result.variant_backfilled,
+            "owned_elsewhere": result.owned_elsewhere,
+            "skipped_no_registration": result.skipped_no_registration,
+        }
+        site.last_siteops_sync_at = datetime.now(UTC)
+        site.last_siteops_sync_result = sync_after
+
     await audit.record(
         session,
         actor_id=actor.id,
         action=AuditAction.site_created,
         object_type="site",
         object_id=site.code,
-        after={"code": site.code, "name": site.name},
+        after={
+            "code": site.code,
+            "name": site.name,
+            "siteops_site_id": site.siteops_site_id,
+            "operating_categories": payload.operating_categories,
+            "fleet_sync": sync_after,
+        },
     )
     await session.commit()
-    return sites.site_out(site)
+    vehicles, users = await sites.rollups(session, [site.code])
+    return sites.site_out(
+        site, vehicles.get(site.code, 0), users.get(site.code, 0)
+    )
 
 
 @router.put("/sites/{code}", response_model=SiteOut)
@@ -230,39 +267,71 @@ async def create_vehicle(
 
 @router.post("/sites/{code}/vehicles/sync-from-siteops", response_model=FleetSyncOut)
 async def sync_fleet_from_siteops(
-    code: str, payload: FleetSyncIn, user: CurrentUser, session: SessionDep
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    payload: FleetSyncIn | None = None,
 ) -> FleetSyncOut:
     """Mirror SiteOps' vehicle master into this site's local fleet.
 
-    SiteOps is the source of truth for the fleet's own attributes; this only
-    ever creates the local row inspections/checklists/history need to attach
-    to, or backfills a still-unset `checklist_variant`. Never touches a
-    vehicle a manager already edited.
+    Uses the site's stored `siteops_site_id`. Optionally accepts a body to
+    set/repair that link. SiteOps is the source of truth for fleet attributes;
+    this only creates the local row inspections need, or backfills an unset
+    `checklist_variant`. Never touches a vehicle a manager already edited.
     """
     site_code = assert_site_admin(user, code)
-    await sites.load_site(session, site_code)
+    site = await sites.load_site(session, site_code)
+
+    body = payload or FleetSyncIn()
+    if body.siteops_site_id:
+        if (
+            site.siteops_site_id
+            and site.siteops_site_id != body.siteops_site_id
+        ):
+            raise Conflict(
+                f"{site_code} is already linked to a different SiteOps site",
+                {"siteops_site_id": "conflict"},
+            )
+        if site.siteops_site_id is None:
+            taken = await session.scalar(
+                select(Site).where(Site.siteops_site_id == body.siteops_site_id)
+            )
+            if taken is not None and taken.code != site_code:
+                raise Conflict(
+                    f"SiteOps site already linked to {taken.code}",
+                    {"siteops_site_id": "duplicate"},
+                )
+            site.siteops_site_id = body.siteops_site_id
+
+    if not site.siteops_site_id:
+        raise Conflict(
+            "site is not linked to SiteOps — set siteops_site_id when creating "
+            "the site, or pass it once on sync",
+            {"siteops_site_id": "required"},
+        )
+
     result = await masters.sync_vehicles_from_siteops(
-        session, site_code, payload.siteops_site_id
+        session, site_code, site.siteops_site_id
     )
+    sync_result = {
+        "created": result.created,
+        "already_present": result.already_present,
+        "variant_backfilled": result.variant_backfilled,
+        "owned_elsewhere": result.owned_elsewhere,
+        "skipped_no_registration": result.skipped_no_registration,
+    }
+    site.last_siteops_sync_at = datetime.now(UTC)
+    site.last_siteops_sync_result = sync_result
     await audit.record(
         session,
         actor_id=user.id,
         action=AuditAction.fleet_synced_from_siteops,
         object_type="site",
         object_id=site_code,
-        after={
-            "created": result.created,
-            "variant_backfilled": result.variant_backfilled,
-        },
+        after=sync_result,
     )
     await session.commit()
-    return FleetSyncOut(
-        created=result.created,
-        already_present=result.already_present,
-        variant_backfilled=result.variant_backfilled,
-        owned_elsewhere=result.owned_elsewhere,
-        skipped_no_registration=result.skipped_no_registration,
-    )
+    return FleetSyncOut(**sync_result)
 
 
 @router.put("/sites/{code}/vehicles/{vehicle_id}", response_model=VehicleOut)

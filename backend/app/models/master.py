@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     UniqueConstraint,
@@ -48,6 +49,14 @@ class Site(Base):
         String(255), nullable=False, default="", server_default=""
     )
     commissioned_on: Mapped[date_t | None] = mapped_column(Date, nullable=True)
+    #: Explicit link to SiteOps. Null = unlinked (manual fleet only).
+    siteops_site_id: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True
+    )
+    last_siteops_sync_at: Mapped[datetime | None] = mapped_column(
+        TZDateTime, nullable=True
+    )
+    last_siteops_sync_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
