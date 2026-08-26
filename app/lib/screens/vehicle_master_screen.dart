@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/providers.dart';
 import '../state/selected_site.dart';
+import '../state/session.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
@@ -84,6 +85,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
   int _totalCount = 0;
   int _currentPage = 1;
   bool _isLoading = false;
+  bool _syncing = false;
   String? _error;
   String? _lastSiteId;
 
@@ -592,6 +594,35 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
     }
   }
 
+  /// Give this site's local fleet a row for every SiteOps vehicle it owns —
+  /// inspections, checklists and bus history resolve against the ENM-native
+  /// vehicle id, never the SiteOps one this screen otherwise reads live.
+  Future<void> _syncFleetFromSiteOps(SelectedSiteState site) async {
+    final enmSite = ref.read(sessionProvider).site;
+    final siteopsId = site.id;
+    if (enmSite.isEmpty || siteopsId == null || siteopsId.isEmpty) return;
+
+    setState(() => _syncing = true);
+    try {
+      final json = await ref.read(apiClientProvider).post(
+        '/sites/$enmSite/vehicles/sync-from-siteops',
+        body: {'siteops_site_id': siteopsId},
+      );
+      final r = json as Map<String, dynamic>;
+      final created = r['created'] as int? ?? 0;
+      final backfilled = r['variant_backfilled'] as int? ?? 0;
+      _toast(created == 0 && backfilled == 0
+          ? 'Fleet already up to date.'
+          : 'Synced: $created new, $backfilled checklist variant(s) filled in.');
+      ref.invalidate(siteVehiclesProvider);
+      unawaited(_fetch(siteopsId));
+    } catch (e) {
+      _toast(e.toString().replaceAll('Exception: ', ''), isError: true);
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   void _toast(String msg, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -628,6 +659,16 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
             if (site.name.isNotEmpty)
               Text('Site: ${site.name}', style: AppText.sans(size: 13, color: T.secondary)),
           ])),
+          TextButton.icon(
+            onPressed: _syncing ? null : () => _syncFleetFromSiteOps(site),
+            icon: _syncing
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.sync, size: 18),
+            label: Text('Sync fleet', style: AppText.sans(size: 14, weight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 8),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: T.green, foregroundColor: Colors.white,

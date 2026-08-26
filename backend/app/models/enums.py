@@ -181,6 +181,7 @@ class AuditAction(StrEnum):
     inspection_recorded = "inspection_recorded"
     checklist_updated = "checklist_updated"
     checklist_catalogue_synced = "checklist_catalogue_synced"
+    fleet_synced_from_siteops = "fleet_synced_from_siteops"
     dmr_updated = "dmr_updated"
 
 

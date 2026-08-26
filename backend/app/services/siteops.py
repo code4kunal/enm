@@ -36,12 +36,15 @@ async def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     return resp.json()
 
 
-async def _get_all_pages(path: str) -> list[dict[str, Any]]:
+async def _get_all_pages(
+    path: str, extra_params: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """SiteOps caps page_size at 100 — walk `has_next` to collect every row."""
     rows: list[dict[str, Any]] = []
     page = 1
     while page <= _MAX_PAGES:
-        body = await _get(path, {"page_size": _MAX_PAGE_SIZE, "page": page})
+        params = {"page_size": _MAX_PAGE_SIZE, "page": page, **(extra_params or {})}
+        body = await _get(path, params)
         rows.extend(body.get("data") or [])
         pagination = body.get("pagination")
         if not pagination or not pagination.get("has_next"):
@@ -53,6 +56,15 @@ async def _get_all_pages(path: str) -> list[dict[str, Any]]:
 async def list_sites() -> list[dict[str, Any]]:
     """Every onboarded site, unscoped to any one user's access grants."""
     return await _get_all_pages("/onboarding/sites")
+
+
+async def list_all_vehicles(site_id: str) -> list[dict[str, Any]]:
+    """Every vehicle SiteOps lists under this site id, walking every page.
+
+    For the fleet sync — `list_vehicles()` stays single-page for the Vehicle
+    Master screen's own pagination, which this would otherwise fight.
+    """
+    return await _get_all_pages("/master/vehicles", {"site_id": site_id})
 
 
 async def list_vehicles(params: dict[str, Any]) -> dict[str, Any]:

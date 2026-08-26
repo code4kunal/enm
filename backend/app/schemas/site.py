@@ -143,6 +143,20 @@ class OdometerSyncOut(BaseModel):
     skipped: int = 0
 
 
+class FleetSyncIn(BaseModel):
+    #: SiteOps' own site UUID — the client already holds this from the site
+    #: switcher's own dropdown call, so it is passed rather than re-resolved.
+    siteops_site_id: str = Field(min_length=1, max_length=64)
+
+
+class FleetSyncOut(BaseModel):
+    created: int
+    already_present: int
+    variant_backfilled: int
+    owned_elsewhere: int
+    skipped_no_registration: int
+
+
 class ServiceRecordIn(BaseModel):
     plan_code: str = Field(min_length=1, max_length=50)
     odometer_km: int = Field(ge=0, le=10_000_000)

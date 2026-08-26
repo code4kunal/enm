@@ -17,6 +17,8 @@ from app.errors import Conflict, NotFound
 from app.models.enums import AuditAction
 from app.models.master import Site, Vehicle
 from app.schemas.site import (
+    FleetSyncIn,
+    FleetSyncOut,
     OdometerIn,
     OdometerSyncOut,
     ServiceDueList,
@@ -34,6 +36,7 @@ from app.schemas.site_config import SiteConfigIO
 from app.services import (
     audit,
     checklists,
+    masters,
     odometer,
     service_due,
     site_config,
@@ -223,6 +226,43 @@ async def create_vehicle(
     )
     await session.commit()
     return sites.vehicle_out(vehicle)
+
+
+@router.post("/sites/{code}/vehicles/sync-from-siteops", response_model=FleetSyncOut)
+async def sync_fleet_from_siteops(
+    code: str, payload: FleetSyncIn, user: CurrentUser, session: SessionDep
+) -> FleetSyncOut:
+    """Mirror SiteOps' vehicle master into this site's local fleet.
+
+    SiteOps is the source of truth for the fleet's own attributes; this only
+    ever creates the local row inspections/checklists/history need to attach
+    to, or backfills a still-unset `checklist_variant`. Never touches a
+    vehicle a manager already edited.
+    """
+    site_code = assert_site_admin(user, code)
+    await sites.load_site(session, site_code)
+    result = await masters.sync_vehicles_from_siteops(
+        session, site_code, payload.siteops_site_id
+    )
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.fleet_synced_from_siteops,
+        object_type="site",
+        object_id=site_code,
+        after={
+            "created": result.created,
+            "variant_backfilled": result.variant_backfilled,
+        },
+    )
+    await session.commit()
+    return FleetSyncOut(
+        created=result.created,
+        already_present=result.already_present,
+        variant_backfilled=result.variant_backfilled,
+        owned_elsewhere=result.owned_elsewhere,
+        skipped_no_registration=result.skipped_no_registration,
+    )
 
 
 @router.put("/sites/{code}/vehicles/{vehicle_id}", response_model=VehicleOut)
