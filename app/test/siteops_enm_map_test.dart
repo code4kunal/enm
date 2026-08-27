@@ -38,20 +38,20 @@ void main() {
       );
     });
 
-    test('maps known SiteOps aliases without collapsing unknowns', () {
+    test('maps TMBPL / TUPL SiteOps names onto E&M depots', () {
       expect(
         enmCodeForSiteOpsRow(
-          <String, dynamic>{'id': 'uuid-3', 'name': 'Ghodbandar Depot'},
-          <Site>[mbmt],
+          <String, dynamic>{'id': 'uuid-t', 'name': 'TMBPL', 'code': '1101'},
+          <Site>[mbmt, umt],
         ),
         'MBMT',
       );
       expect(
         enmCodeForSiteOpsRow(
-          <String, dynamic>{'id': 'uuid-4', 'name': 'Some Other Depot'},
-          <Site>[mbmt],
+          <String, dynamic>{'id': 'uuid-u', 'name': 'TUPL', 'code': '1201'},
+          <Site>[mbmt, umt],
         ),
-        isEmpty,
+        'UMT',
       );
     });
 

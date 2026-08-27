@@ -143,7 +143,12 @@ async def update_site(
 ) -> SiteOut:
     """The code is immutable — entries reference it."""
     site = await sites.load_site(session, code)
-    before = {"name": site.name, "timezone": site.timezone, "address": site.address}
+    before = {
+        "name": site.name,
+        "timezone": site.timezone,
+        "address": site.address,
+        "siteops_site_id": site.siteops_site_id,
+    }
 
     if payload.name is not None:
         site.name = payload.name.strip()
@@ -153,7 +158,42 @@ async def update_site(
         site.address = payload.address.strip()
     if "commissioned_on" in payload.model_fields_set:
         site.commissioned_on = payload.commissioned_on
+
+    linked_changed = False
+    if (
+        "siteops_site_id" in payload.model_fields_set
+        and payload.siteops_site_id is not None
+        and payload.siteops_site_id != site.siteops_site_id
+    ):
+        taken = await session.scalar(
+            select(Site).where(
+                Site.siteops_site_id == payload.siteops_site_id,
+                Site.code != site.code,
+            )
+        )
+        if taken is not None:
+            raise Conflict(
+                f"SiteOps site already linked to {taken.code}",
+                {"siteops_site_id": "duplicate"},
+            )
+        site.siteops_site_id = payload.siteops_site_id
+        linked_changed = True
+
     site.updated_at = datetime.now(UTC)
+
+    sync_after: dict | None = None
+    if linked_changed and site.siteops_site_id:
+        sync_after = await masters.sync_vehicles_from_siteops(
+            session, site.code, site.siteops_site_id
+        )
+        site.last_siteops_sync_at = datetime.now(UTC)
+        site.last_siteops_sync_result = {
+            "created": sync_after.created,
+            "already_present": sync_after.already_present,
+            "variant_backfilled": sync_after.variant_backfilled,
+            "owned_elsewhere": sync_after.owned_elsewhere,
+            "skipped_no_registration": sync_after.skipped_no_registration,
+        }
 
     await audit.record(
         session,
@@ -162,7 +202,13 @@ async def update_site(
         object_type="site",
         object_id=site.code,
         before=before,
-        after={"name": site.name, "timezone": site.timezone, "address": site.address},
+        after={
+            "name": site.name,
+            "timezone": site.timezone,
+            "address": site.address,
+            "siteops_site_id": site.siteops_site_id,
+            **({"fleet_sync": site.last_siteops_sync_result} if sync_after else {}),
+        },
     )
     await session.commit()
     return sites.site_out(site)
@@ -283,25 +329,19 @@ async def sync_fleet_from_siteops(
     site = await sites.load_site(session, site_code)
 
     body = payload or FleetSyncIn()
-    if body.siteops_site_id:
-        if (
-            site.siteops_site_id
-            and site.siteops_site_id != body.siteops_site_id
-        ):
+    if body.siteops_site_id and site.siteops_site_id != body.siteops_site_id:
+        taken = await session.scalar(
+            select(Site).where(
+                Site.siteops_site_id == body.siteops_site_id,
+                Site.code != site_code,
+            )
+        )
+        if taken is not None:
             raise Conflict(
-                f"{site_code} is already linked to a different SiteOps site",
-                {"siteops_site_id": "conflict"},
+                f"SiteOps site already linked to {taken.code}",
+                {"siteops_site_id": "duplicate"},
             )
-        if site.siteops_site_id is None:
-            taken = await session.scalar(
-                select(Site).where(Site.siteops_site_id == body.siteops_site_id)
-            )
-            if taken is not None and taken.code != site_code:
-                raise Conflict(
-                    f"SiteOps site already linked to {taken.code}",
-                    {"siteops_site_id": "duplicate"},
-                )
-            site.siteops_site_id = body.siteops_site_id
+        site.siteops_site_id = body.siteops_site_id
 
     if not site.siteops_site_id:
         raise Conflict(

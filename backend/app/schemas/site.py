@@ -94,6 +94,16 @@ class SiteUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
     address: str | None = Field(default=None, max_length=255)
     commissioned_on: date_t | None = None
+    #: Re-link / repair SiteOps mapping from the edit-site form.
+    siteops_site_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @field_validator("siteops_site_id")
+    @classmethod
+    def _siteops_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned or None
 
 
 # --- vehicles --------------------------------------------------------------

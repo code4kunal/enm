@@ -92,9 +92,7 @@ class _SitesPaneState extends ConsumerState<SitesPane> {
       _draft = draft;
       _error = null;
     });
-    if (!draft.isEdit) {
-      unawaited(_loadSiteOpsOptions());
-    }
+    unawaited(_loadSiteOpsOptions());
   }
 
   void _close() => setState(() {
@@ -313,14 +311,15 @@ class _SiteForm extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!draft.isEdit) ...<Widget>[
-                    SizedBox(
+                  SizedBox(
                       width: half,
                       child: _field(
-                        const FieldLabel(
+                        FieldLabel(
                           label: 'SiteOps site',
-                          required: true,
-                          hint: '— vehicles pull from here',
+                          required: !draft.isEdit,
+                          hint: draft.isEdit
+                              ? '— re-link to pull vehicles from SiteOps'
+                              : '— vehicles pull from here',
                         ),
                         siteOpsLoading
                             ? const Padding(
@@ -328,7 +327,8 @@ class _SiteForm extends StatelessWidget {
                                 child: LinearProgressIndicator(color: T.green),
                               )
                             : DropdownButtonFormField<String>(
-                                initialValue: draft.siteopsSiteId,
+                                // ignore: deprecated_member_use
+                                value: draft.siteopsSiteId,
                                 isExpanded: true,
                                 decoration: const InputDecoration(
                                   border: OutlineInputBorder(),
@@ -357,6 +357,7 @@ class _SiteForm extends StatelessWidget {
                               ),
                       ),
                     ),
+                  if (!draft.isEdit)
                     SizedBox(
                       width: half,
                       child: _field(
@@ -388,7 +389,6 @@ class _SiteForm extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
                   SizedBox(
                     width: half,
                     child: _field(

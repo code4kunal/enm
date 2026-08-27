@@ -103,9 +103,11 @@ class SitesController extends AsyncNotifier<List<Site>> {
           address: draft.address.trim(),
           timezone: draft.timezone,
           commissionedOn: draft.commissionedOn,
+          siteopsSiteId: draft.siteopsSiteId,
         ),
       );
       _patch((list) => list.map((s) => s.code == saved.code ? saved : s).toList());
+      ref.invalidate(sitesProvider);
       return saved;
     }
 

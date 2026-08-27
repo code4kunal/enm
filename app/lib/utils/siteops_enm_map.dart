@@ -10,7 +10,9 @@ const kSiteOpsEnmAliases = <String, String>{
   'ghodbunder': 'MBMT',
   'mira bhayandar': 'MBMT',
   'mira-bhayandar': 'MBMT',
+  'tmbpl': 'MBMT',
   'ulhasnagar': 'UMT',
+  'tupl': 'UMT',
 };
 
 /// Map a SiteOps onboarding row onto an E&M depot code (`MBMT` / `GTI` / …).
