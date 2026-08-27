@@ -30,7 +30,7 @@ API_PORT=8123 PUBLIC_BASE_URL=http://localhost:8123 docker compose up -d db api
 # Client from source (hot reload)
 cd app && flutter run -d chrome \
   --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
-  --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+  --dart-define=SITEOPS_BASE_URL=https://platform-service.transvolt.in/api/v1
 
 # If your API listens on :8000 instead of :8123, swap the port above.
 # Both URLs are compile-time `--dart-define` values — there is no .env file

@@ -33,12 +33,16 @@ DEFECT_SOURCES = [
 
 #: Backs "Type of Defect" on work-done, driver-complaint and PM registers.
 #:
-#: These are the GROUP values as written on MBMT's own snag report, not an
-#: invented taxonomy — an imported row has to match a master entry exactly, and
-#: the sheet is the authority on what the fitters actually write.
+#: Two vocabularies live here on purpose:
+#: 1. MBMT snag-report GROUP values (BODY ELECTRICALS, HV SYSTEM, …) — an
+#:    imported row has to match a master entry, and the sheet is the authority.
+#: 2. The platform breakdown subsystem list (`data/Drop down list of
+#:    Breakdwons.xlsx`) — shared for bus and truck, seeded for every site.
+#:
 #: `category` is what the Daily Maintenance Report splits breakdowns and
 #: defects on. A manager can re-map any of them; these are the defaults.
 DEFECT_TYPES = [
+    # --- snag-report GROUP spellings (MBMT and peers) ---
     ("BODY REFURBISHMENT", DefectCategory.body),
     ("BODY ELECTRICALS", DefectCategory.electrical),
     ("ELECTRICAL", DefectCategory.electrical),
@@ -54,7 +58,29 @@ DEFECT_TYPES = [
     ("ITS SYSTEM", DefectCategory.its),
     ("AIR CONDITION", DefectCategory.ac),
     ("TYRE", DefectCategory.tyre),
+    ("ACCIDENTS", DefectCategory.other),
     ("OTHERS", DefectCategory.other),
+    # --- platform breakdown subsystems (bus + truck, all sites) ---
+    ("HV Battery", DefectCategory.electrical),
+    ("HV electrical system", DefectCategory.electrical),
+    ("LV Battery", DefectCategory.electrical),
+    ("LV Electrical system", DefectCategory.electrical),
+    ("Horn System", DefectCategory.electrical),
+    ("Suspension system", DefectCategory.mechanical),
+    ("Brake system", DefectCategory.mechanical),
+    ("Steering system", DefectCategory.mechanical),
+    ("Transmission System", DefectCategory.mechanical),
+    ("Acceleration system", DefectCategory.mechanical),
+    ("BCS cooling system", DefectCategory.mechanical),
+    ("TCS cooling system", DefectCategory.mechanical),
+    ("AC system", DefectCategory.ac),
+    ("Charging Issue", DefectCategory.electrical),
+    ("Door System", DefectCategory.mechanical),
+    ("Bus body system", DefectCategory.body),
+    ("ITS system", DefectCategory.its),
+    ("Chassis related defects", DefectCategory.mechanical),
+    ("Wheels related defects", DefectCategory.mechanical),
+    ("Tyre", DefectCategory.tyre),
 ]
 
 #: The "TYPE OF WORK" column on the snag report. A code either files into a
@@ -71,6 +97,12 @@ WORK_TYPES = [
     ("D.C", "Driver complaint", Register.driver_complaint, False),
     ("DEPOT", "Daily work", Register.work_done, False),
     ("C/F", "Carried forward", Register.work_done, False),
+    # Intermediate maintenance / in-depot jobs written as I.M on MBMT sheets.
+    ("I.M", "Intermediate maintenance", Register.work_done, False),
+    # Accident cases (GROUP ACCIDENTS) — still filed as day-to-day work done.
+    ("ACD", "Accident", Register.work_done, False),
+    # Technician / OEM attended jobs written as T.O on the sheet.
+    ("T.O", "Technician attended", Register.work_done, False),
     ("D.I", "Daily inspection", None, True),
     ("10 DAYS SERVICE", "10 day inspection", None, True),
     ("P.M", "Preventive maintenance docking", None, True),

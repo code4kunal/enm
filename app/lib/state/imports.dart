@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/import_targets.dart';
 import '../data/repositories.dart';
 import '../models/site_import.dart';
+import 'entries.dart';
+import 'inspections.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -288,6 +290,8 @@ class ImportController extends Notifier<ImportSession> {
       ref.invalidate(importProfilesProvider);
       ref.invalidate(masterDataProvider);
       ref.invalidate(siteConfigProvider);
+      ref.invalidate(entriesProvider);
+      ref.invalidate(siteInspectionsProvider);
     } on ApiException catch (e) {
       state = state.copyWith(busy: false, error: e.message);
     }

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import AppError, ValidationError
 from app.models.checklist import InspectionEntry
 from app.models.entry import Entry
-from app.models.enums import EntryStatus, ImportTarget, Register, Shift
+from app.models.enums import DefectCategory, EntryStatus, ImportTarget, Register, Shift
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
 from app.models.site_config import ServicePlan
 from app.models.user import User
@@ -295,6 +295,10 @@ def _validate_row(
     reg_key = "bus" if (register is not None or is_snag) else "registration_no"
     if reg_key in result.values:
         reg = normalize_registration_no(result.values[reg_key])
+        # Fleet-wide rows (N/A daily inspection covering every bus) land on a
+        # synthetic vehicle so the day is not dropped from history.
+        if is_snag and reg in NOT_A_VEHICLE:
+            reg = FLEETWIDE_REGISTRATION
         result.values[reg_key] = reg
         if reg in NOT_A_VEHICLE:
             result.errors.append(
@@ -426,6 +430,10 @@ def master_key(raw: str) -> str:
 #: Registration placeholders that are not vehicles.
 NOT_A_VEHICLE = {"N/A", "NA", "NIL", "NONE", "-"}
 
+#: Synthetic registration for fleet-wide snag rows (e.g. "N/A" daily inspection
+#: covering the whole depot). Kept out of SiteOps sync; created on demand.
+FLEETWIDE_REGISTRATION = "FLEETWIDE"
+
 
 async def _work_types(session: AsyncSession) -> dict[str, WorkType]:
     rows = await session.scalars(select(WorkType).where(WorkType.is_active.is_(True)))
@@ -464,6 +472,23 @@ async def build_preview(
         if target is ImportTarget.snag_report
         else {}
     )
+
+    # Snag sheets are the depot's source of truth — never drop a written row
+    # because a code, group or bus is new. Vivify masters/fleet first, then
+    # validate against the expanded lists.
+    if target is ImportTarget.snag_report:
+        mapped = [apply_mappings(row, mappings) for row in rows]
+        await _ensure_snag_dependencies(
+            session,
+            site_code=site_code,
+            mapped_rows=mapped,
+            fleet=fleet,
+            types=types,
+            work_types=work_types,
+        )
+        fleet = await _fleet(session, site_code)
+        sources, types = await _master_names(session)
+        work_types = await _work_types(session)
 
     accepted: list[dict[str, str]] = []
     numbers: list[int] = []
@@ -515,6 +540,90 @@ async def build_preview(
     )
     previews.put(staged)
     return staged
+
+
+async def _ensure_snag_dependencies(
+    session: AsyncSession,
+    *,
+    site_code: str,
+    mapped_rows: list[dict[str, str]],
+    fleet: dict[str, Vehicle],
+    types: dict[str, str],
+    work_types: dict[str, WorkType],
+) -> None:
+    """Create any work type, defect group or bus the sheet names that we lack.
+
+    Snag history is operational truth — rejecting a written row because the
+    master list lagged the fitters' vocabulary is data loss. New codes default
+    to daily work-done so something lands; a manager can re-route later.
+    """
+    created = False
+    max_work_order = max((w.sort_order for w in work_types.values()), default=0)
+
+    seen_work: set[str] = set()
+    seen_types: set[str] = set()
+    seen_regs: set[str] = set()
+    need_fleetwide = False
+
+    for values in mapped_rows:
+        raw_wt = values.get("work_type", "").strip()
+        if raw_wt:
+            key = normalize_work_type(raw_wt)
+            if key and key not in work_types and key not in seen_work:
+                seen_work.add(key)
+                max_work_order += 10
+                # Prefer the sheet's own punctuation (I.M, T.O) over the
+                # collapsed key so the master list stays readable.
+                code = collapse(raw_wt).upper() or key
+                session.add(
+                    WorkType(
+                        code=code[:32],
+                        name=code[:120],
+                        register=Register.work_done,
+                        is_inspection=False,
+                        sort_order=max_work_order,
+                    )
+                )
+                created = True
+
+        raw_group = collapse(values.get("defectType", ""))
+        if raw_group:
+            key = master_key(raw_group)
+            if key and key not in types and key not in seen_types:
+                seen_types.add(key)
+                session.add(
+                    DefectType(
+                        name=raw_group[:120],
+                        category=DefectCategory.other,
+                        sort_order=900 + len(seen_types),
+                    )
+                )
+                created = True
+
+        raw_bus = values.get("bus", "").strip()
+        if raw_bus:
+            reg = normalize_registration_no(raw_bus)
+            if reg in NOT_A_VEHICLE:
+                need_fleetwide = True
+                continue
+            if reg and reg not in fleet and reg not in seen_regs:
+                seen_regs.add(reg)
+                session.add(Vehicle(registration_no=reg, site_code=site_code))
+                created = True
+
+    if need_fleetwide and FLEETWIDE_REGISTRATION not in fleet:
+        session.add(
+            Vehicle(
+                registration_no=FLEETWIDE_REGISTRATION,
+                site_code=site_code,
+                make="",
+                model="Fleet-wide snag rows",
+            )
+        )
+        created = True
+
+    if created:
+        await session.flush()
 
 
 def _natural_key(target: ImportTarget, values: dict[str, str]) -> str | None:
@@ -835,6 +944,20 @@ async def _commit_snag_report(
     currently says, not a table baked into this file. The KMS column is a real
     odometer sighting and is recorded as one on the way past.
     """
+    work_types = await _work_types(session)
+    fleet = await _fleet(session, site_code)
+    _, types = await _master_names(session)
+    # Commit-time safety net: preview may have been against an older fleet, or
+    # a master created at preview may have been rolled back. Re-vivify from the
+    # already-mapped staged values before writing.
+    await _ensure_snag_dependencies(
+        session,
+        site_code=site_code,
+        mapped_rows=rows,
+        fleet=fleet,
+        types=types,
+        work_types=work_types,
+    )
     work_types = await _work_types(session)
     fleet = await _fleet(session, site_code)
 

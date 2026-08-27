@@ -768,11 +768,11 @@ async def test_a_register_row_still_owes_its_driver_complaint(
     assert errors[0]["field"] == "Driver Complaint"
 
 
-async def test_an_unknown_work_type_is_still_fatal_when_the_row_is_thin(
+async def test_an_unknown_work_type_is_vivified_on_snag_import(
     client: AsyncClient,
 ) -> None:
-    """Resolving the work type first must not let an unroutable row through on
-    the grounds that it might be an inspection."""
+    """Snag vocabulary grows with the sheet — a new TYPE OF WORK must not
+    drop the row. It lands as daily work-done until a manager re-routes it."""
     h = await auth_headers(client)
     await _snag_work_types()
 
@@ -782,12 +782,63 @@ async def test_an_unknown_work_type_is_still_fatal_when_the_row_is_thin(
         target="snagReport",
         body=(
             "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
-            "2026-08-02,MH40LY1895,INVENTED,,Nothing,Tushar\n"
+            "2026-08-02,MH40LY1895,I.M,Seat torn,Stitched,Tushar\n"
         ),
         mappings=_mappings(SNAG_MAP),
     )
-    fields = {e["field"] for e in r.json()["errors"]}
-    # Both complaints hold: the code is unknown *and* the complaint is blank on
-    # a row that is not an inspection.
-    assert "Type of Work" in fields
-    assert "Driver Complaint" in fields
+    assert r.status_code == 200, r.text
+    assert r.json()["errors"] == []
+    assert r.json()["new_count"] == 1
+
+    await _commit(client, h, r.json()["token"])
+    counts = await _counts()
+    assert counts["entries"] == 1
+
+
+async def test_snag_import_adds_missing_buses_instead_of_rejecting(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+            "2026-08-02,MH05FJ3510,B.D,Horn dead,Replaced,Tushar\n"
+        ),
+        mappings=_mappings(SNAG_MAP),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["errors"] == []
+    await _commit(client, h, r.json()["token"])
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    assert any(v["registration_no"] == "MH05FJ3510" for v in fleet)
+
+
+async def test_na_vehicle_on_snag_lands_on_fleetwide_placeholder(
+    client: AsyncClient,
+) -> None:
+    """Fleet-wide daily inspection rows write N/A — keep the day, don't drop it."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
+            "2026-08-02,N/A,D.I,DAILY INSPECTION,All buses checked,Tushar\n"
+        ),
+        mappings=_mappings(SNAG_MAP),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["errors"] == []
+    await _commit(client, h, r.json()["token"])
+    counts = await _counts()
+    assert counts["inspections"] == 1
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    assert any(v["registration_no"] == "FLEETWIDE" for v in fleet)

@@ -19,7 +19,7 @@ abstract final class SiteOpsConfig {
   /// provides a non-empty value. Mutable for exactly that reason.
   static String baseUrl = const String.fromEnvironment(
     'SITEOPS_BASE_URL',
-    defaultValue: 'https://dev-siteops-platform.transvolt.org/api/v1',
+    defaultValue: 'https://platform-service.transvolt.in/api/v1',
   );
 }
 

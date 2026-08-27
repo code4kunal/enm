@@ -5,7 +5,7 @@
 set -eu
 
 API_BASE_URL="${API_BASE_URL:-http://localhost:8123/api/v1}"
-SITEOPS_BASE_URL="${SITEOPS_BASE_URL:-https://dev-siteops-platform.transvolt.org/api/v1}"
+SITEOPS_BASE_URL="${SITEOPS_BASE_URL:-https://platform-service.transvolt.in/api/v1}"
 ENVIRONMENT="${ENVIRONMENT:-development}"
 
 # Same guard the old build-time check made, moved to the stage where it

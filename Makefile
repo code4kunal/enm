@@ -14,7 +14,7 @@ PY       := $(BACKEND)/.venv/bin/python
 FLUTTER  ?= flutter
 API_PORT ?= 8123
 API_BASE ?= http://localhost:$(API_PORT)/api/v1
-SITEOPS_BASE ?= https://dev-siteops-platform.transvolt.org/api/v1
+SITEOPS_BASE ?= https://platform-service.transvolt.in/api/v1
 
 .PHONY: help
 help: ## List the targets

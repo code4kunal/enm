@@ -19,7 +19,7 @@ import '../repositories.dart';
 ///    ```sh
 ///    flutter run -d chrome \
 ///      --dart-define=API_BASE_URL=http://localhost:8123/api/v1 \
-///      --dart-define=SITEOPS_BASE_URL=https://dev-siteops-platform.transvolt.org/api/v1
+///      --dart-define=SITEOPS_BASE_URL=https://platform-service.transvolt.in/api/v1
 ///    ```
 ///
 /// There is no offline mode. Every screen reads from the database through this

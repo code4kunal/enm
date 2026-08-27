@@ -415,7 +415,7 @@ void main() {
         );
       });
       final siteOps = SiteOpsClient(
-        baseUrl: 'https://dev-siteops-platform.transvolt.org/api/v1',
+        baseUrl: 'https://platform-service.transvolt.in/api/v1',
         httpClient: siteOpsMock,
       );
 
@@ -424,7 +424,7 @@ void main() {
 
       expect(
         siteOpsUri.toString(),
-        'https://dev-siteops-platform.transvolt.org/api/v1/auth/login',
+        'https://platform-service.transvolt.in/api/v1/auth/login',
       );
       expect(user.userId, 'KUNAL');
       expect(user.role, UserRole.superAdmin);

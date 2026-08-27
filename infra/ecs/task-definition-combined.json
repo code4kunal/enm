@@ -28,7 +28,7 @@
         { "name": "SEED_ON_START", "value": "false" },
         { "name": "PUBLIC_BASE_URL", "value": "https://enm.transvolt.org" },
         { "name": "CORS_ORIGINS", "value": "https://enm.transvolt.org" },
-        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" },
+        { "name": "SITEOPS_BASE_URL", "value": "https://platform-service.transvolt.in/api/v1" },
         { "name": "MEDIA_ROOT", "value": "/srv/media" }
       ],
       "secrets": [
@@ -85,7 +85,7 @@
       "environment": [
         { "name": "ENVIRONMENT", "value": "production" },
         { "name": "API_BASE_URL", "value": "https://enm.transvolt.org/api/v1" },
-        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" }
+        { "name": "SITEOPS_BASE_URL", "value": "https://platform-service.transvolt.in/api/v1" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

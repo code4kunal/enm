@@ -239,6 +239,10 @@ async def preview(
         mappings=parsed_mappings,
         actor=user,
     )
+    # Snag preview may have vivified work types / groups / buses so every
+    # written row can pass validation — those masters must survive the request.
+    if parsed_target is ImportTarget.snag_report:
+        await session.commit()
     return ImportPreviewOut(
         token=staged.token,
         file_name=staged.file_name,

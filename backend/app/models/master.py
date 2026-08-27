@@ -191,8 +191,8 @@ class WorkType(Base):
         D.I / 10 DAYS SERVICE / P.M → PM schedule.
 
     A code either files into a `register`, or is an `is_inspection` code with
-    its own checklist. A code that is neither is recognised but not yet routed;
-    its rows are rejected by name rather than silently dropped.
+    its own checklist. Unknown codes met on a snag import are auto-added as
+    daily work-done so the row is never dropped; a manager can re-route later.
     """
 
     __tablename__ = "work_types"

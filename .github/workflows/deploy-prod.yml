@@ -9,7 +9,7 @@ name: Deploy prod
 #   AWS_SECRET_ACCESS_KEY
 #
 # Images are tagged with the git SHA only (no :latest). Live task-def env
-# (including DEV SiteOps URLs) is preserved; only the container image changes.
+# (including SITEOPS_BASE_URL) is preserved; only the container image changes.
 
 on:
   workflow_run:

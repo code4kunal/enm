@@ -25,7 +25,7 @@
       "environment": [
         { "name": "ENVIRONMENT", "value": "production" },
         { "name": "API_BASE_URL", "value": "https://enm.transvolt.org/api/v1" },
-        { "name": "SITEOPS_BASE_URL", "value": "https://dev-siteops-platform.transvolt.org/api/v1" }
+        { "name": "SITEOPS_BASE_URL", "value": "https://platform-service.transvolt.in/api/v1" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
