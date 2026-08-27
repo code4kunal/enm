@@ -49,7 +49,12 @@ void main() {
       await container.read(sitesAdminProvider.future);
 
       final created = await controller.save(
-        const SiteDraft(code: 'pune', name: 'Pune City Transport'),
+        const SiteDraft(
+          code: 'pune',
+          name: 'Pune City Transport',
+          siteopsSiteId: 'siteops-pune-1',
+          operatingCategories: <String>['bus'],
+        ),
       );
 
       // Codes are normalised to uppercase.
