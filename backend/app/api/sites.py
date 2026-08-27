@@ -109,13 +109,7 @@ async def create_site(
         result = await masters.sync_vehicles_from_siteops(
             session, site.code, payload.siteops_site_id
         )
-        sync_after = {
-            "created": result.created,
-            "already_present": result.already_present,
-            "variant_backfilled": result.variant_backfilled,
-            "owned_elsewhere": result.owned_elsewhere,
-            "skipped_no_registration": result.skipped_no_registration,
-        }
+        sync_after = result.as_dict()
         site.last_siteops_sync_at = datetime.now(UTC)
         site.last_siteops_sync_result = sync_after
 
@@ -186,17 +180,12 @@ async def update_site(
 
     sync_after: dict | None = None
     if linked_changed and site.siteops_site_id:
-        sync_after = await masters.sync_vehicles_from_siteops(
+        result = await masters.sync_vehicles_from_siteops(
             session, site.code, site.siteops_site_id
         )
+        sync_after = result.as_dict()
         site.last_siteops_sync_at = datetime.now(UTC)
-        site.last_siteops_sync_result = {
-            "created": sync_after.created,
-            "already_present": sync_after.already_present,
-            "variant_backfilled": sync_after.variant_backfilled,
-            "owned_elsewhere": sync_after.owned_elsewhere,
-            "skipped_no_registration": sync_after.skipped_no_registration,
-        }
+        site.last_siteops_sync_result = sync_after
 
     await audit.record(
         session,
@@ -321,12 +310,12 @@ async def sync_fleet_from_siteops(
     session: SessionDep,
     payload: FleetSyncIn | None = None,
 ) -> FleetSyncOut:
-    """Mirror SiteOps' vehicle master into this site's local fleet.
+    """Overwrite this site's local fleet from SiteOps.
 
     Uses the site's stored `siteops_site_id`. Optionally accepts a body to
-    set/repair that link. SiteOps is the source of truth for fleet attributes;
-    this only creates the local row inspections need, or backfills an unset
-    `checklist_variant`. Never touches a vehicle a manager already edited.
+    set/repair that link. SiteOps is the source of truth: creates missing
+    buses, rewrites attributes, reactivates returnees, and retires locals
+    SiteOps no longer lists.
     """
     site_code = assert_site_admin(user, code)
     site = await sites.load_site(session, site_code)
@@ -356,13 +345,7 @@ async def sync_fleet_from_siteops(
     result = await masters.sync_vehicles_from_siteops(
         session, site_code, site.siteops_site_id
     )
-    sync_result = {
-        "created": result.created,
-        "already_present": result.already_present,
-        "variant_backfilled": result.variant_backfilled,
-        "owned_elsewhere": result.owned_elsewhere,
-        "skipped_no_registration": result.skipped_no_registration,
-    }
+    sync_result = result.as_dict()
     site.last_siteops_sync_at = datetime.now(UTC)
     site.last_siteops_sync_result = sync_result
     await audit.record(

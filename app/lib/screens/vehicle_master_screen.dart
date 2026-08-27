@@ -594,9 +594,8 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
     }
   }
 
-  /// Give this site's local fleet a row for every SiteOps vehicle it owns —
-  /// inspections, checklists and bus history resolve against the ENM-native
-  /// vehicle id, never the SiteOps one this screen otherwise reads live.
+  /// Overwrite this site's local fleet from SiteOps (create / update /
+  /// reactivate / retire) so ENM-native vehicle ids match SiteOps master.
   Future<void> _syncFleetFromSiteOps(SelectedSiteState site) async {
     final enmSite = ref.read(sessionProvider).site;
     final siteopsId = site.id;
@@ -610,10 +609,18 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
       );
       final r = json as Map<String, dynamic>;
       final created = r['created'] as int? ?? 0;
-      final backfilled = r['variant_backfilled'] as int? ?? 0;
-      _toast(created == 0 && backfilled == 0
+      final updated = r['updated'] as int? ?? 0;
+      final deactivated = r['deactivated'] as int? ?? 0;
+      final reactivated = r['reactivated'] as int? ?? 0;
+      final parts = <String>[
+        if (created > 0) '$created new',
+        if (updated > 0) '$updated updated',
+        if (reactivated > 0) '$reactivated reactivated',
+        if (deactivated > 0) '$deactivated retired',
+      ];
+      _toast(parts.isEmpty
           ? 'Fleet already up to date.'
-          : 'Synced: $created new, $backfilled checklist variant(s) filled in.');
+          : 'Synced: ${parts.join(', ')}.');
       ref.invalidate(siteVehiclesProvider);
       unawaited(_fetch(siteopsId));
     } catch (e) {

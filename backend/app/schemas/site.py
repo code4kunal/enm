@@ -188,7 +188,10 @@ class FleetSyncIn(BaseModel):
 class FleetSyncOut(BaseModel):
     created: int
     already_present: int
+    updated: int = 0
     variant_backfilled: int
+    reactivated: int = 0
+    deactivated: int = 0
     owned_elsewhere: int
     skipped_no_registration: int
 

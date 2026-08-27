@@ -33,49 +33,81 @@ def _checklist_variant_from_ac_nac(ac_nac: str | None) -> str | None:
     return None
 
 
+#: Synthetic placeholder for fleet-wide snag rows — not a SiteOps bus.
+_FLEETWIDE_REGISTRATION = "FLEETWIDE"
+
+
 @dataclass(slots=True)
 class FleetSyncResult:
     created: int = 0
-    #: Already on this site's local fleet; left untouched except possibly variant.
+    #: On this site and still in SiteOps; attributes already matched.
     already_present: int = 0
+    #: On this site; make / model / checklist_variant rewritten from SiteOps.
+    updated: int = 0
     variant_backfilled: int = 0
+    #: Was retired locally; SiteOps still lists it — brought back.
+    reactivated: int = 0
+    #: Active locally but absent from SiteOps — retired so the master matches.
+    deactivated: int = 0
     #: Registration exists on a *different* ENM site — never moved automatically.
     owned_elsewhere: int = 0
     skipped_no_registration: int = 0
 
+    def as_dict(self) -> dict:
+        return {
+            "created": self.created,
+            "already_present": self.already_present,
+            "updated": self.updated,
+            "variant_backfilled": self.variant_backfilled,
+            "reactivated": self.reactivated,
+            "deactivated": self.deactivated,
+            "owned_elsewhere": self.owned_elsewhere,
+            "skipped_no_registration": self.skipped_no_registration,
+        }
 
 async def sync_vehicles_from_siteops(
     session: AsyncSession, site_code: str, siteops_site_id: str
 ) -> FleetSyncResult:
-    """Give this site's local fleet a row for every SiteOps vehicle it owns.
+    """Overwrite this site's local fleet from SiteOps.
 
-    Vehicle Master reads SiteOps live for display, but inspections, bus
-    history, off-road and units all resolve against the ENM-native vehicle id
-    — so a bus that only exists on SiteOps has nothing for those to attach
-    to, and cannot carry a `checklist_variant` either. This is what actually
-    creates the local row `resolve_vehicle`'s docstring already assumes exists
-    ("A bus joins the fleet through Vehicle Master or an import").
+    SiteOps is the source of truth for who is on the site. Sync creates missing
+    rows, rewrites make / model / checklist_variant from SiteOps, reactivates
+    buses that returned, and retires active local buses that SiteOps no longer
+    lists. Past entries keep their FK to a retired vehicle; dropdowns drop it.
 
-    Never overwrites: an existing local vehicle keeps whatever a manager
-    already set, including a `checklist_variant` a depot corrected by hand.
+    Vehicle Master may still read SiteOps live for display, but inspections,
+    off-road and units resolve against the ENM-native vehicle id — so every
+    SiteOps bus needs a local row.
     """
     rows = await siteops.list_all_vehicles(siteops_site_id)
 
-    registrations = [
-        normalize_registration_no(str(r.get("vehicle_no") or ""))
-        for r in rows
-        if str(r.get("vehicle_no") or "").strip()
-    ]
+    siteops_regs: set[str] = set()
+    for r in rows:
+        raw = str(r.get("vehicle_no") or "")
+        if raw.strip():
+            siteops_regs.add(normalize_registration_no(raw))
+
     existing = {
         v.registration_no: v
         for v in (
             await session.scalars(
-                select(Vehicle).where(Vehicle.registration_no.in_(registrations))
+                select(Vehicle).where(Vehicle.site_code == site_code)
             )
         )
         .unique()
         .all()
     }
+    # Also need cross-site ownership checks for SiteOps regs not on this site.
+    if siteops_regs:
+        for v in (
+            await session.scalars(
+                select(Vehicle).where(
+                    Vehicle.registration_no.in_(siteops_regs),
+                    Vehicle.site_code != site_code,
+                )
+            )
+        ).unique().all():
+            existing.setdefault(v.registration_no, v)
 
     result = FleetSyncResult()
     for row in rows:
@@ -85,14 +117,33 @@ async def sync_vehicles_from_siteops(
             continue
         registration_no = normalize_registration_no(raw_reg)
         variant = _checklist_variant_from_ac_nac(row.get("ac_nac"))
+        make = str(row.get("make") or "")
+        model = str(row.get("model") or "")
 
         found = existing.get(registration_no)
         if found is not None:
             if found.site_code != site_code:
                 result.owned_elsewhere += 1
-            elif found.checklist_variant is None and variant is not None:
+                continue
+
+            changed = False
+            if found.make != make:
+                found.make = make
+                changed = True
+            if found.model != model:
+                found.model = model
+                changed = True
+            if found.checklist_variant != variant:
+                if found.checklist_variant is None and variant is not None:
+                    result.variant_backfilled += 1
                 found.checklist_variant = variant
-                result.variant_backfilled += 1
+                changed = True
+            if not found.is_active:
+                found.is_active = True
+                result.reactivated += 1
+                changed = True
+            if changed:
+                result.updated += 1
             else:
                 result.already_present += 1
             continue
@@ -100,13 +151,24 @@ async def sync_vehicles_from_siteops(
         vehicle = Vehicle(
             registration_no=registration_no,
             site_code=site_code,
-            make=str(row.get("make") or ""),
-            model=str(row.get("model") or ""),
+            make=make,
+            model=model,
             checklist_variant=variant,
         )
         session.add(vehicle)
         existing[registration_no] = vehicle
         result.created += 1
+
+    for reg, vehicle in existing.items():
+        if vehicle.site_code != site_code:
+            continue
+        if reg == _FLEETWIDE_REGISTRATION:
+            continue
+        if reg in siteops_regs:
+            continue
+        if vehicle.is_active:
+            vehicle.is_active = False
+            result.deactivated += 1
 
     await session.flush()
     return result
@@ -138,14 +200,7 @@ async def sync_all_linked_sites() -> list[dict]:
                 result = await sync_vehicles_from_siteops(
                     session, site.code, site.siteops_site_id
                 )
-                payload = {
-                    "created": result.created,
-                    "already_present": result.already_present,
-                    "variant_backfilled": result.variant_backfilled,
-                    "owned_elsewhere": result.owned_elsewhere,
-                    "skipped_no_registration": result.skipped_no_registration,
-                    "ok": True,
-                }
+                payload = {**result.as_dict(), "ok": True}
             except SiteOpsUnavailable as e:
                 payload = {"ok": False, "error": str(e)}
             except Exception as e:  # noqa: BLE001 — never abort the batch
