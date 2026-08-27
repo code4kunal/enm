@@ -43,6 +43,7 @@ from app.services import (
     sites,
 )
 from app.services.common import today_ist
+from app.services.inspection_plans import ensure_default_plans
 
 router = APIRouter(tags=["sites"])
 
@@ -100,6 +101,8 @@ async def create_site(
 
     # Seed checklists for the declared categories (bus by default).
     await checklists.apply_catalogue(session, site.code)
+    # Seed D.I / 10-day cycles so the nightly scheduler has something to run.
+    await ensure_default_plans(session, site.code)
 
     sync_after: dict | None = None
     if payload.siteops_site_id:

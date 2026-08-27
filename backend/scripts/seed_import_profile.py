@@ -19,10 +19,9 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models.enums import ImportTarget
-from app.models.inspection import InspectionPlan
-from app.models.master import Site, WorkType
+from app.models.master import Site
 from app.models.site_import import SiteImportMapping, SiteImportProfile
-from app.services.site_config import get_or_create
+from app.services.inspection_plans import ensure_default_plans
 
 PROFILE_NAME = "MBMT monthly snag report"
 
@@ -93,46 +92,6 @@ async def _upsert(
     return verb
 
 
-#: The site's inspection cycles. The daily inspection covers the whole fleet
-#: every night (uncapped); the 10-day service is limited by bay time to about
-#: five buses, which is exactly what MBMT's own sheet shows.
-INSPECTION_PLANS: list[tuple[str, int, int]] = [
-    # (work type code, cycle days, nightly cap — 0 means uncapped)
-    ("D.I", 1, 0),
-    ("10 DAYS SERVICE", 10, 5),
-]
-
-
-async def _seed_plans(session, site_code: str) -> None:
-    config = await get_or_create(session, site_code)
-    for code, cycle_days, slots_per_day in INSPECTION_PLANS:
-        work_type = await session.scalar(
-            select(WorkType).where(WorkType.code == code)
-        )
-        if work_type is None:
-            print(f"  skipped {code}: not on the work-type master list")
-            continue
-        plan = await session.scalar(
-            select(InspectionPlan).where(
-                InspectionPlan.site_code == site_code,
-                InspectionPlan.work_type_id == work_type.id,
-            )
-        )
-        verb = "updated"
-        if plan is None:
-            plan = InspectionPlan(site_code=site_code, work_type_id=work_type.id)
-            session.add(plan)
-            verb = "created"
-        plan.cycle_days = cycle_days
-        plan.slots_per_day = slots_per_day
-        plan.is_active = True
-        cap = "uncapped" if slots_per_day == 0 else f"{slots_per_day}/night"
-        print(f"  {verb}: {code} every {cycle_days}d, {cap}")
-
-    if config.inspection_slots_per_day <= 0:
-        config.inspection_slots_per_day = 5
-
-
 async def main(site_code: str) -> None:
     async with SessionLocal() as session:
         site = await session.get(Site, site_code)
@@ -158,7 +117,8 @@ async def main(site_code: str) -> None:
             )
             print(f"  {verb}: {name} -> {target.value}")
 
-        await _seed_plans(session, site_code)
+        n = await ensure_default_plans(session, site_code)
+        print(f"  inspection plans ready ({n})")
         await session.commit()
     print("Import profile and inspection plans ready.")
 
