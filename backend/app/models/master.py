@@ -5,13 +5,13 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     Enum,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     Numeric,
     String,
     UniqueConstraint,

@@ -328,7 +328,7 @@ class _SiteForm extends StatelessWidget {
                                 child: LinearProgressIndicator(color: T.green),
                               )
                             : DropdownButtonFormField<String>(
-                                value: draft.siteopsSiteId,
+                                initialValue: draft.siteopsSiteId,
                                 isExpanded: true,
                                 decoration: const InputDecoration(
                                   border: OutlineInputBorder(),

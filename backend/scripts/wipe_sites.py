@@ -27,7 +27,6 @@ from sqlalchemy import text
 
 from app.db import engine
 
-
 #: Tables wiped, FK-safe order via CASCADE from sites where possible.
 _TRUNCATE = """
 TRUNCATE
