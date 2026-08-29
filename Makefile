@@ -131,6 +131,10 @@ web: ## Serve the Flutter client against the local API
 		--dart-define=API_BASE_URL=$(API_BASE) \
 		--dart-define=SITEOPS_BASE_URL=$(SITEOPS_BASE)
 
+.PHONY: token
+token: ## Mint a platform-shaped token for testing. PERM=/SITE= to shape it.
+	@$(PY) tools/dev_token.py $(if $(USERNAME),--user $(USERNAME),) 		$(foreach p,$(PERM),--perm $(p)) $(foreach s,$(SITE),--site $(s)) 		$(if $(ADMIN),--admin,)
+
 .PHONY: logs
 logs:
 	@cd $(BACKEND) && docker compose logs -f api

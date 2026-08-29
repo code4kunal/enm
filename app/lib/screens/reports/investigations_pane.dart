@@ -106,7 +106,7 @@ class _InvestigationCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return Panel(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

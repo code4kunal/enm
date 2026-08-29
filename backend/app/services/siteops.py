@@ -18,7 +18,13 @@ class SiteOpsUnavailable(AppError):
     http_status = 502
 
 
-async def _get(path: str, params: dict[str, Any]) -> Any:
+async def _get(path: str, params: dict[str, Any], *, missing_ok: bool = False) -> Any:
+    """A service-key GET. `missing_ok` turns a 404 into `None`.
+
+    Worth the extra flag: "the platform does not know this user" and "the
+    platform is down" must not look alike to a caller deciding whether to
+    fall back to a local account.
+    """
     if not settings.siteops_service_key:
         raise ValidationError("SiteOps service key is not configured on this server")
     url = f"{settings.siteops_base_url.rstrip('/')}{path}"
@@ -31,6 +37,8 @@ async def _get(path: str, params: dict[str, Any]) -> Any:
             )
     except httpx.HTTPError as e:
         raise SiteOpsUnavailable(f"Cannot reach SiteOps: {e}") from e
+    if resp.status_code == 404 and missing_ok:
+        return None
     if resp.status_code >= 400:
         raise SiteOpsUnavailable(f"SiteOps returned {resp.status_code}")
     return resp.json()
@@ -63,6 +71,121 @@ async def _get_all_pages(
             break
         page += 1
     return rows
+
+
+async def login(username: str, password: str) -> dict[str, Any] | None:
+    """Authenticate against the platform. `None` means it said no.
+
+    The platform is the estate's identity authority: it owns the password,
+    the roles and the grants. Its reply carries the whole authorisation
+    picture — `permissions`, `site_ids`, `roles` — which is what E&M puts in
+    the session it hands back.
+
+    A network failure is not a rejection. It raises, so the caller can fall
+    back to a local account rather than telling a mechanic with correct
+    credentials that they are wrong.
+    """
+    url = f"{settings.siteops_base_url.rstrip('/')}/auth/login"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                url, data={"username": username, "password": password}
+            )
+    except httpx.HTTPError as e:
+        raise SiteOpsUnavailable(f"Cannot reach SiteOps: {e}") from e
+
+    if resp.status_code == 401:
+        return None
+    if resp.status_code >= 400:
+        raise SiteOpsUnavailable(f"SiteOps returned {resp.status_code}")
+
+    try:
+        body = resp.json()
+    except ValueError as e:
+        raise SiteOpsUnavailable("SiteOps returned a non-JSON login response") from e
+    if body.get("result") is not True:
+        return None
+    data = body.get("data")
+    return data if isinstance(data, dict) else None
+
+
+async def user_grants(user_id: str) -> dict[str, Any] | None:
+    """A user's current roles and permissions, server-to-server.
+
+    Used when a session is refreshed: the platform's own `/auth/refresh`
+    issues a token with `roles=["user"]` and no permissions at all, so a
+    refreshed session would otherwise come back with nothing it could do.
+    Asking here means a refresh picks up grants changed since sign-in.
+
+    `None` when the platform does not know this id — a local-only account.
+    """
+    try:
+        body = await _get(f"/access-control/users/{user_id}/roles", {}, missing_ok=True)
+    except SiteOpsUnavailable:
+        raise
+    except (ValidationError, TypeError, AttributeError):
+        return None
+
+    data = body.get("data") if isinstance(body, dict) else None
+    roles = (data or {}).get("roles")
+    if not isinstance(roles, list) or not roles:
+        return None
+
+    role_names = [str(r.get("name")) for r in roles if isinstance(r, dict) and r.get("name")]
+    permissions = sorted(
+        {
+            str(p.get("name"))
+            for r in roles
+            if isinstance(r, dict)
+            for p in (r.get("permissions") or [])
+            if isinstance(p, dict) and p.get("name")
+        }
+    )
+    return {"roles": role_names, "permissions": permissions}
+
+
+async def user_site_ids(user_id: str) -> list[str]:
+    """The platform site ids a user is assigned to. Empty if unknown."""
+    try:
+        body = await _get(f"/users/{user_id}", {}, missing_ok=True)
+    except SiteOpsUnavailable:
+        raise
+    except (ValidationError, TypeError, AttributeError):
+        return []
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict):
+        return []
+    ids = data.get("site_ids")
+    if isinstance(ids, list):
+        return [str(i) for i in ids if i]
+    return [
+        str(s.get("id"))
+        for s in (data.get("sites") or [])
+        if isinstance(s, dict) and s.get("id")
+    ]
+
+
+async def list_site_users(site_id: str) -> list[dict[str, Any]]:
+    """Every active platform user assigned to one site.
+
+    What the "reported by" and "supervisor" dropdowns are built from now that
+    people are staffed in the platform rather than in E&M: a mechanic who has
+    never opened E&M still has to be nameable on somebody else's entry.
+    """
+    body = await _get(
+        "/users/",
+        {"site_id": site_id, "pagination": "false", "is_active": "true"},
+    )
+    if isinstance(body, list):
+        return [r for r in body if isinstance(r, dict)]
+    if not isinstance(body, dict):
+        return []
+    data = body.get("data")
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        return [r for r in data["items"] if isinstance(r, dict)]
+    return []
 
 
 async def list_sites() -> list[dict[str, Any]]:

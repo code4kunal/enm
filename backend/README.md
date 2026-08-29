@@ -161,11 +161,40 @@ client should subscribe to channel id `enm_alerts`.
 
 ## Permissions
 
-- Every scoped endpoint takes `?depot=` and 403s if it is outside `depot_access`.
-- Entry edit / photo: creator, or any `supervisor`/`manager` on that depot.
-- `/admin/*`: `manager` only. A manager cannot deactivate their own account.
+siteops-platform is the identity authority. It issues every token, owns the
+one permission table the whole estate shares, and an administrator grants
+E&M's permissions there — on the same role screen as every other service's.
+
+- **The catalogue** lives in `app/permissions.py`: ten resources, every name
+  prefixed `em_` because the platform's table is shared and already holds an
+  `inspection`, a `schedule`, a `reports` and a `vehicle` belonging to other
+  products. On startup E&M POSTs the catalogue to
+  `/access-control/permissions/sync` (`app/services/permission_sync.py`),
+  which is idempotent and never fatal.
+- **Enforcement** is `assert_site_permission(user, site, "em_entry:write")`
+  and the `require_permission(...)` dependency. Both halves are checked on
+  every scoped call: can this caller reach the site, and do they hold the
+  grant.
+- **Site scoping** comes from the token's `site_ids`, mapped onto E&M site
+  codes through `sites.siteops_site_id`. A site nobody has linked is
+  reachable only by an administrator. Revoking a site in the platform takes
+  effect on the next token — there is nothing to clean up here.
+- **`admin`** bypasses permission checks, matching the platform's own
+  convention and the fact that its sync endpoint grants every service's
+  permissions to that role.
+- **Local accounts** — the break-glass admin, and anyone not yet migrated —
+  have no claims and are authorised from their `role` column against
+  `DEFAULT_ROLE_PERMISSIONS`. This is the only place `role` still decides
+  anything.
+- Entry edit / photo: the creator with `em_entry:write`, or anyone holding
+  `em_entry:delete` on that site.
 - Entry edits and user activate/deactivate/reset write to `audit_logs` with
   before/after payloads.
+
+A platform token is trusted only after its HS256 signature verifies against
+`SITEOPS_JWT_SECRET`; a token E&M itself signed at `/auth/login` carries the
+same grants, because the platform's own `/auth/refresh` re-issues with
+`roles=["user"]` and no permissions at all. There is no unverified path.
 
 ## Verified
 

@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, select
 
-from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
+from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import NotFound
 from app.models.checklist import ChecklistTemplate, InspectionEntry
 from app.models.enums import AuditAction
@@ -103,7 +103,7 @@ async def list_checklists(
     Readable by anyone who can reach the site — a mechanic filling one in is
     not an administrator.
     """
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_inspection:read")
     out: list[ChecklistOut] = []
     for work_type in await checklists.inspection_work_types(session):
         # The unscoped one always exists, so a site that has written nothing
@@ -138,7 +138,7 @@ async def sync_catalogue(
     added since. Safe to run any time: a template that already has lines is
     never touched.
     """
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_site_config:write")
     added = await checklists.apply_catalogue(session, site_code)
     await audit.record(
         session,
@@ -165,7 +165,7 @@ async def replace_checklist(
     A line that has already been answered is retired rather than deleted, so
     past inspections keep reading correctly.
     """
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_site_config:write")
     work_type = await session.get(WorkType, work_type_id)
     if work_type is None or not work_type.is_inspection:
         raise NotFound("Inspection type not found")
@@ -217,7 +217,7 @@ async def record_inspection(
     code: str, payload: InspectionCreate, user: CurrentUser, session: SessionDep
 ) -> InspectionOut:
     """Record one completed inspection, and discharge its booking."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_inspection:write")
 
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None:
@@ -276,7 +276,7 @@ async def list_inspections(
     date_to: Annotated[str | None, Query(alias="to")] = None,
     page_size: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> InspectionList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_inspection:read")
     stmt = select(InspectionEntry).where(InspectionEntry.site_code == site_code)
     if work_type_id is not None:
         stmt = stmt.where(InspectionEntry.work_type_id == work_type_id)
@@ -310,7 +310,7 @@ async def todays_inspections(
     code: str, user: CurrentUser, session: SessionDep
 ) -> InspectionList:
     """What has already been done today — the Home feed for inspections."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_inspection:read")
     today = today_ist()
     rows = (
         await session.scalars(

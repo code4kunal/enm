@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 
-from app.deps import CurrentUser, SessionDep, SuperAdminUser, assert_site_access
-from app.errors import Conflict, NotFound
+from app.config import settings
+from app.deps import (
+    CurrentUser,
+    SessionDep,
+    assert_site_permission,
+    require_permission,
+)
+from app.errors import Conflict, NotFound, ValidationError
 from app.models.enums import AuditAction
-from app.models.master import DefectSource, DefectType, WorkType
+from app.models.master import DefectSource, DefectType, Site, WorkType
 from app.models.user import User, UserSiteAccess
 from app.schemas.master import (
     MasterItemCreate,
@@ -22,7 +29,10 @@ from app.schemas.master import (
     WorkTypeOut,
     WorkTypeUpdate,
 )
-from app.services import audit
+from app.services import audit, platform_identity, siteops
+from app.services.siteops import SiteOpsUnavailable
+
+logger = logging.getLogger("enm")
 
 router = APIRouter(prefix="/master", tags=["master"])
 
@@ -63,19 +73,67 @@ async def list_staff(
     offered, so a name that has left the depot stops appearing without
     disturbing the entries that already carry it.
     """
-    site_code = assert_site_access(user, site)
+    site_code = assert_site_permission(user, site, "em_master:read")
     rows = await session.scalars(
         select(User)
         .join(UserSiteAccess, UserSiteAccess.user_id == User.id)
         .where(UserSiteAccess.site_code == site_code, User.is_active.is_(True))
         .order_by(User.name)
     )
-    return StaffList(
-        items=[
-            StaffOut(id=u.id, name=u.name, user_id=u.user_id, role=u.role)
-            for u in rows.unique()
-        ]
-    )
+    staff = {
+        u.id: StaffOut(id=u.id, name=u.name, user_id=u.user_id, role=u.role)
+        for u in rows.unique()
+    }
+    for person in await _platform_staff(session, site_code):
+        staff.setdefault(person.id, person)
+    return StaffList(items=sorted(staff.values(), key=lambda s: s.name.lower()))
+
+
+async def _platform_staff(session: SessionDep, site_code: str) -> list[StaffOut]:
+    """The site's people as siteops-platform staffs them.
+
+    A platform user has no `user_site_access` row here — their sites live in
+    their token — so without this the dropdowns would list only the accounts
+    that predate the integration. Each person named gets their shadow row
+    created, because attribution is a foreign key and a name alone cannot
+    carry one.
+
+    Best-effort: an unreachable platform costs the depot the extra names, not
+    the form.
+    """
+    site = await session.get(Site, site_code)
+    if site is None or not site.siteops_site_id or not settings.siteops_service_key:
+        return []
+    try:
+        rows = await siteops.list_site_users(site.siteops_site_id)
+    except (SiteOpsUnavailable, ValidationError):
+        logger.warning("staff list: SiteOps unreachable for site %s", site_code)
+        return []
+
+    people: list[StaffOut] = []
+    for row in rows:
+        sub = str(row.get("id") or "").strip()
+        username = str(row.get("username") or "").strip()
+        if not sub or not username:
+            continue
+        person = await platform_identity.ensure_user(
+            session,
+            sub=sub,
+            user_name=username,
+            name=str(row.get("full_name") or "") or None,
+            email=str(row.get("email") or "") or None,
+        )
+        if not person.is_active:
+            continue
+        people.append(
+            StaffOut(
+                id=person.id,
+                name=person.name,
+                user_id=person.user_id,
+                role=person.role,
+            )
+        )
+    return people
 
 
 # --- work types ------------------------------------------------------------
@@ -113,7 +171,9 @@ async def list_work_types(
     "/work-types", response_model=WorkTypeOut, status_code=status.HTTP_201_CREATED
 )
 async def create_work_type(
-    payload: WorkTypeCreate, actor: SuperAdminUser, session: SessionDep
+    payload: WorkTypeCreate,
+    session: SessionDep,
+    actor: Annotated[User, Depends(require_permission("em_master:write"))],
 ) -> WorkTypeOut:
     clash = await session.scalar(
         select(WorkType.id).where(func.upper(WorkType.code) == payload.code)
@@ -150,7 +210,7 @@ async def create_work_type(
 async def update_work_type(
     item_id: int,
     payload: WorkTypeUpdate,
-    actor: SuperAdminUser,
+    actor: Annotated[User, Depends(require_permission("em_master:write"))],
     session: SessionDep,
 ) -> WorkTypeOut:
     row = await session.get(WorkType, item_id)
@@ -215,7 +275,7 @@ async def list_items(
 async def create_item(
     kind: str,
     payload: MasterItemCreate,
-    actor: SuperAdminUser,
+    actor: Annotated[User, Depends(require_permission("em_master:write"))],
     session: SessionDep,
 ) -> MasterItemOut:
     model = _model(kind)
@@ -250,7 +310,7 @@ async def update_item(
     kind: str,
     item_id: int,
     payload: MasterItemUpdate,
-    actor: SuperAdminUser,
+    actor: Annotated[User, Depends(require_permission("em_master:write"))],
     session: SessionDep,
 ) -> MasterItemOut:
     model = _model(kind)

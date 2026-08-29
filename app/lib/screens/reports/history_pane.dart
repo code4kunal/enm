@@ -129,7 +129,7 @@ class _Card extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(busHistoryProvider);
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return async.when(
       loading: () => const Padding(

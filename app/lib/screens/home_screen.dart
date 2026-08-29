@@ -43,27 +43,36 @@ class HomeScreen extends ConsumerWidget {
           ],
           _Greeting(name: firstName, site: siteName),
           const SizedBox(height: 18),
-          _RegisterCardGrid(todayEntries: todayEntries),
-          const SizedBox(height: 22),
-          const _InspectionCardGrid(),
-          const SizedBox(height: 28),
-          Text("Today's entries · $siteName", style: AppText.sectionTitle),
-          const SizedBox(height: 12),
-          if (todayEntries.isEmpty)
-            EmptyState(
-              message: 'No entries yet today at $siteName. '
-                  'Start with any register above.',
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                for (final e in todayEntries) ...<Widget>[
-                  _TodayRow(entry: e),
-                  const SizedBox(height: 8),
+          // Home is the landing page for every account, including one granted
+          // nothing but user administration. Each block asks for the grant its
+          // screens need rather than rendering a row of tiles that all 403.
+          if (session.can('em_entry:read')) ...<Widget>[
+            _RegisterCardGrid(todayEntries: todayEntries),
+            const SizedBox(height: 22),
+          ],
+          if (session.can('em_inspection:read')) ...<Widget>[
+            const _InspectionCardGrid(),
+            const SizedBox(height: 28),
+          ],
+          if (session.can('em_entry:read')) ...<Widget>[
+            Text("Today's entries · $siteName", style: AppText.sectionTitle),
+            const SizedBox(height: 12),
+            if (todayEntries.isEmpty)
+              EmptyState(
+                message: 'No entries yet today at $siteName. '
+                    'Start with any register above.',
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (final e in todayEntries) ...<Widget>[
+                    _TodayRow(entry: e),
+                    const SizedBox(height: 8),
+                  ],
                 ],
-              ],
-            ),
+              ),
+          ],
         ],
       ),
     );

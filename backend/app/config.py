@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     #: depend on which user is asking. Never sent to the Flutter client — kept
     #: server-side and attached as `X-Service-Key` by `app/services/siteops.py`.
     siteops_service_key: str | None = None
+    #: The platform's own token-signing secret (`JWT_SECRET_KEY` in its .env).
+    #: siteops-platform is the estate's only token issuer; E&M verifies its
+    #: HS256 signature with this and reads roles, permissions and site_ids from
+    #: the claims. Unset means platform sign-in is off and only E&M-local
+    #: tokens are accepted.
+    siteops_jwt_secret: str | None = None
+    #: Push `app/permissions.py` to the platform's catalogue at startup.
+    permission_sync_enabled: bool = True
+    #: Check passwords against the platform at `/auth/login`. Off leaves only
+    #: E&M-local accounts, which is what the test suite wants and what a
+    #: standalone deployment would run.
+    platform_login_enabled: bool = True
 
     # --- Microsoft Entra ID (SSO) ---
     ms_tenant_id: str | None = None
@@ -157,6 +169,13 @@ class Settings(BaseSettings):
         elif len(self.jwt_secret) < MIN_JWT_SECRET_LENGTH:
             found.append(
                 f"JWT_SECRET is shorter than {MIN_JWT_SECRET_LENGTH} characters."
+            )
+
+        if self.siteops_jwt_secret and self.siteops_jwt_secret == self.jwt_secret:
+            found.append(
+                "SITEOPS_JWT_SECRET and JWT_SECRET are the same value. The two "
+                "issuers must be distinguishable: sharing a key lets an "
+                "E&M-signed token pass as a platform one, claims and all."
             )
 
         if "*" in self.cors_origins:

@@ -36,6 +36,8 @@ def _out(user: User) -> UserOut:
         email=user.email,
         role=user.role,
         site_access=user.site_access,
+        governs_all_sites=user.is_super_admin,
+        permissions=sorted(user.permissions),
         is_active=user.is_active,
         must_reset_password=user.must_reset_password,
         created_at=user.created_at,
@@ -73,7 +75,7 @@ def _assert_sites_within_reach(actor: User, codes: list[str]) -> None:
     """A manager staffs its own sites only; a super admin reaches every site."""
     if actor.is_super_admin:
         return
-    outside = [c for c in codes if c not in actor.site_access]
+    outside = [c for c in codes if c not in actor.accessible_sites]
     if outside:
         raise Forbidden(
             f"You have no access to {', '.join(outside)}",
@@ -149,7 +151,7 @@ async def list_users(
     stmt = select(User)
     if not actor.is_super_admin:
         reachable = select(UserSiteAccess.user_id).where(
-            UserSiteAccess.site_code.in_(actor.site_access or [""])
+            UserSiteAccess.site_code.in_(sorted(actor.accessible_sites) or [""])
         )
         stmt = stmt.where(or_(User.id.in_(reachable), User.id == actor.id))
     if status_filter == "active":

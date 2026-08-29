@@ -10,8 +10,7 @@ from app.deps import (
     CurrentUser,
     SessionDep,
     SuperAdminUser,
-    assert_site_access,
-    assert_site_admin,
+    assert_site_permission,
 )
 from app.errors import Conflict, NotFound
 from app.models.enums import AuditAction
@@ -252,7 +251,7 @@ async def list_vehicles(
     include_inactive: Annotated[bool, Query()] = False,
     active: Annotated[bool | None, Query()] = None,
 ) -> VehicleList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:read")
     stmt = select(Vehicle).where(Vehicle.site_code == site_code)
     if active is not None:
         stmt = stmt.where(Vehicle.is_active.is_(active))
@@ -270,7 +269,7 @@ async def list_vehicles(
 async def create_vehicle(
     code: str, payload: VehicleCreate, user: CurrentUser, session: SessionDep
 ) -> VehicleOut:
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:write")
     await sites.load_site(session, site_code)
 
     exists = await session.scalar(
@@ -317,7 +316,7 @@ async def sync_fleet_from_siteops(
     buses, rewrites attributes, reactivates returnees, and retires locals
     SiteOps no longer lists.
     """
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:write")
     site = await sites.load_site(session, site_code)
 
     body = payload or FleetSyncIn()
@@ -368,7 +367,7 @@ async def update_vehicle(
     user: CurrentUser,
     session: SessionDep,
 ) -> VehicleOut:
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:write")
     vehicle = await _load_vehicle(session, vehicle_id)
     if vehicle.site_code != site_code:
         raise NotFound("Vehicle not found on this site")
@@ -427,7 +426,7 @@ async def _set_vehicle_active(
     vehicle_id: str, active: bool, user: CurrentUser, session: SessionDep
 ) -> VehicleOut:
     vehicle = await _load_vehicle(session, vehicle_id)
-    assert_site_admin(user, vehicle.site_code)
+    assert_site_permission(user, vehicle.site_code, "em_vehicle:write")
     vehicle.is_active = active
     await audit.record(
         session,
@@ -457,7 +456,7 @@ async def sync_odometers(
     runs the same job, so a pull that finds nothing new reports `skipped`
     rather than failing.
     """
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:write")
     result = await odometer.sync_site(session, site_code)
     await session.commit()
     return result
@@ -468,7 +467,7 @@ async def set_odometer(
     vehicle_id: str, payload: OdometerIn, user: CurrentUser, session: SessionDep
 ) -> VehicleOut:
     vehicle = await _load_vehicle(session, vehicle_id)
-    assert_site_admin(user, vehicle.site_code)
+    assert_site_permission(user, vehicle.site_code, "em_vehicle:write")
     await odometer.set_manual(session, vehicle, payload.odometer_km)
     await audit.record(
         session,
@@ -491,7 +490,7 @@ async def record_service(
 ) -> VehicleOut:
     """Close out a service and re-anchor the next one."""
     vehicle = await _load_vehicle(session, vehicle_id)
-    assert_site_admin(user, vehicle.site_code)
+    assert_site_permission(user, vehicle.site_code, "em_vehicle:write")
     await odometer.record_service(
         session,
         vehicle,
@@ -521,7 +520,7 @@ async def record_service(
 async def get_config(
     code: str, user: CurrentUser, session: SessionDep
 ) -> SiteConfigIO:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_site_config:read")
     config = await site_config.get_or_create(session, site_code)
     payload = await site_config.to_io(session, config)
     await session.commit()
@@ -534,7 +533,7 @@ async def put_config(
 ) -> SiteConfigIO:
     """Replaces the whole aggregate. 422-equivalent on an incoherent config —
     the client checks the same rules first, but this is the authority."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_site_config:write")
     await sites.load_site(session, site_code)
     config = await site_config.replace(
         session, site_code=site_code, payload=payload, actor=user
@@ -555,7 +554,7 @@ async def put_config(
 async def services_due(
     code: str, user: CurrentUser, session: SessionDep
 ) -> ServiceDueList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_vehicle:read")
     rows = await service_due.for_site(session, site_code, today_ist())
     await session.commit()
     return ServiceDueList(items=rows)

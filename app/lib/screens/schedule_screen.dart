@@ -60,7 +60,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         children: <Widget>[
           _Header(
             generating: _generating,
-            canGenerate: session.canManageSites,
+            canGenerate: session.can('em_schedule:write'),
             onGenerate: _generate,
           ),
           const SizedBox(height: 16),
@@ -563,7 +563,7 @@ class _DayAgenda extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_schedule:write');
     final groups = day.byWorkType;
 
     return Panel(

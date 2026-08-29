@@ -30,7 +30,7 @@ class _MasterDataPaneState extends ConsumerState<MasterDataPane> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = ref.watch(sessionProvider).governsAllSites;
+    final canEdit = ref.watch(sessionProvider).can('em_master:write');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

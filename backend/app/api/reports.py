@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 from sqlalchemy import select
 
-from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
+from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import NotFound, ValidationError
 from app.models.enums import AuditAction, StrEnum
 from app.models.master import Vehicle
@@ -117,7 +117,7 @@ async def dmr_day(
     date: Annotated[str | None, Query()] = None,
 ) -> DmrDayOut:
     """One day of the DMR: derived lines computed, entered lines as stored."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
 
     values, is_snapshot = await dmr.compose(session, site_code, day)
@@ -143,7 +143,7 @@ async def save_dmr_day(
     date: Annotated[str | None, Query()] = None,
 ) -> DmrDayOut:
     """Record the lines nothing else in the system observes."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:write")
     day = _parse_day(date, today_ist())
 
     await dmr.save_entered(
@@ -168,7 +168,7 @@ async def snapshot_dmr(
     date: Annotated[str | None, Query()] = None,
 ) -> DmrDayOut:
     """Freeze the derived lines as reported. Runs nightly; this is on demand."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_report:write")
     day = _parse_day(date, today_ist())
     await dmr.snapshot(session, site_code, day)
     await session.commit()
@@ -220,7 +220,7 @@ async def dmr_month(
     month: Annotated[str | None, Query()] = None,
 ) -> DmrMonthOut:
     """The month grid: parameters down the page, one column per day."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     grid = await _month_grid(
         session, site_code, month or today_ist().strftime("%Y-%m")
     )
@@ -237,7 +237,7 @@ async def export_dmr(
     fmt: FormatQuery = ExportFormat.csv,
 ) -> Response:
     """The month in the layout the depot already sends on."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     target = month or today_ist().strftime("%Y-%m")
     grid = await _month_grid(session, site_code, target)
     await session.commit()
@@ -336,7 +336,7 @@ async def investigations_for_day(
     date: Annotated[str | None, Query()] = None,
 ) -> InvestigationList:
     """Every breakdown that day, with its investigation where one exists."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
     pairs = await investigations.for_day(session, site_code, day)
     items = [_investigation_out(e, i) for e, i in pairs]
@@ -363,7 +363,7 @@ async def open_investigation(
 ) -> InvestigationOut:
     """Open one investigation, pre-filled from what is already known."""
     entry = await investigations.load_breakdown(session, entry_id)
-    assert_site_access(user, entry.site_code)
+    assert_site_permission(user, entry.site_code, "em_report:write")
     investigation = await investigations.get_or_prefill(session, entry)
     await session.commit()
     await session.refresh(investigation)
@@ -380,7 +380,7 @@ async def save_investigation(
     session: SessionDep,
 ) -> InvestigationOut:
     entry = await investigations.load_breakdown(session, entry_id)
-    assert_site_access(user, entry.site_code)
+    assert_site_permission(user, entry.site_code, "em_report:write")
     investigation = await investigations.get_or_prefill(session, entry)
     await investigations.save(
         session, investigation, payload.model_dump(exclude_unset=True), user
@@ -425,7 +425,7 @@ async def off_road_for_day(
     date: Annotated[str | None, Query()] = None,
 ) -> OffRoadList:
     """The defective-bus list as it stood that morning."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
     cases = await investigations.open_cases(session, site_code, day)
     return OffRoadList(
@@ -444,7 +444,7 @@ async def put_off_road(
     code: str, payload: OffRoadIn, user: CurrentUser, session: SessionDep
 ) -> OffRoadOut:
     """Put a bus off the road, or update the case it already has."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_report:write")
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None:
         raise NotFound("Vehicle not found")
@@ -467,7 +467,7 @@ async def close_off_road(
     case = await session.get(OffRoadCase, case_id)
     if case is None:
         raise NotFound("Off-road case not found")
-    assert_site_admin(user, case.site_code)
+    assert_site_permission(user, case.site_code, "em_report:write")
     await investigations.close_case(session, case, payload.returned_on, user)
     await session.commit()
     await session.refresh(case)
@@ -537,7 +537,7 @@ async def list_control_charts(
     line is unavailable at a site that has nominated none, and saying so is
     the difference between an empty month and an unwired feed.
     """
-    site_code = assert_site_access(user, site) if site else None
+    site_code = assert_site_permission(user, site, "em_report:read") if site else None
     out: list[ChartKindOut] = []
     for spec in control_charts.CHARTS:
         if site_code:
@@ -572,7 +572,7 @@ async def control_chart(
     to_date: Annotated[str | None, Query(alias="to")] = None,
 ) -> ControlChartOut:
     """Annexure-IV: the fleet down, the days across, one mark per bus per day."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     start, end = _chart_window(from_date, to_date)
     chart = await control_charts.build(
         session,
@@ -603,7 +603,7 @@ async def export_control_chart(
     with the mark appended — `2 (BD)` — rather than silently losing the half of
     the chart that the colour carries.
     """
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     start, end = _chart_window(from_date, to_date)
     chart = await control_charts.build(
         session, site_code=site_code, kind=kind, from_date=start, to_date=end
@@ -701,7 +701,7 @@ async def units_on_bus(
     vehicle_id: Annotated[str, Query()],
 ) -> FittedUnitList:
     """What is on a bus right now."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     rows = await units.fitted_to(session, site_code, vehicle_id)
     return FittedUnitList(
         site_code=site_code, items=[_unit_out(row) for row in rows]
@@ -717,7 +717,7 @@ async def fit_unit(
     code: str, payload: FitUnitIn, user: CurrentUser, session: SessionDep
 ) -> FittedUnitOut:
     """Put a component on a bus."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_report:write")
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None or vehicle.site_code != site_code:
         raise NotFound("Vehicle not found")
@@ -753,7 +753,7 @@ async def remove_unit(
     stay = await session.get(FittedUnit, unit_id)
     if stay is None:
         raise NotFound("Fitted unit not found")
-    assert_site_admin(user, stay.site_code)
+    assert_site_permission(user, stay.site_code, "em_report:write")
     if stay.removed_on is not None:
         raise ValidationError(
             "This unit is already recorded as removed",
@@ -789,7 +789,7 @@ async def unit_failure_statement(
     month: Annotated[str | None, Query()] = None,
 ) -> FittedUnitList:
     """Every unit that came off in a month."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     target = month or today_ist().strftime("%Y-%m")
     rows = await units.statement(session, site_code, target)
     return FittedUnitList(
@@ -808,7 +808,7 @@ async def export_unit_failures(
     fmt: FormatQuery = ExportFormat.csv,
 ) -> Response:
     """The statement in the layout the depot already files."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     target = month or today_ist().strftime("%Y-%m")
     rows = await units.statement(session, site_code, target)
 
@@ -873,7 +873,7 @@ async def bus_history(
     months: Annotated[int, Query(ge=1, le=36)] = units.HISTORY_MONTHS,
 ) -> BusHistoryOut:
     """One bus's card: every unit down the side, the months across."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     vehicle = await session.get(Vehicle, vehicle_id)
     if vehicle is None or vehicle.site_code != site_code:
         raise NotFound("Vehicle not found")
@@ -922,7 +922,7 @@ async def export_dmr_day(
     date: Annotated[str | None, Query()] = None,
 ) -> Response:
     """One day's numbered sheet, as the depot files it."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
     values, is_snapshot = await dmr.compose(session, site_code, day)
     row = await dmr.get_day(session, site_code, day)
@@ -945,7 +945,7 @@ async def export_off_road(
     date: Annotated[str | None, Query()] = None,
 ) -> Response:
     """The defective-bus list as it stood that morning."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
     cases = await investigations.open_cases(session, site_code, day)
     story = pdf.off_road(site_code=site_code, day=day, cases=cases)
@@ -960,7 +960,7 @@ async def export_investigations(
     date: Annotated[str | None, Query()] = None,
 ) -> Response:
     """Annexure-V, one block per breakdown — a form people write on."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
     pairs = await investigations.for_day(session, site_code, day)
     items = [_investigation_out(e, i) for e, i in pairs]
@@ -978,7 +978,7 @@ async def export_bus_history(
     months: Annotated[int, Query(ge=1, le=36)] = units.HISTORY_MONTHS,
 ) -> Response:
     """One bus's card."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_report:read")
     vehicle = await session.get(Vehicle, vehicle_id)
     if vehicle is None or vehicle.site_code != site_code:
         raise NotFound("Vehicle not found")

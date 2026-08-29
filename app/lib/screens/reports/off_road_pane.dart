@@ -31,7 +31,7 @@ class OffRoadPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(offRoadProvider);
     final date = ref.watch(reportDateProvider);
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return async.when(
       loading: () => const Padding(

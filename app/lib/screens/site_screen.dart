@@ -28,12 +28,15 @@ class SiteScreen extends ConsumerStatefulWidget {
 class _SiteScreenState extends ConsumerState<SiteScreen> {
   int _pane = 0;
 
-  static const _labels = <String>[
-    'Fleet',
-    'Master data',
-    'Checklists',
-    'Docking',
-    'Import',
+  /// The panes, each with the grant its screen needs. A depot that imports
+  /// spreadsheets but may not read the fleet sees Import and nothing else,
+  /// rather than a Fleet pane reporting an empty depot it simply cannot see.
+  static const _panes = <({String label, String permission})>[
+    (label: 'Fleet', permission: 'em_vehicle:read'),
+    (label: 'Master data', permission: 'em_master:read'),
+    (label: 'Checklists', permission: 'em_site_config:read'),
+    (label: 'Docking', permission: 'em_site_config:read'),
+    (label: 'Import', permission: 'em_import:read'),
   ];
 
   @override
@@ -41,7 +44,7 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
     final session = ref.watch(sessionProvider);
     final site = ref.watch(activeSiteProvider);
 
-    if (!session.canManageSites) {
+    if (!session.canOpenSiteTab) {
       return const EmptyState(
         message: 'Site administration is limited to managers.',
       );
@@ -49,6 +52,22 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
     if (session.site.isEmpty) {
       return const EmptyState(message: 'Pick a site first.');
     }
+
+    final visible =
+        _panes.where((p) => session.can(p.permission)).toList(growable: false);
+    if (visible.isEmpty) {
+      return const EmptyState(
+        message: 'Site administration is limited to managers.',
+      );
+    }
+    // The remembered pane may be one this account cannot open — land on the
+    // first it can rather than on an empty screen it has no way to leave.
+    final selected = _panes.indexWhere(
+      (p) => p.label == _panes[_pane].label && session.can(p.permission),
+    );
+    final shown = selected == -1
+        ? 0
+        : visible.indexWhere((p) => p.label == _panes[_pane].label);
 
     return FadeUp(
       key: ValueKey<String>('site-${session.site}-$_pane'),
@@ -58,12 +77,14 @@ class _SiteScreenState extends ConsumerState<SiteScreen> {
           if (site != null) _SiteBanner(name: site.name, code: site.code),
           const SizedBox(height: 16),
           SubTabs(
-            labels: _labels,
-            selectedIndex: _pane,
-            onChanged: (i) => setState(() => _pane = i),
+            labels: <String>[for (final p in visible) p.label],
+            selectedIndex: shown,
+            onChanged: (i) => setState(
+              () => _pane = _panes.indexWhere((p) => p.label == visible[i].label),
+            ),
           ),
           const SizedBox(height: 20),
-          switch (_pane) {
+          switch (_panes.indexWhere((p) => p.label == visible[shown].label)) {
             0 => const FleetPane(),
             1 => const MasterDataPane(),
             2 => const ChecklistsPane(),

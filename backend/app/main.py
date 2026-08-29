@@ -20,6 +20,7 @@ from app.services.inspections import run_nightly
 from app.services.masters import sync_all_linked_sites
 from app.services.notifications import scan_breakdown_sla
 from app.services.odometer import scan_sites_due_for_sync
+from app.services.permission_sync import push_permissions
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -33,6 +34,10 @@ async def lifespan(_app: FastAPI):
     # Before anything binds a port or opens a pool: a placeholder secret or a
     # wildcard CORS policy is a compromise, not a warning.
     settings.assert_production_ready()
+
+    # Put E&M's permission names in front of the platform administrator who
+    # grants them. Never fatal — see app/services/permission_sync.py.
+    await push_permissions()
 
     scheduler: AsyncIOScheduler | None = None
     jobs = settings.notifications_enabled and settings.breakdown_sla_enabled

@@ -135,8 +135,14 @@ def vehicle_out(vehicle: Vehicle) -> VehicleOut:
 
 
 async def visible_sites(session: AsyncSession, user: User) -> list[Site]:
-    """Every site for a super admin; the caller's grants otherwise."""
+    """Every site for a super admin; the caller's grants otherwise.
+
+    `accessible_sites`, never `site_access`: a platform user's sites come
+    from their token, and reading the local link table instead returns an
+    empty list — which the client shows as "select your site" with nothing
+    to select.
+    """
     stmt = select(Site).order_by(Site.name)
     if not user.is_super_admin:
-        stmt = stmt.where(Site.code.in_(user.site_access or [""]))
+        stmt = stmt.where(Site.code.in_(sorted(user.accessible_sites) or [""]))
     return list((await session.scalars(stmt)).all())

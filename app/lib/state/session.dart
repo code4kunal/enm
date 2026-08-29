@@ -62,6 +62,19 @@ class SessionState {
 
   bool get canAdministerUsers => user?.canAdministerUsers ?? false;
 
+  /// Whether the signed-in account holds an `em_<resource>:<action>` grant.
+  ///
+  /// What every screen asks before offering a control. The server re-checks
+  /// each one, so this only decides what is worth showing.
+  bool can(String permission) => user?.can(permission) ?? false;
+
+  /// Whether the Site tab has anything behind it for this account: the fleet,
+  /// the docking configuration, or the import profiles.
+  bool get canOpenSiteTab =>
+      can('em_vehicle:read') ||
+      can('em_site_config:read') ||
+      can('em_import:read');
+
   /// The account was created or reset by an admin and owes a password change.
   bool get mustResetPassword => user?.mustResetPassword ?? false;
 

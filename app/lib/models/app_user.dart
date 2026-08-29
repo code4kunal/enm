@@ -22,6 +22,10 @@ enum UserRole {
   final Color badgeFg;
 
   /// Sees and edits every site without needing explicit site access.
+  ///
+  /// Only meaningful for an E&M-local account. A user signed in through
+  /// siteops-platform carries [AppUser.governsAllSites] from the server,
+  /// because their E&M role is a label and the platform decides.
   bool get governsAllSites => this == UserRole.superAdmin;
 
   /// May maintain a site's vehicles, master lists, docking config and imports.
@@ -74,7 +78,9 @@ class AppUser {
     required this.sites,
     required this.active,
     this.mustResetPassword = false,
-  });
+    this.permissions = const <String>{},
+    bool? governsAllSites,
+  }) : _governsAllSites = governsAllSites;
 
   final String id;
   final String name;
@@ -99,13 +105,50 @@ class AppUser {
   /// forces a change on next sign-in.
   final bool mustResetPassword;
 
+  /// What this account may do, as `em_<resource>:<action>` names.
+  ///
+  /// Granted in siteops-platform, which is where roles are built and where an
+  /// administrator attaches E&M's permissions to them. The client gates on
+  /// these rather than on [role], which became a label the moment the
+  /// platform became the authority.
+  final Set<String> permissions;
+
+  final bool? _governsAllSites;
+
   bool get canUseSso => email.trim().isNotEmpty;
 
-  bool get governsAllSites => role.governsAllSites;
+  /// Reaches every site without a stored grant. Answered by the server for a
+  /// platform user; falls back to the role for an E&M-local account.
+  bool get governsAllSites => _governsAllSites ?? role.governsAllSites;
 
-  bool get canManageSites => role.canManageSites;
+  /// Whether this account holds a permission.
+  ///
+  /// An empty [permissions] set means the server did not send any — an
+  /// account predating the integration, or a fake in a test — so the old
+  /// role ladder answers instead. Wrong answers here only ever hide a
+  /// control the server would refuse anyway: every one of these checks is
+  /// re-made server-side.
+  bool can(String permission) {
+    if (governsAllSites) return true;
+    if (permissions.isEmpty) return _roleAllows(permission);
+    return permissions.contains(permission);
+  }
 
-  bool get canAdministerUsers => role.canAdministerUsers;
+  bool _roleAllows(String permission) {
+    final write = !permission.endsWith(':read');
+    return switch (role) {
+      UserRole.superAdmin => true,
+      UserRole.manager => true,
+      UserRole.supervisor => !write ||
+          permission.startsWith('em_entry:') ||
+          permission.startsWith('em_inspection:'),
+      UserRole.executive => !write,
+    };
+  }
+
+  bool get canManageSites => can('em_site_config:write');
+
+  bool get canAdministerUsers => can('em_user:write');
 
   /// Super admins reach every site; everyone else needs an explicit grant.
   bool canAccess(String siteCode) =>
@@ -137,6 +180,8 @@ class AppUser {
     List<String>? sites,
     bool? active,
     bool? mustResetPassword,
+    Set<String>? permissions,
+    bool? governsAllSites,
   }) {
     return AppUser(
       id: id,
@@ -147,6 +192,8 @@ class AppUser {
       sites: sites ?? this.sites,
       active: active ?? this.active,
       mustResetPassword: mustResetPassword ?? this.mustResetPassword,
+      permissions: permissions ?? this.permissions,
+      governsAllSites: governsAllSites ?? _governsAllSites,
     );
   }
 
@@ -159,6 +206,8 @@ class AppUser {
         'site_access': sites,
         'is_active': active,
         'must_reset_password': mustResetPassword,
+        'permissions': permissions.toList()..sort(),
+        'governs_all_sites': governsAllSites,
       };
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
@@ -172,5 +221,10 @@ class AppUser {
         ),
         active: json['is_active'] as bool? ?? true,
         mustResetPassword: json['must_reset_password'] as bool? ?? false,
+        permissions: <String>{
+          for (final p in (json['permissions'] as List<dynamic>? ?? <dynamic>[]))
+            p as String,
+        },
+        governsAllSites: json['governs_all_sites'] as bool?,
       );
 }

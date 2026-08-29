@@ -10,10 +10,16 @@ from fastapi import APIRouter, File, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
-from app.deps import CurrentUser, PageDep, SessionDep, SiteDep, assert_site_access
+from app.deps import (
+    CurrentUser,
+    EntrySite,
+    PageDep,
+    SessionDep,
+    assert_site_permission,
+)
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import BreakdownEntry, Entry
-from app.models.enums import AuditAction, EntryStatus, Register, Role
+from app.models.enums import AuditAction, EntryStatus, Register
 from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
 from app.services import audit, notifications, storage
@@ -66,11 +72,17 @@ async def _load(session: SessionDep, entry_id: str) -> Entry:
 
 
 def _can_edit(user, entry: Entry) -> bool:
+    """Your own record, or somebody else's if you may delete records here.
+
+    Editing another person's entry is the stronger act, so it takes the
+    stronger grant: `em_entry:write` files your own work, `em_entry:delete`
+    is what a supervisor holds to correct the shift's.
+    """
     if not user.can_access(entry.site_code):
         return False
     if entry.created_by_id == user.id:
-        return True
-    return user.role in (Role.supervisor, Role.manager)
+        return user.has_permission("em_entry:write")
+    return user.has_permission("em_entry:delete")
 
 
 # --- collection ------------------------------------------------------------
@@ -80,7 +92,7 @@ def _can_edit(user, entry: Entry) -> bool:
 async def list_entries(
     _user: CurrentUser,
     session: SessionDep,
-    site: SiteDep,
+    site: EntrySite,
     page: PageDep,
     register: RegisterQ = None,
     date_from: Annotated[date_t | None, Query()] = None,
@@ -113,7 +125,7 @@ async def create_entry(
     user: CurrentUser,
     session: SessionDep,
 ) -> EntryOut:
-    site = assert_site_access(user, payload.site)
+    site = assert_site_permission(user, payload.site, "em_entry:write")
     # A deactivated site keeps its history but accepts nothing new.
     site_row = await assert_site_accepts_entries(session, site)
     assert_date_is_plausible(site_row, payload.date, today_ist())
@@ -148,7 +160,7 @@ async def create_entry(
 async def summary(
     _user: CurrentUser,
     session: SessionDep,
-    site: SiteDep,
+    site: EntrySite,
     date: Annotated[date_t | None, Query()] = None,
 ) -> SummaryOut:
     """Single call powering the Home screen counters."""
@@ -187,7 +199,7 @@ async def summary(
 async def export_csv(
     _user: CurrentUser,
     session: SessionDep,
-    site: SiteDep,
+    site: EntrySite,
     register: RegisterQ = None,
     date_from: Annotated[date_t | None, Query()] = None,
     date_to: Annotated[date_t | None, Query()] = None,
@@ -235,7 +247,7 @@ async def get_entry(
     entry_id: str, user: CurrentUser, session: SessionDep
 ) -> EntryOut:
     entry = await _load(session, entry_id)
-    assert_site_access(user, entry.site_code)
+    assert_site_permission(user, entry.site_code, "em_entry:read")
     return EntryOut(**svc.serialize_entry(entry))
 
 
@@ -278,7 +290,7 @@ async def resolve_breakdown(
     entry_id: str, user: CurrentUser, session: SessionDep
 ) -> EntryOut:
     entry = await _load(session, entry_id)
-    assert_site_access(user, entry.site_code)
+    assert_site_permission(user, entry.site_code, "em_entry:write")
     if entry.register is not Register.breakdown:
         raise Conflict("Only breakdown entries can be resolved")
     if entry.status is EntryStatus.resolved:

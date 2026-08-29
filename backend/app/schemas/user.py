@@ -14,6 +14,14 @@ class UserOut(BaseModel):
     role: Role
     #: empty and ignored for a super admin, who reaches every site
     site_access: list[str]
+    #: Reaches every site without a stored grant. True for an E&M super admin
+    #: and for a platform `admin`, whose E&M `role` column is only a label.
+    governs_all_sites: bool = False
+    #: What this account may do, as `em_<resource>:<action>` names. Granted in
+    #: siteops-platform for a platform user; derived from `role` for an
+    #: E&M-local one. The client gates its navigation on these rather than on
+    #: `role`, which is a label once the platform is the authority.
+    permissions: list[str] = Field(default_factory=list)
     is_active: bool
     must_reset_password: bool = False
     created_at: ISTDateTime | None = None

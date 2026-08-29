@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 
-from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
+from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import NotFound, ValidationError
 from app.models.enums import AuditAction, ImportTarget
 from app.models.site_import import (
@@ -87,7 +87,7 @@ async def _read_upload(file: UploadFile) -> bytes:
 async def list_profiles(
     code: str, user: CurrentUser, session: SessionDep
 ) -> ImportProfileList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_import:read")
     rows = await session.scalars(
         select(SiteImportProfile)
         .where(SiteImportProfile.site_code == site_code)
@@ -104,7 +104,7 @@ async def list_profiles(
 async def create_profile(
     code: str, payload: ImportProfileIn, user: CurrentUser, session: SessionDep
 ) -> ImportProfileOut:
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_import:write")
     await sites.load_site(session, site_code)
 
     profile = SiteImportProfile(
@@ -131,7 +131,7 @@ async def update_profile(
     user: CurrentUser,
     session: SessionDep,
 ) -> ImportProfileOut:
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_import:write")
     profile = await _load_profile(session, profile_id)
     if profile.site_code != site_code:
         raise NotFound("Import profile not found on this site")
@@ -157,7 +157,7 @@ async def delete_profile(
     profile_id: str, user: CurrentUser, session: SessionDep
 ) -> None:
     profile = await _load_profile(session, profile_id)
-    assert_site_admin(user, profile.site_code)
+    assert_site_permission(user, profile.site_code, "em_import:write")
     await session.delete(profile)
     await session.commit()
 
@@ -186,7 +186,7 @@ async def inspect(
 
     Runs before a profile is complete, so it takes no mappings.
     """
-    assert_site_access(user, code)
+    assert_site_permission(user, code, "em_import:read")
     data = await _read_upload(file)
     sheet = read_sheet(
         file_name=file.filename or "upload",
@@ -216,7 +216,7 @@ async def preview(
     sheet_name: Annotated[str | None, Form()] = None,
 ) -> ImportPreviewOut:
     """Dry run: map and validate every row, write nothing, stage under a token."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_import:write")
     parsed_target = _parse_target(target)
     parsed_mappings = _parse_mappings(mappings)
     imports.require_mappings(parsed_target, parsed_mappings)
@@ -260,7 +260,7 @@ async def commit(
     code: str, payload: ImportCommitIn, user: CurrentUser, session: SessionDep
 ) -> ImportRunOut:
     """Apply exactly what was previewed. A stale token is 410 Gone."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_import:write")
     staged = imports.previews.take(payload.token, site_code)
 
     # Built before the rows so every one of them can carry its id — that is
@@ -301,7 +301,7 @@ async def commit(
 async def list_runs(
     code: str, user: CurrentUser, session: SessionDep
 ) -> ImportRunList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_import:read")
     rows = list(
         (
             await session.scalars(

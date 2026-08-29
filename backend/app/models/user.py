@@ -52,9 +52,59 @@ class User(Base):
         order_by="UserSiteAccess.site_code",
     )
 
+    # --- authorisation ----------------------------------------------------
+    #
+    # Two kinds of caller reach these methods.
+    #
+    # A *platform* user arrives with a siteops-platform token, and everything
+    # they may do was decided there: `claims` carries the roles, permissions
+    # and site ids it granted. The row below is a shadow — a stable local id
+    # for audit logs and authorship — and its `role` and `site_links` columns
+    # say nothing about what the holder may do.
+    #
+    # A *local* user is the break-glass admin or an account predating the
+    # integration. It has no claims and is authorised from `role` against
+    # `app/permissions.py`.
+    #
+    # Plain attributes, deliberately not mapped: they live for one request and
+    # must never be written back to the database.
+    # Unannotated on purpose: an annotation here would be a mapping
+    # instruction to SQLAlchemy, and these two are the opposite of mapped.
+    claims = None
+    _claim_sites = frozenset()
+
+    def attach_claims(self, claims, site_codes: frozenset[str]) -> None:
+        """Bind a verified platform token to this row, for this request only."""
+        self.claims = claims
+        self._claim_sites = site_codes
+
+    @property
+    def is_platform_user(self) -> bool:
+        return self.claims is not None
+
     @property
     def is_super_admin(self) -> bool:
+        """Platform-wide administrator, however the caller signed in."""
+        if self.claims is not None:
+            return self.claims.is_platform_admin
         return self.role is Role.super_admin
+
+    @property
+    def permissions(self) -> frozenset[str]:
+        """What this caller may do, as `em_<resource>:<action>` names.
+
+        A platform token is authorised strictly by the permissions it carries.
+        Falling back to the `role` column for a platform user would let a
+        claim we do not control decide E&M's answer.
+        """
+        from app.permissions import permissions_for_role
+
+        if self.claims is not None:
+            return self.claims.permissions
+        return permissions_for_role(self.role)
+
+    def has_permission(self, name: str) -> bool:
+        return self.is_super_admin or name in self.permissions
 
     @property
     def site_access(self) -> list[str]:
@@ -62,14 +112,39 @@ class User(Base):
         `can_access` rather than reading this."""
         return [link.site_code for link in self.site_links]
 
+    @property
+    def accessible_sites(self) -> frozenset[str]:
+        """Site codes this caller reaches, whichever way they signed in.
+
+        Still empty for a super admin, who reaches every site without a
+        stored grant — `can_access` is the question to ask.
+        """
+        if self.claims is not None:
+            return self._claim_sites
+        return frozenset(self.site_access)
+
     def can_access(self, site_code: str) -> bool:
         """A super admin reaches every site without a stored grant.
 
         Storing every code would go stale the moment a site is onboarded.
         """
-        return self.is_super_admin or site_code in self.site_access
+        return self.is_super_admin or site_code in self.accessible_sites
 
     def can_grant(self, role: Role) -> bool:
+        """Which roles this caller may hand to an E&M-local account.
+
+        Only local accounts have an E&M role to hand out at all — a platform
+        user's privileges come from platform roles, which are granted in the
+        platform. So a platform caller holding `em_user:write` may staff a
+        site with local supervisors and executives, and nothing above that.
+        """
+        if self.is_super_admin:
+            return True
+        if self.claims is not None:
+            return self.has_permission("em_user:write") and role in (
+                Role.supervisor,
+                Role.executive,
+            )
         return role in self.role.grantable_roles
 
 

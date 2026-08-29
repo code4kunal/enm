@@ -12,6 +12,11 @@ os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("NOTIFICATIONS_ENABLED", "true")
 os.environ.setdefault("BREAKDOWN_SLA_ENABLED", "false")
 os.environ.setdefault("MEDIA_ROOT", "/tmp/enm-test-media")
+# The platform is a live HTTP service; the suite authenticates locally and
+# signs its own platform-shaped tokens where it needs to test claims.
+os.environ.setdefault("PLATFORM_LOGIN_ENABLED", "false")
+os.environ.setdefault("PERMISSION_SYNC_ENABLED", "false")
+os.environ.setdefault("SITEOPS_JWT_SECRET", "platform-test-secret")
 
 from collections.abc import AsyncIterator  # noqa: E402
 

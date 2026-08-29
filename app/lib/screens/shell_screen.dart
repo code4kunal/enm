@@ -46,16 +46,25 @@ class ShellScreen extends ConsumerWidget {
     // one screen that happens to read it.
     ref.watch(odometerSyncProvider);
 
+    // Every tab is gated on the read permission its screen needs, granted in
+    // siteops-platform. Hidden rather than disabled: a tab that opens onto
+    // "Missing permission" is a worse answer than a tab never offered. The
+    // server refuses the same calls either way.
+    //
+    // Home stays: it is where a redirect lands, and it degrades to whatever
+    // the account can actually see.
     final tabs = <_Tab>[
       const _Tab('Home', Routes.home),
-      const _Tab('Registers', Routes.registers),
-      const _Tab('Breakdowns', Routes.breakdowns),
-      const _Tab('Schedule', Routes.schedule),
-      const _Tab('Vehicle Master', Routes.vehicleMaster),
-      const _Tab('Reports', Routes.reports),
-      // Site and Admin are role-gated â€” hidden rather than disabled, and the
-      // server enforces the same rule.
-      if (session.canManageSites) const _Tab('Site', Routes.site),
+      if (session.can('em_entry:read')) ...<_Tab>[
+        const _Tab('Registers', Routes.registers),
+        const _Tab('Breakdowns', Routes.breakdowns),
+      ],
+      if (session.can('em_schedule:read'))
+        const _Tab('Schedule', Routes.schedule),
+      if (session.can('em_vehicle:read'))
+        const _Tab('Vehicle Master', Routes.vehicleMaster),
+      if (session.can('em_report:read')) const _Tab('Reports', Routes.reports),
+      if (session.canOpenSiteTab) const _Tab('Site', Routes.site),
       if (session.canAdministerUsers) const _Tab('Admin', Routes.admin),
     ];
 

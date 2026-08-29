@@ -36,6 +36,14 @@ services:
       SITEOPS_BASE_URL: ${SITEOPS_BASE_URL:-https://platform-service.transvolt.in/api/v1}
       # Server-side only — never passed to the `web` build args below.
       SITEOPS_SERVICE_KEY: ${SITEOPS_SERVICE_KEY:-}
+      # The platform's token-signing secret. Without it the API accepts only
+      # E&M-local tokens and rejects every siteops-platform sign-in.
+      SITEOPS_JWT_SECRET: ${SITEOPS_JWT_SECRET:-}
+      # `.env` is in .dockerignore, so anything not named here never reaches
+      # the container and the code default applies. These two both act on the
+      # live platform, so they are spelled out rather than left to a default.
+      PERMISSION_SYNC_ENABLED: ${PERMISSION_SYNC_ENABLED:-false}
+      PLATFORM_LOGIN_ENABLED: ${PLATFORM_LOGIN_ENABLED:-true}
       SEED_ON_START: ${SEED_ON_START:-true}
       BOOTSTRAP_SUPERADMIN_USER_ID: ${BOOTSTRAP_SUPERADMIN_USER_ID:-${BOOTSTRAP_USER_ID:-ADMIN}}
       BOOTSTRAP_SUPERADMIN_PASSWORD: ${BOOTSTRAP_SUPERADMIN_PASSWORD:-${BOOTSTRAP_PASSWORD:-admin123}}

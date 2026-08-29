@@ -465,7 +465,7 @@ class _NoChecklistYet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_inspection:write');
     if (waitingForBus) {
       return Panel(
         child: Column(

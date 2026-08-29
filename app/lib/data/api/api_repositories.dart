@@ -771,6 +771,11 @@ class ApiUserRepository implements UserRepository {
         ),
         active: json['is_active'] as bool? ?? true,
         mustResetPassword: json['must_reset_password'] as bool? ?? false,
+        permissions: <String>{
+          for (final p in (json['permissions'] as List<dynamic>? ?? <dynamic>[]))
+            p as String,
+        },
+        governsAllSites: json['governs_all_sites'] as bool?,
       );
 }
 

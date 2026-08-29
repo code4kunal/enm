@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, select
 
-from app.deps import CurrentUser, SessionDep, assert_site_access, assert_site_admin
+from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import Conflict, NotFound, ValidationError
 from app.models.enums import AlertStatus, AuditAction, SlotStatus
 from app.models.inspection import Alert, InspectionPlan, InspectionSlot
@@ -90,7 +90,7 @@ async def calendar(
     Empty days are returned too, so the client renders a continuous calendar
     rather than having to fill the gaps itself.
     """
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:read")
     today = today_ist()
     start = _parse_date(from_date, today - timedelta(days=7), "from")
     end = _parse_date(to_date, today + timedelta(days=30), "to")
@@ -165,7 +165,7 @@ async def generate(
     imported a month of history does not have to wait until tonight to see the
     calendar catch up. Safe to run repeatedly.
     """
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:write")
     result = await inspections.generate_for_site(session, site_code)
     await audit.record(
         session,
@@ -202,7 +202,7 @@ async def create_slot(
     code: str, payload: SlotCreate, user: CurrentUser, session: SessionDep
 ) -> SlotOut:
     """Book a bus in by hand. Pinned, so the generator leaves it alone."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:write")
 
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None or vehicle.site_code != site_code:
@@ -248,7 +248,7 @@ async def update_slot(
     cannot see, so it is never moved back.
     """
     slot = await _load_slot(session, slot_id)
-    assert_site_admin(user, slot.site_code)
+    assert_site_permission(user, slot.site_code, "em_schedule:write")
     before = {"scheduled_on": slot.scheduled_on.isoformat(), "status": slot.status.value}
 
     if payload.scheduled_on is not None and payload.scheduled_on != slot.scheduled_on:
@@ -303,7 +303,7 @@ async def delete_slot(
     slot_id: str, user: CurrentUser, session: SessionDep
 ) -> None:
     slot = await _load_slot(session, slot_id)
-    assert_site_admin(user, slot.site_code)
+    assert_site_permission(user, slot.site_code, "em_schedule:write")
     await session.delete(slot)
     await session.commit()
 
@@ -315,7 +315,7 @@ async def delete_slot(
 async def list_plans(
     code: str, user: CurrentUser, session: SessionDep
 ) -> InspectionPlanList:
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:read")
     rows = list(
         (
             await session.scalars(
@@ -336,7 +336,7 @@ async def replace_plans(
     session: SessionDep,
 ) -> InspectionPlanList:
     """Replace the site's inspection cycles wholesale."""
-    site_code = assert_site_admin(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:write")
 
     existing = {
         p.work_type_id: p
@@ -379,7 +379,7 @@ async def list_alerts(
     alert_status: Annotated[str, Query(alias="status")] = "open",
 ) -> AlertList:
     """The alert log: missed inspections, open breakdowns, overdue services."""
-    site_code = assert_site_access(user, code)
+    site_code = assert_site_permission(user, code, "em_schedule:read")
     stmt = select(Alert).where(Alert.site_code == site_code)
     if alert_status == "open":
         stmt = stmt.where(Alert.status != AlertStatus.resolved)
@@ -433,7 +433,7 @@ async def acknowledge(
     alert = await session.get(Alert, alert_id)
     if alert is None:
         raise NotFound("Alert not found")
-    assert_site_access(user, alert.site_code)
+    assert_site_permission(user, alert.site_code, "em_schedule:write")
 
     if alert.status is AlertStatus.open:
         alert.status = AlertStatus.acknowledged

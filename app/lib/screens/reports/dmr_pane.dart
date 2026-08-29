@@ -96,7 +96,7 @@ class _DmrPaneState extends ConsumerState<DmrPane> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(dmrDayProvider);
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return async.when(
       loading: () => const Padding(

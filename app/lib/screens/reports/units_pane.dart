@@ -31,7 +31,7 @@ class UnitsPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final month = ref.watch(unitMonthProvider);
     final async = ref.watch(unitFailuresProvider);
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

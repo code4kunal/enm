@@ -125,7 +125,7 @@ class _ChecklistEditorState extends ConsumerState<_ChecklistEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = ref.watch(sessionProvider).canManageSites;
+    final canEdit = ref.watch(sessionProvider).can('em_site_config:write');
 
     return Panel(
       child: Column(
