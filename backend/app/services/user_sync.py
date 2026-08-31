@@ -16,11 +16,15 @@ def _map_role(role_names: list[str]) -> Role:
     purpose, matching `masters._checklist_variant_from_ac_nac`: an
     unrecognised role name leaves the display role at `executive` rather
     than guess upward.
+
+    Capped at `manager`: a SiteOps role name never writes `super_admin`
+    here. The column is a label for anyone signing in through SiteOps, but
+    it is also the fallback authorization path when live claims cannot be
+    resolved — platform-wide reach may not be decided by a substring match
+    over a name SiteOps supplied.
     """
     names = {str(n).strip().lower() for n in role_names}
-    if any("super" in n and "admin" in n for n in names):
-        return Role.super_admin
-    if any("manager" in n for n in names):
+    if any(("super" in n and "admin" in n) or "manager" in n for n in names):
         return Role.manager
     if any("supervisor" in n for n in names):
         return Role.supervisor
@@ -73,6 +77,15 @@ async def sync_users_from_siteops(
         pre_existing = await session.scalar(
             select(User).where(User.user_id == handle)
         )
+        # Defensive: a SiteOps handle that collides with a super admin — the
+        # break-glass bootstrap account, most plausibly — is skipped whole.
+        # Adopting it would clear its password and this loop would then
+        # overwrite its role and active flag, and `admin.py`'s
+        # platform-managed write guard would leave no way back in.
+        by_sub = await session.get(User, platform_identity.local_id(sub))
+        target = by_sub or pre_existing
+        if target is not None and target.role is Role.super_admin:
+            continue
         was_local = pre_existing is not None and pre_existing.password_hash is not None
 
         grants = await siteops.user_grants(sub)
@@ -110,6 +123,9 @@ async def sync_users_from_siteops(
             .where(
                 UserSiteAccess.site_code == site_code,
                 User.password_hash.is_(None),
+                # A super admin is skipped above and never appears in
+                # `seen_ids`; it must not lose access as a side effect.
+                User.role != Role.super_admin,
                 UserSiteAccess.user_id.not_in(seen_ids or {"__none__"}),
             )
         )

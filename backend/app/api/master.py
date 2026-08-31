@@ -134,6 +134,11 @@ async def _platform_staff(session: SessionDep, site_code: str) -> list[StaffOut]
                 role=person.role,
             )
         )
+    # `ensure_user` only flushes when it adopts a local account, and the
+    # request-scoped session never commits on its own — without this, whether
+    # the password-clear persists would depend on some other row in the same
+    # response happening to take the create-path (which does commit).
+    await session.commit()
     return people
 
 

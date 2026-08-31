@@ -64,6 +64,62 @@ async def test_sync_source_clears_password_on_adoption() -> None:
         assert user.must_reset_password is False
 
 
+async def test_staff_list_persists_the_adoption_it_performs(client, monkeypatch) -> None:
+    """`GET /master/staff` must commit the password-clear it decides to do.
+
+    `ensure_user`'s adoption branch only flushes, and the request-scoped
+    session never commits on its own, so before the explicit commit in
+    `_platform_staff` the clear survived only when some *other* row in the
+    same response happened to take the create-path (which commits). One row
+    here: nothing else can sweep the pending update in.
+    """
+    from app.config import settings
+    from app.models.master import Site
+    from app.models.user import UserSiteAccess
+    from app.services import siteops
+    from tests.conftest import auth_headers
+
+    async with SessionLocal() as session:
+        site = await session.get(Site, "MBMT")
+        site.siteops_site_id = "siteops-uuid-1"
+        session.add(
+            User(
+                id="localacct0004",
+                name="Pre-integration Fitter",
+                user_id="STAFF1",
+                role=Role.executive,
+                password_hash=hash_password(PASSWORD),
+                must_reset_password=True,
+                site_links=[UserSiteAccess(site_code="MBMT")],
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(settings, "siteops_service_key", "service-key")
+
+    async def fake_list_site_users(site_id: str, is_active: bool | None = True):
+        return [
+            {
+                "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                "username": "staff1",
+                "full_name": "Staff One",
+                "email": "staff1@transvolt.in",
+                "is_active": True,
+            }
+        ]
+
+    monkeypatch.setattr(siteops, "list_site_users", fake_list_site_users)
+
+    headers = await auth_headers(client)
+    r = await client.get("/master/staff", params={"site": "MBMT"}, headers=headers)
+    assert r.status_code == 200, r.text
+
+    async with SessionLocal() as session:
+        row = await session.get(User, "localacct0004")
+        assert row.password_hash is None
+        assert row.must_reset_password is False
+
+
 async def test_sync_source_leaves_a_fresh_shadow_row_untouched() -> None:
     async with SessionLocal() as session:
         user = await platform_identity.ensure_user(

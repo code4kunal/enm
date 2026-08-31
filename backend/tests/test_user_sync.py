@@ -105,6 +105,64 @@ async def test_sync_adopts_a_pre_existing_local_account_and_clears_its_password(
         assert row.password_hash is None
 
 
+async def test_sync_never_touches_a_local_super_admin(monkeypatch) -> None:
+    """The break-glass account survives a SiteOps handle collision.
+
+    If a SiteOps username uppercases onto a local super admin's handle, the
+    sync must not adopt it, clear its password, demote it or deactivate it —
+    `admin.py`'s write guard would then make the estate unrepairable through
+    the API.
+    """
+    hashed = hash_password(PASSWORD)
+    async with SessionLocal() as session:
+        session.add(
+            User(
+                id="breakglass0001",
+                name="Break Glass",
+                user_id="NEWHAND1",
+                role=Role.super_admin,
+                password_hash=hashed,
+            )
+        )
+        await session.commit()
+
+    collided = dict(ROWS[0])
+    collided["is_active"] = False
+    monkeypatch.setattr(siteops, "list_site_users", _fake_list_site_users([collided]))
+    monkeypatch.setattr(siteops, "user_grants", _fake_user_grants(["Executive"]))
+
+    async with SessionLocal() as session:
+        result = await user_sync.sync_users_from_siteops(
+            session, "MBMT", "siteops-uuid-1"
+        )
+        await session.commit()
+
+    assert result.synced == 0
+    assert result.adopted == 0
+
+    async with SessionLocal() as session:
+        row = await session.get(User, "breakglass0001")
+        assert row.password_hash == hashed
+        assert row.role is Role.super_admin
+        assert row.is_active is True
+        assert row.must_reset_password is False
+
+
+def test_map_role_never_grants_super_admin() -> None:
+    """A SiteOps role name must never write `super_admin` into the shadow row.
+
+    The column is a display label, but it is also the fallback authorization
+    path for an adopted account whose session refresh cannot resolve live
+    claims — a crude substring match may not decide platform-wide reach.
+    """
+    assert user_sync._map_role(["Super Admin"]) is Role.manager
+    assert user_sync._map_role(["super_admin"]) is Role.manager
+    assert user_sync._map_role(["Site Manager"]) is Role.manager
+    assert user_sync._map_role(["Supervisor"]) is Role.supervisor
+    assert user_sync._map_role(["Fitter"]) is Role.executive
+    assert user_sync._map_role([]) is Role.executive
+
+
 async def test_sync_removes_site_access_for_a_user_no_longer_on_the_roster(
     monkeypatch,
 ) -> None:

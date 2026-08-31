@@ -252,6 +252,9 @@ async def update_user(
     user_id: str, payload: UserUpdate, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
+    # Reach first: a manager probing outside its own sites gets the plain 403
+    # rather than a 409 that would confirm the account exists.
+    _assert_sites_within_reach(actor, user.site_access)
     _assert_platform_editable(user)
     before = {
         "name": user.name,
@@ -260,7 +263,6 @@ async def update_user(
         "role": user.role.value,
         "site_access": user.site_access,
     }
-    _assert_sites_within_reach(actor, user.site_access)
 
     email = payload.email.lower() if payload.email else None
     await _assert_unique(
@@ -317,10 +319,10 @@ async def deactivate_user(
     user_id: str, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
-    _assert_platform_editable(user)
     if user.id == actor.id:
         raise Conflict("You cannot deactivate your own account")
     _assert_sites_within_reach(actor, user.site_access)
+    _assert_platform_editable(user)
     if not user.is_active:
         return _out(user)
     await _assert_not_last_super_admin(session, user)
@@ -345,8 +347,8 @@ async def activate_user(
     user_id: str, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
-    _assert_platform_editable(user)
     _assert_sites_within_reach(actor, user.site_access)
+    _assert_platform_editable(user)
     user.is_active = True
     user.updated_at = datetime.now(UTC)
     await audit.record(
@@ -376,8 +378,8 @@ async def reset_password(
 ) -> TempPasswordOut:
     """Returns the new password once — it is never retrievable again."""
     user = await _load(session, user_id)
-    _assert_platform_editable(user)
     _assert_sites_within_reach(actor, user.site_access)
+    _assert_platform_editable(user)
 
     temp_password = (payload.temp_password if payload else None) or (
         generate_temp_password()
