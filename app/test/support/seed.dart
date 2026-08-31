@@ -217,7 +217,7 @@ const List<AppUser> kSeedUsers = <AppUser>[
     userId: 'PLATPERSON',
     email: '',
     role: UserRole.executive,
-    sites: const <String>['MBMT'],
+    sites: <String>['MBMT'],
     active: true,
     isPlatformManaged: true,
   ),
