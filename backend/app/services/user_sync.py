@@ -95,9 +95,10 @@ async def sync_users_from_siteops(
             if is_active:
                 result.reactivated += 1
             person.is_active = is_active
-        if is_active and site_code not in person.site_access:
-            person.site_links.append(UserSiteAccess(site_code=site_code))
-        seen_ids.add(person.id)
+        if is_active:
+            if site_code not in person.site_access:
+                person.site_links.append(UserSiteAccess(site_code=site_code))
+            seen_ids.add(person.id)
         result.synced += 1
 
     # Reconcile: drop this site's access for platform-managed users SiteOps
