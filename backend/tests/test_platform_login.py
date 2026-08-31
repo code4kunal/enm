@@ -272,3 +272,29 @@ async def test_the_handle_is_retried_in_lower_case(
     async with SessionLocal() as session:
         row = await session.scalar(select(User).where(User.user_id == "TV9999"))
         assert row is not None
+
+
+async def test_list_site_users_default_filters_active_only(monkeypatch) -> None:
+    """Unchanged default — the staff dropdown must keep seeing only actives."""
+    seen_params: list[dict] = []
+
+    async def fake_get(path: str, params: dict, *, missing_ok: bool = False):
+        seen_params.append(params)
+        return {"data": []}
+
+    monkeypatch.setattr(siteops, "_get", fake_get)
+    await siteops.list_site_users("some-site-id")
+    assert seen_params[0]["is_active"] == "true"
+
+
+async def test_list_site_users_none_omits_the_filter(monkeypatch) -> None:
+    """The sync job needs deactivated SiteOps users too, to mirror the flip."""
+    seen_params: list[dict] = []
+
+    async def fake_get(path: str, params: dict, *, missing_ok: bool = False):
+        seen_params.append(params)
+        return {"data": []}
+
+    monkeypatch.setattr(siteops, "_get", fake_get)
+    await siteops.list_site_users("some-site-id", is_active=None)
+    assert "is_active" not in seen_params[0]

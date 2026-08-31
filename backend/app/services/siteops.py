@@ -165,17 +165,24 @@ async def user_site_ids(user_id: str) -> list[str]:
     ]
 
 
-async def list_site_users(site_id: str) -> list[dict[str, Any]]:
-    """Every active platform user assigned to one site.
+async def list_site_users(
+    site_id: str, is_active: bool | None = True
+) -> list[dict[str, Any]]:
+    """Every platform user assigned to one site.
 
     What the "reported by" and "supervisor" dropdowns are built from now that
     people are staffed in the platform rather than in E&M: a mechanic who has
     never opened E&M still has to be nameable on somebody else's entry.
+
+    `is_active=None` drops the filter — the user sync needs deactivated
+    SiteOps accounts too, to mirror a deactivation into E&M; the dropdown
+    caller keeps the default (`True`) so a departed mechanic stops appearing
+    there unchanged.
     """
-    body = await _get(
-        "/users/",
-        {"site_id": site_id, "pagination": "false", "is_active": "true"},
-    )
+    params = {"site_id": site_id, "pagination": "false"}
+    if is_active is not None:
+        params["is_active"] = "true" if is_active else "false"
+    body = await _get("/users/", params)
     if isinstance(body, list):
         return [r for r in body if isinstance(r, dict)]
     if not isinstance(body, dict):
