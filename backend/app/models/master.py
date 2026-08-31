@@ -57,6 +57,12 @@ class Site(Base):
         TZDateTime, nullable=True
     )
     last_siteops_sync_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_siteops_user_sync_at: Mapped[datetime | None] = mapped_column(
+        TZDateTime, nullable=True
+    )
+    last_siteops_user_sync_result: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True
+    )
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
