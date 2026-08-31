@@ -17,6 +17,10 @@ class UserOut(BaseModel):
     #: Reaches every site without a stored grant. True for an E&M super admin
     #: and for a platform `admin`, whose E&M `role` column is only a label.
     governs_all_sites: bool = False
+    #: True for any shadow row `ensure_user` created or adopted — password is
+    #: null by construction. E&M's write endpoints reject edits to these; the
+    #: account is administered in SiteOps.
+    is_platform_managed: bool = False
     #: What this account may do, as `em_<resource>:<action>` names. Granted in
     #: siteops-platform for a platform user; derived from `role` for an
     #: E&M-local one. The client gates its navigation on these rather than on

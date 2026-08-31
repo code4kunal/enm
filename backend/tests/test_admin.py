@@ -274,3 +274,32 @@ async def test_reactivate_user(client: AsyncClient) -> None:
         "/auth/login", json={"user_id": "TV4105", "password": PASSWORD}
     )
     assert login.status_code == 200
+
+
+async def test_list_users_reports_platform_managed_flag(client: AsyncClient) -> None:
+    from app.db import SessionLocal
+    from app.models.enums import Role
+    from app.models.user import User, UserSiteAccess
+
+    async with SessionLocal() as session:
+        session.add(
+            User(
+                id="platmgd00001",
+                name="Platform Person",
+                user_id="PLATPERSON",
+                role=Role.executive,
+                password_hash=None,
+                site_links=[UserSiteAccess(site_code="MBMT")],
+            )
+        )
+        await session.commit()
+
+    h = await auth_headers(client)
+    r = await client.get("/admin/users", params={"q": "PLATPERSON"}, headers=h)
+    item = r.json()["items"][0]
+    assert item["is_platform_managed"] is True
+
+    local = (
+        await client.get("/admin/users", params={"q": "TV4105"}, headers=h)
+    ).json()["items"][0]
+    assert local["is_platform_managed"] is False

@@ -40,6 +40,7 @@ def _out(user: User) -> UserOut:
         permissions=sorted(user.permissions),
         is_active=user.is_active,
         must_reset_password=user.must_reset_password,
+        is_platform_managed=user.password_hash is None,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )
