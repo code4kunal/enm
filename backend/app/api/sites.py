@@ -26,6 +26,7 @@ from app.schemas.site import (
     SiteList,
     SiteOut,
     SiteUpdate,
+    UserSyncOut,
     VehicleCreate,
     VehicleList,
     VehicleOut,
@@ -40,6 +41,7 @@ from app.services import (
     service_due,
     site_config,
     sites,
+    user_sync,
 )
 from app.services.common import today_ist
 from app.services.inspection_plans import ensure_default_plans
@@ -357,6 +359,42 @@ async def sync_fleet_from_siteops(
     )
     await session.commit()
     return FleetSyncOut(**sync_result)
+
+
+@router.post("/sites/{code}/users/sync-from-siteops", response_model=UserSyncOut)
+async def sync_users_from_siteops_endpoint(
+    code: str, user: CurrentUser, session: SessionDep
+) -> UserSyncOut:
+    """Overwrite this site's platform-managed users from SiteOps.
+
+    Uses the site's stored `siteops_site_id`. SiteOps is the source of truth:
+    creates/adopts shadow rows, mirrors active status, maps a display role,
+    and reconciles site access for platform-managed users to match the
+    fetched roster. Local-only accounts are never touched.
+    """
+    site_code = assert_site_permission(user, code, "em_user:write")
+    site = await sites.load_site(session, site_code)
+    if not site.siteops_site_id:
+        raise Conflict(
+            "site is not linked to SiteOps", {"siteops_site_id": "required"}
+        )
+
+    result = await user_sync.sync_users_from_siteops(
+        session, site_code, site.siteops_site_id
+    )
+    sync_result = result.as_dict()
+    site.last_siteops_user_sync_at = datetime.now(UTC)
+    site.last_siteops_user_sync_result = sync_result
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.users_synced_from_siteops,
+        object_type="site",
+        object_id=site_code,
+        after=sync_result,
+    )
+    await session.commit()
+    return UserSyncOut(**sync_result)
 
 
 @router.put("/sites/{code}/vehicles/{vehicle_id}", response_model=VehicleOut)

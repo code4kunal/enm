@@ -196,6 +196,13 @@ class FleetSyncOut(BaseModel):
     skipped_no_registration: int
 
 
+class UserSyncOut(BaseModel):
+    synced: int
+    adopted: int
+    reactivated: int = 0
+    deactivated: int = 0
+
+
 class ServiceRecordIn(BaseModel):
     plan_code: str = Field(min_length=1, max_length=50)
     odometer_km: int = Field(ge=0, le=10_000_000)

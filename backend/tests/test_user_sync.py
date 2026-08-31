@@ -3,6 +3,7 @@ SiteOps the source of truth for a linked site's roster.
 """
 from __future__ import annotations
 
+from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -10,7 +11,7 @@ from app.models.enums import Role
 from app.models.user import User, UserSiteAccess
 from app.security import hash_password
 from app.services import siteops, user_sync
-from tests.conftest import PASSWORD
+from tests.conftest import PASSWORD, SUPER_ADMIN, auth_headers
 
 
 def _fake_list_site_users(rows: list[dict]):
@@ -228,3 +229,37 @@ async def test_sync_all_users_isolates_per_site_failures(monkeypatch) -> None:
         assert umt.last_siteops_user_sync_at is not None
         assert umt.last_siteops_user_sync_result["ok"] is False
         assert "error" in umt.last_siteops_user_sync_result
+
+
+async def test_sync_endpoint_requires_a_linked_site(
+    client: AsyncClient, monkeypatch
+) -> None:
+    monkeypatch.setattr(siteops, "list_site_users", _fake_list_site_users([]))
+    h = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post("/sites/TDC/users/sync-from-siteops", headers=h)
+    assert r.status_code == 409
+
+
+async def test_sync_endpoint_syncs_a_linked_site(
+    client: AsyncClient, monkeypatch
+) -> None:
+    from app.db import SessionLocal
+    from app.models.master import Site
+
+    async with SessionLocal() as session:
+        site = await session.get(Site, "MBMT")
+        site.siteops_site_id = "siteops-uuid-1"
+        await session.commit()
+
+    monkeypatch.setattr(siteops, "list_site_users", _fake_list_site_users(ROWS))
+    monkeypatch.setattr(siteops, "user_grants", _fake_user_grants(["Manager"]))
+    h = await auth_headers(client, SUPER_ADMIN)
+    r = await client.post("/sites/MBMT/users/sync-from-siteops", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["synced"] == 2
+
+
+async def test_sync_endpoint_is_manager_only(client: AsyncClient) -> None:
+    supervisor = await auth_headers(client, "TV4102")
+    r = await client.post("/sites/MBMT/users/sync-from-siteops", headers=supervisor)
+    assert r.status_code == 403
