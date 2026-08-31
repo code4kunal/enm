@@ -29,6 +29,21 @@ def local_id(sub: str) -> str:
     return sub.replace("-", "")
 
 
+class SyncProtectedSuperAdmin(RuntimeError):
+    """Raised by `ensure_user(source="sync")` instead of adopting a row.
+
+    A `Role.super_admin` row is the break-glass bootstrap admin. If a SiteOps
+    id or handle happens to collide with it, a background sync must not
+    adopt it — that would clear its password, and every subsequent field the
+    caller writes (role, `is_active`, site access) would then overwrite the
+    one account that has to survive SiteOps being wrong or unreachable.
+
+    Every `source="sync"` call site — the nightly roster sync and the
+    staff-list dropdown fetch alike — must catch this and treat it as "skip
+    this person", not let it propagate.
+    """
+
+
 async def ensure_user(
     session: AsyncSession,
     *,
@@ -56,6 +71,8 @@ async def ensure_user(
         user = await session.scalar(select(User).where(User.user_id == handle))
 
     if user is not None:
+        if source == "sync" and user.role is Role.super_admin:
+            raise SyncProtectedSuperAdmin(user.id)
         if source == "sync" and user.password_hash is not None:
             user.password_hash = None
             user.must_reset_password = False

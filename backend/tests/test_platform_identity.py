@@ -126,3 +126,56 @@ async def test_sync_source_leaves_a_fresh_shadow_row_untouched() -> None:
             session, sub=str(uuid.uuid4()), user_name="brandnew", source="sync"
         )
         assert user.password_hash is None
+
+
+async def test_staff_list_never_touches_a_local_super_admin(client, monkeypatch) -> None:
+    """`GET /master/staff` must not adopt a SiteOps handle that collides with
+    a local `Role.super_admin` account either — the break-glass bootstrap
+    admin is protected centrally in `ensure_user`, not just in the nightly
+    sync loop that has its own separate call site into the same function.
+    """
+    from app.config import settings
+    from app.models.master import Site
+    from app.services import siteops
+    from tests.conftest import auth_headers
+
+    hashed = hash_password(PASSWORD)
+    async with SessionLocal() as session:
+        site = await session.get(Site, "MBMT")
+        site.siteops_site_id = "siteops-uuid-1"
+        session.add(
+            User(
+                id="breakglass0002",
+                name="Break Glass",
+                user_id="STAFF2",
+                role=Role.super_admin,
+                password_hash=hashed,
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(settings, "siteops_service_key", "service-key")
+
+    async def fake_list_site_users(site_id: str, is_active: bool | None = True):
+        return [
+            {
+                "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                "username": "staff2",
+                "full_name": "Staff Two",
+                "email": "staff2@transvolt.in",
+                "is_active": True,
+            }
+        ]
+
+    monkeypatch.setattr(siteops, "list_site_users", fake_list_site_users)
+
+    headers = await auth_headers(client)
+    r = await client.get("/master/staff", params={"site": "MBMT"}, headers=headers)
+    assert r.status_code == 200, r.text
+
+    async with SessionLocal() as session:
+        row = await session.get(User, "breakglass0002")
+        assert row.password_hash == hashed
+        assert row.role is Role.super_admin
+        assert row.is_active is True
+        assert row.must_reset_password is False

@@ -116,14 +116,19 @@ async def _platform_staff(session: SessionDep, site_code: str) -> list[StaffOut]
         username = str(row.get("username") or "").strip()
         if not sub or not username:
             continue
-        person = await platform_identity.ensure_user(
-            session,
-            sub=sub,
-            user_name=username,
-            name=str(row.get("full_name") or "") or None,
-            email=str(row.get("email") or "") or None,
-            source="sync",
-        )
+        try:
+            person = await platform_identity.ensure_user(
+                session,
+                sub=sub,
+                user_name=username,
+                name=str(row.get("full_name") or "") or None,
+                email=str(row.get("email") or "") or None,
+                source="sync",
+            )
+        except platform_identity.SyncProtectedSuperAdmin:
+            # A SiteOps handle collided with the local break-glass admin.
+            # Skip it whole rather than adopt it into this staff list.
+            continue
         if not person.is_active:
             continue
         people.append(

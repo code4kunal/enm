@@ -77,29 +77,30 @@ async def sync_users_from_siteops(
         pre_existing = await session.scalar(
             select(User).where(User.user_id == handle)
         )
-        # Defensive: a SiteOps handle that collides with a super admin — the
+        was_local = pre_existing is not None and pre_existing.password_hash is not None
+
+        # A SiteOps id or handle that collides with a super admin — the
         # break-glass bootstrap account, most plausibly — is skipped whole.
-        # Adopting it would clear its password and this loop would then
+        # `ensure_user` refuses to adopt it (see `SyncProtectedSuperAdmin`):
+        # adopting would clear its password, and this loop would then
         # overwrite its role and active flag, and `admin.py`'s
         # platform-managed write guard would leave no way back in.
-        by_sub = await session.get(User, platform_identity.local_id(sub))
-        target = by_sub or pre_existing
-        if target is not None and target.role is Role.super_admin:
+        try:
+            person = await platform_identity.ensure_user(
+                session,
+                sub=sub,
+                user_name=username,
+                name=str(row.get("full_name") or "") or None,
+                email=str(row.get("email") or "") or None,
+                source="sync",
+            )
+        except platform_identity.SyncProtectedSuperAdmin:
             continue
-        was_local = pre_existing is not None and pre_existing.password_hash is not None
 
         grants = await siteops.user_grants(sub)
         role = _map_role((grants or {}).get("roles") or [])
         is_active = bool(row.get("is_active", True))
 
-        person = await platform_identity.ensure_user(
-            session,
-            sub=sub,
-            user_name=username,
-            name=str(row.get("full_name") or "") or None,
-            email=str(row.get("email") or "") or None,
-            source="sync",
-        )
         if was_local:
             result.adopted += 1
         if person.role != role:
