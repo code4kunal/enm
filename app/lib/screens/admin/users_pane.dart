@@ -31,6 +31,7 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
   UserDraft? _draft;
   String? _error;
   bool _saving = false;
+  bool _syncing = false;
 
   /// Shown once after a create or reset — the admin has to hand it over.
   ({String name, String password})? _issued;
@@ -130,6 +131,30 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
     }
   }
 
+  Future<void> _syncFromSiteOps() async {
+    final site = ref.read(sessionProvider).site;
+    if (site.isEmpty || _syncing) return;
+    setState(() => _syncing = true);
+    try {
+      final json = await ref
+          .read(apiClientProvider)
+          .post('/sites/$site/users/sync-from-siteops');
+      final r = json as Map<String, dynamic>;
+      final synced = r['synced'] as int? ?? 0;
+      final adopted = r['adopted'] as int? ?? 0;
+      final parts = <String>[
+        '$synced synced',
+        if (adopted > 0) '$adopted adopted',
+      ];
+      ref.read(toastProvider.notifier).show('Users: ${parts.join(', ')}.');
+      ref.invalidate(usersProvider);
+    } on ApiException catch (e) {
+      if (mounted) ref.read(toastProvider.notifier).show(e.message);
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
@@ -153,16 +178,37 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
                   'and site access. Inactive users cannot sign in.'
               : 'Staff on your sites. You can create supervisors and '
                   'executives; promotion is a super-admin action.',
-          action: FilledActionButton(
-            label: '+ Create user',
-            onPressed: () => _open(
-              UserDraft(
-                role: session.user?.role.grantableRoles.last ??
-                    UserRole.executive,
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextButton.icon(
+                onPressed: _syncing ? null : _syncFromSiteOps,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync, size: 18),
+                label: Text(
+                  _syncing ? 'Syncing…' : 'Sync now',
+                  style: AppText.sans(size: 14, weight: FontWeight.w600),
+                ),
               ),
-            ),
-            fontSize: 14,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              const SizedBox(width: 8),
+              FilledActionButton(
+                label: '+ Create user',
+                onPressed: () => _open(
+                  UserDraft(
+                    role: session.user?.role.grantableRoles.last ??
+                        UserRole.executive,
+                  ),
+                ),
+                fontSize: 14,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              ),
+            ],
           ),
         ),
 
@@ -646,38 +692,45 @@ class _UserRow extends StatelessWidget {
                     ),
                 ],
               ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                OutlineActionButton(
-                  label: 'Edit',
-                  onPressed: onEdit,
-                  accent: T.green,
-                  fontSize: 12.5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                ),
-                OutlineActionButton(
-                  label: 'Reset password',
-                  onPressed: onReset,
-                  accent: T.blue,
-                  fontSize: 12.5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                ),
-                OutlineActionButton(
-                  label: user.active ? 'Deactivate' : 'Activate',
-                  // A manager cannot lock themselves out.
-                  onPressed: isSelf && user.active ? null : onToggle,
-                  foreground: user.active ? T.redInk : T.greenInk,
-                  borderColor: user.active ? T.redBorderTint : T.green,
-                  fontSize: 12.5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                ),
-              ],
-            ),
+            if (user.isPlatformManaged)
+              const TagBadge(
+                label: 'MANAGED IN SITEOPS',
+                background: T.indigoTint,
+                foreground: T.indigo,
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  OutlineActionButton(
+                    label: 'Edit',
+                    onPressed: onEdit,
+                    accent: T.green,
+                    fontSize: 12.5,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 13, vertical: 7),
+                  ),
+                  OutlineActionButton(
+                    label: 'Reset password',
+                    onPressed: onReset,
+                    accent: T.blue,
+                    fontSize: 12.5,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 13, vertical: 7),
+                  ),
+                  OutlineActionButton(
+                    label: user.active ? 'Deactivate' : 'Activate',
+                    // A manager cannot lock themselves out.
+                    onPressed: isSelf && user.active ? null : onToggle,
+                    foreground: user.active ? T.redInk : T.greenInk,
+                    borderColor: user.active ? T.redBorderTint : T.green,
+                    fontSize: 12.5,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 13, vertical: 7),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
