@@ -775,6 +775,7 @@ class ApiUserRepository implements UserRepository {
           for (final p in (json['permissions'] as List<dynamic>? ?? <dynamic>[]))
             p as String,
         },
+        isPlatformManaged: json['is_platform_managed'] as bool? ?? false,
         governsAllSites: json['governs_all_sites'] as bool?,
       );
 }

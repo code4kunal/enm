@@ -211,6 +211,16 @@ const List<AppUser> kSeedUsers = <AppUser>[
     sites: <String>['KANDLA'],
     active: false,
   ),
+  AppUser(
+    id: 'platform-1',
+    name: 'Platform Person',
+    userId: 'PLATPERSON',
+    email: '',
+    role: UserRole.executive,
+    sites: const <String>['MBMT'],
+    active: true,
+    isPlatformManaged: true,
+  ),
 ];
 
 /// Dates are generated relative to "now" so the Today / Last 7 days / This

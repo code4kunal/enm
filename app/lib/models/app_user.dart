@@ -79,6 +79,7 @@ class AppUser {
     required this.active,
     this.mustResetPassword = false,
     this.permissions = const <String>{},
+    this.isPlatformManaged = false,
     bool? governsAllSites,
   }) : _governsAllSites = governsAllSites;
 
@@ -112,6 +113,11 @@ class AppUser {
   /// these rather than on [role], which became a label the moment the
   /// platform became the authority.
   final Set<String> permissions;
+
+  /// True for any account SiteOps manages — created via `ensure_user` on the
+  /// backend, password always null there. E&M's admin screens hide edit
+  /// actions for these; the account is administered in SiteOps.
+  final bool isPlatformManaged;
 
   final bool? _governsAllSites;
 
@@ -181,6 +187,7 @@ class AppUser {
     bool? active,
     bool? mustResetPassword,
     Set<String>? permissions,
+    bool? isPlatformManaged,
     bool? governsAllSites,
   }) {
     return AppUser(
@@ -193,6 +200,7 @@ class AppUser {
       active: active ?? this.active,
       mustResetPassword: mustResetPassword ?? this.mustResetPassword,
       permissions: permissions ?? this.permissions,
+      isPlatformManaged: isPlatformManaged ?? this.isPlatformManaged,
       governsAllSites: governsAllSites ?? _governsAllSites,
     );
   }
@@ -207,6 +215,7 @@ class AppUser {
         'is_active': active,
         'must_reset_password': mustResetPassword,
         'permissions': permissions.toList()..sort(),
+        'is_platform_managed': isPlatformManaged,
         'governs_all_sites': governsAllSites,
       };
 
@@ -225,6 +234,7 @@ class AppUser {
           for (final p in (json['permissions'] as List<dynamic>? ?? <dynamic>[]))
             p as String,
         },
+        isPlatformManaged: json['is_platform_managed'] as bool? ?? false,
         governsAllSites: json['governs_all_sites'] as bool?,
       );
 }
