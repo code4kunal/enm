@@ -19,6 +19,7 @@ from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.masters import sync_all_linked_sites
 from app.services.notifications import scan_breakdown_sla
+from app.services.user_sync import sync_all_users_from_siteops
 from app.services.odometer import scan_sites_due_for_sync
 from app.services.permission_sync import push_permissions
 
@@ -107,6 +108,21 @@ async def lifespan(_app: FastAPI):
                 timezone=settings.timezone,
             ),
             id="siteops_fleet_sync",
+            max_instances=1,
+            coalesce=True,
+        )
+        # Refresh platform-managed users from SiteOps for every linked site —
+        # a person added or deactivated in SiteOps shows up here without a
+        # manual Sync click. Runs 5m after the fleet sync so both settle
+        # before anyone opens the Users pane in the morning.
+        scheduler.add_job(
+            sync_all_users_from_siteops,
+            CronTrigger(
+                hour=settings.schedule_generator_hour,
+                minute=min(settings.schedule_generator_minute + 15, 59),
+                timezone=settings.timezone,
+            ),
+            id="siteops_user_sync",
             max_instances=1,
             coalesce=True,
         )
