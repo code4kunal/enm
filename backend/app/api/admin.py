@@ -132,6 +132,17 @@ async def _load(session: SessionDep, user_id: str) -> User:
     return user
 
 
+def _assert_platform_editable(user: User) -> None:
+    """SiteOps owns any shadow row it created — `password_hash is None` is a
+    complete signal for that, set only by `ensure_user`. Only a local account
+    (the break-glass admin, or one predating the integration) may be edited
+    here."""
+    if user.password_hash is None:
+        raise Conflict(
+            "Managed by SiteOps — edit there.", {"user_id": "platform-managed"}
+        )
+
+
 async def _revoke_sessions(session: SessionDep, user_id: str) -> None:
     await session.execute(
         update(RefreshToken)
@@ -241,6 +252,7 @@ async def update_user(
     user_id: str, payload: UserUpdate, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
+    _assert_platform_editable(user)
     before = {
         "name": user.name,
         "user_id": user.user_id,
@@ -305,6 +317,7 @@ async def deactivate_user(
     user_id: str, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
+    _assert_platform_editable(user)
     if user.id == actor.id:
         raise Conflict("You cannot deactivate your own account")
     _assert_sites_within_reach(actor, user.site_access)
@@ -332,6 +345,7 @@ async def activate_user(
     user_id: str, actor: ManagerUser, session: SessionDep
 ) -> UserOut:
     user = await _load(session, user_id)
+    _assert_platform_editable(user)
     _assert_sites_within_reach(actor, user.site_access)
     user.is_active = True
     user.updated_at = datetime.now(UTC)
@@ -362,6 +376,7 @@ async def reset_password(
 ) -> TempPasswordOut:
     """Returns the new password once — it is never retrievable again."""
     user = await _load(session, user_id)
+    _assert_platform_editable(user)
     _assert_sites_within_reach(actor, user.site_access)
 
     temp_password = (payload.temp_password if payload else None) or (

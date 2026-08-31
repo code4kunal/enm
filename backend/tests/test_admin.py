@@ -303,3 +303,46 @@ async def test_list_users_reports_platform_managed_flag(client: AsyncClient) -> 
         await client.get("/admin/users", params={"q": "TV4105"}, headers=h)
     ).json()["items"][0]
     assert local["is_platform_managed"] is False
+
+
+async def test_platform_managed_user_cannot_be_edited_locally(
+    client: AsyncClient,
+) -> None:
+    from app.db import SessionLocal
+    from app.models.enums import Role
+    from app.models.user import User
+
+    async with SessionLocal() as session:
+        session.add(
+            User(
+                id="platmgd00002",
+                name="Plat User",
+                user_id="PLATUSER",
+                role=Role.executive,
+                password_hash=None,
+            )
+        )
+        await session.commit()
+
+    h = await auth_headers(client, SUPER_ADMIN)
+    target = (
+        await client.get("/admin/users", params={"q": "PLATUSER"}, headers=h)
+    ).json()["items"][0]
+
+    put = await client.put(
+        f"/admin/users/{target['id']}", json={"name": "Renamed"}, headers=h
+    )
+    assert put.status_code == 409
+
+    deactivate = await client.post(
+        f"/admin/users/{target['id']}/deactivate", headers=h
+    )
+    assert deactivate.status_code == 409
+
+    activate = await client.post(f"/admin/users/{target['id']}/activate", headers=h)
+    assert activate.status_code == 409
+
+    reset = await client.post(
+        f"/admin/users/{target['id']}/reset-password", headers=h
+    )
+    assert reset.status_code == 409
