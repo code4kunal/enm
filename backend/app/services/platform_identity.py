@@ -13,6 +13,8 @@ next token, with no cleanup to forget here.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -34,8 +36,16 @@ async def ensure_user(
     user_name: str,
     name: str | None = None,
     email: str | None = None,
+    source: Literal["login", "sync"] = "login",
 ) -> User:
-    """Find or create the shadow row for a platform identity."""
+    """Find or create the shadow row for a platform identity.
+
+    `source="sync"` marks a background reconciliation (the user sync, or the
+    staff-list dropdown fetch) rather than a live sign-in. If it adopts a
+    pre-existing local-password account by handle, that account is converted
+    to platform-managed (password cleared) — a live login already proved the
+    password belongs to this person, so `source="login"` leaves it alone.
+    """
     handle = (user_name or sub).strip().upper()
     user = await session.get(User, local_id(sub))
 
@@ -46,6 +56,10 @@ async def ensure_user(
         user = await session.scalar(select(User).where(User.user_id == handle))
 
     if user is not None:
+        if source == "sync" and user.password_hash is not None:
+            user.password_hash = None
+            user.must_reset_password = False
+            await session.flush()
         return user
 
     # `users.email` is unique. A platform account whose address already
