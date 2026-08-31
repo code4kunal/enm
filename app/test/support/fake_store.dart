@@ -27,6 +27,9 @@ class FakeStore {
     defectTypes.addAll(buildSeedMasterList(kSeedDefectTypes));
     configs.addAll(buildSeedConfigs());
     for (final u in kSeedUsers) {
+      // A platform-managed account has no local password — SiteOps owns the
+      // credential, and the server stores `password_hash = NULL` for it.
+      if (u.isPlatformManaged) continue;
       passwords[u.userId] = kSeedPassword;
     }
   }

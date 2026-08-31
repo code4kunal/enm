@@ -146,6 +146,7 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
         '$synced synced',
         if (adopted > 0) '$adopted adopted',
       ];
+      if (!mounted) return;
       ref.read(toastProvider.notifier).show('Users: ${parts.join(', ')}.');
       ref.invalidate(usersProvider);
     } on ApiException catch (e) {
