@@ -454,3 +454,47 @@ async def test_the_export_carries_the_colour_a_csv_cannot_hold(
     assert "Breakdowns" in body
     assert "Air leak (BD)" in body
     assert BUS in body and OTHER in body
+
+
+async def test_breakdowns_and_driver_complaints_export_as_excel(
+    client: AsyncClient,
+) -> None:
+    """The only two charts a block's full text is worth reading out of a
+    spreadsheet for."""
+    import io
+
+    from openpyxl import load_workbook
+
+    h = await auth_headers(client)
+    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
+    await _entry(client, h, "driver_complaint", 4, {"complaint": "AC weak"})
+
+    for kind, text in (("breakdowns", "Air leak"), ("driverComplaints", "AC weak")):
+        resp = await client.get(
+            f"/sites/MBMT/reports/control-charts/{kind}/export",
+            params={**window(), "format": "xlsx"},
+            headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["content-type"] == (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        sheet = load_workbook(io.BytesIO(resp.content)).active
+        rows = list(sheet.iter_rows(values_only=True))
+        header = next(r for r in rows if r[0] == "Bus No")
+        day_col = header.index("2026-08-04")
+        bus_row = next(r for r in rows if r[0] == BUS)
+        assert bus_row[day_col] == text
+
+
+async def test_other_charts_ignore_the_excel_format(client: AsyncClient) -> None:
+    """Only breakdowns and driver complaints have an Excel writer — anything
+    else asking for xlsx still gets the CSV, same as any unhandled format."""
+    h = await auth_headers(client)
+    resp = await client.get(
+        "/sites/MBMT/reports/control-charts/coolantTopping/export",
+        params={**window(), "format": "xlsx"},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    assert "text/csv" in resp.headers["content-type"]

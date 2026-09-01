@@ -639,6 +639,20 @@ async def export_control_chart(
             f"{chart.from_date}-to-{chart.to_date}",
         )
 
+    # Excel, so far, only for the two charts a block's full text actually
+    # matters on — driver complaints and breakdowns. Any other kind falls
+    # through to the CSV below same as an unhandled format always has.
+    if fmt is ExportFormat.xlsx and kind in (
+        control_charts.ChartKind.driver_complaints,
+        control_charts.ChartKind.breakdowns,
+    ):
+        name = f"{site_code}-{kind.value}-{chart.from_date}-to-{chart.to_date}.xlsx"
+        return Response(
+            content=xlsx.control_chart(chart),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
     suffix = {
         control_charts.CellMark.pm: " (PM)",
         control_charts.CellMark.breakdown: " (BD)",

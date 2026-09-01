@@ -87,14 +87,36 @@ class ChartsPane extends ConsumerWidget {
           data: _ChartPicker.new,
         ),
         const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ReportDownloadButton(
-            doc: ReportDoc.controlChart,
-            chartKind: ref.watch(chartKindProvider),
-            fromDate: '$month-01',
-            toDate: Dates.lastOfMonth(month),
-          ),
+        Builder(
+          builder: (context) {
+            final selectedKind = ref.watch(chartKindProvider);
+            // Excel only for the two charts a block's full text is worth
+            // reading out of a spreadsheet for — every other chart is a
+            // grid of short codes a PDF already shows just as well.
+            final hasExcel = selectedKind == 'driverComplaints' ||
+                selectedKind == 'breakdowns';
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: <Widget>[
+                ReportDownloadButton(
+                  doc: ReportDoc.controlChart,
+                  chartKind: selectedKind,
+                  fromDate: '$month-01',
+                  toDate: Dates.lastOfMonth(month),
+                ),
+                if (hasExcel)
+                  ReportDownloadButton(
+                    doc: ReportDoc.controlChart,
+                    chartKind: selectedKind,
+                    fromDate: '$month-01',
+                    toDate: Dates.lastOfMonth(month),
+                    format: 'xlsx',
+                    label: 'Download Excel',
+                  ),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 14),
         const _ChartGrid(),

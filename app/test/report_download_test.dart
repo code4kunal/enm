@@ -110,6 +110,25 @@ void main() {
       expect(seen.queryParameters['format'], 'pdf');
     });
 
+    test('a control chart can ask for excel instead', () async {
+      late Uri seen;
+      final repo = ApiReportRepository(
+        _clientReturning(_pdf, onRequest: (r) => seen = r.url),
+      );
+
+      final file = await repo.downloadReport(
+        ReportDoc.controlChart,
+        siteCode: 'MBMT',
+        chartKind: 'breakdowns',
+        fromDate: '2026-08-01',
+        toDate: '2026-08-31',
+        format: 'xlsx',
+      );
+
+      expect(seen.queryParameters['format'], 'xlsx');
+      expect(file.name, 'mbmt-control-chart.xlsx');
+    });
+
     test('a bus history card is scoped to one bus', () async {
       late Uri seen;
       final repo = ApiReportRepository(

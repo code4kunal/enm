@@ -1363,7 +1363,7 @@ class ApiReportRepository implements ReportRepository {
           <String, String>{
             if (fromDate != null) 'from': fromDate,
             if (toDate != null) 'to': toDate,
-            'format': 'pdf',
+            'format': format,
           }
         ),
       ReportDoc.offRoad => ('$site/off-road/export', <String, String>{
@@ -1406,7 +1406,8 @@ class ApiReportRepository implements ReportRepository {
       ReportDoc.busHistory => 'bus-history',
     };
     final stem = <String>[site, kind, period].where((p) => p.isNotEmpty).join('-');
-    final ext = doc == ReportDoc.dmrMonth && format == 'xlsx' ? 'xlsx' : 'pdf';
+    final xlsxDocs = <ReportDoc>{ReportDoc.dmrMonth, ReportDoc.controlChart};
+    final ext = xlsxDocs.contains(doc) && format == 'xlsx' ? 'xlsx' : 'pdf';
     return '${stem.toLowerCase()}.$ext';
   }
 }
