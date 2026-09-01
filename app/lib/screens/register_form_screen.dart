@@ -6,9 +6,11 @@ import '../data/registers.dart';
 import '../data/repositories.dart';
 import '../models/entry.dart';
 import '../models/register.dart';
+import '../models/report.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
+import '../state/reports.dart';
 import '../state/selected_site.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
@@ -48,11 +50,25 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   /// The entry being edited, resolved once from the store.
   RegisterEntry? _editing;
 
+  // --- Unit section — Daily Work Done only ---------------------------------
+  //
+  // A unit fit is not a register entry (`FittedUnit` has no FK to `entries`,
+  // Bus History reads it directly) — this section is a visual convenience
+  // that makes a second, independent `fitUnit` call alongside the Work Done
+  // entry's own save, not a new field on `work_done_entries`.
+  int? _unitTypeId;
+  final _unitNoController = TextEditingController();
+  final _odometerController = TextEditingController();
+  final _unitRemarksController = TextEditingController();
+
   @override
   void dispose() {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    _unitNoController.dispose();
+    _odometerController.dispose();
+    _unitRemarksController.dispose();
     super.dispose();
   }
 
@@ -150,13 +166,44 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
             .read(toastProvider.notifier)
             .show('Entry saved to ${register.name} register');
       }
-      if (mounted) _close();
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
         ref.read(toastProvider.notifier).show('Could not save — $e');
       }
+      return;
     }
+
+    // A unit was picked in the Unit section — fit it as a second, independent
+    // action. A failure here must not look like the Work Done entry above
+    // (already saved) also failed.
+    final unitTypeId = _unitTypeId;
+    if (unitTypeId != null) {
+      final vehicles = ref.read(siteVehiclesProvider).valueOrNull ?? const [];
+      final vehicleId = vehicles
+          .where((v) => v.registrationNo == (_values['bus'] ?? ''))
+          .map((v) => v.id)
+          .firstOrNull;
+      if (vehicleId != null) {
+        try {
+          await ref.read(reportControllerProvider).fitUnit(
+                vehicleId: vehicleId,
+                unitTypeId: unitTypeId,
+                fittedOn: _values['date'] ?? Dates.today(),
+                unitNo: _unitNoController.text.trim(),
+                fittedOdometerKm: int.tryParse(_odometerController.text.trim()),
+                remarks: _unitRemarksController.text.trim(),
+              );
+          ref.read(toastProvider.notifier).show('Unit fitted');
+        } catch (e) {
+          ref
+              .read(toastProvider.notifier)
+              .show('Entry saved, but the unit could not be fitted — $e');
+        }
+      }
+    }
+
+    if (mounted) _close();
   }
 
   void _close() {
@@ -311,6 +358,16 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                       setState(() => _photoAttached = !_photoAttached),
                 ),
               ),
+              if (register.id == 'work') ...<Widget>[
+                const SizedBox(height: 16),
+                _UnitSection(
+                  unitTypeId: _unitTypeId,
+                  unitNoController: _unitNoController,
+                  odometerController: _odometerController,
+                  remarksController: _unitRemarksController,
+                  onUnitTypeChanged: (id) => setState(() => _unitTypeId = id),
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: <Widget>[
@@ -342,6 +399,91 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Optional unit-fitting block on the Daily Work Done form.
+///
+/// A visual convenience, not a new field on `work_done_entries` — filling it
+/// in makes a second, independent `fitUnit` call when the entry is saved.
+/// Leaving Unit unpicked (the default) submits the Work Done entry exactly
+/// as before, with nothing added.
+class _UnitSection extends ConsumerWidget {
+  const _UnitSection({
+    required this.unitTypeId,
+    required this.unitNoController,
+    required this.odometerController,
+    required this.remarksController,
+    required this.onUnitTypeChanged,
+  });
+
+  final int? unitTypeId;
+  final TextEditingController unitNoController;
+  final TextEditingController odometerController;
+  final TextEditingController remarksController;
+  final ValueChanged<int?> onUnitTypeChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final types = ref.watch(unitTypesProvider).valueOrNull ?? const <UnitType>[];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      decoration: BoxDecoration(
+        color: T.card,
+        borderRadius: T.cardShape,
+        border: Border.all(color: T.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Unit', style: AppText.sans(size: 15, weight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(
+            'Fitting a component here starts its life the same as Reports → '
+            'Units — it reaches the bus history and failure statement when '
+            'it comes off. Leave blank if this entry has nothing to do with '
+            'a unit.',
+            style: AppText.sans(size: 12.5, color: T.secondary, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          const FieldLabel(label: 'Unit'),
+          const SizedBox(height: 6),
+          AppSelect(
+            value: types
+                .where((t) => t.id == unitTypeId)
+                .map((t) => t.name)
+                .firstOrNull,
+            options: types.map((t) => t.name).toList(),
+            placeholder: 'Not fitting a unit on this entry',
+            onChanged: (name) => onUnitTypeChanged(
+              types.where((t) => t.name == name).map((t) => t.id).firstOrNull,
+            ),
+          ),
+          if (unitTypeId != null) ...<Widget>[
+            const SizedBox(height: 14),
+            const FieldLabel(label: 'Unit No'),
+            const SizedBox(height: 6),
+            AppTextField(
+              controller: unitNoController,
+              placeholder: 'The maker’s serial, if it has one',
+            ),
+            const SizedBox(height: 14),
+            const FieldLabel(label: 'Odometer at fitting'),
+            const SizedBox(height: 6),
+            AppTextField(
+              controller: odometerController,
+              placeholder: 'Leave blank to use the bus’s last reading',
+              numeric: true,
+            ),
+            const SizedBox(height: 14),
+            const FieldLabel(label: 'Remarks'),
+            const SizedBox(height: 6),
+            AppTextField(controller: remarksController, placeholder: 'Optional'),
+          ],
+        ],
       ),
     );
   }

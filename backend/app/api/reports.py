@@ -716,8 +716,15 @@ async def units_on_bus(
 async def fit_unit(
     code: str, payload: FitUnitIn, user: CurrentUser, session: SessionDep
 ) -> FittedUnitOut:
-    """Put a component on a bus."""
-    site_code = assert_site_permission(user, code, "em_report:write")
+    """Put a component on a bus.
+
+    Gated on `em_entry:write`, not `em_report:write` — fitting a unit is now
+    reachable from the Daily Work Done form as well as Reports → Units, and
+    the two are the same action, so they share the lower of the two bars
+    rather than the Work Done form silently needing a permission its own
+    entry save does not.
+    """
+    site_code = assert_site_permission(user, code, "em_entry:write")
     vehicle = await session.get(Vehicle, payload.vehicle_id)
     if vehicle is None or vehicle.site_code != site_code:
         raise NotFound("Vehicle not found")
@@ -753,7 +760,7 @@ async def remove_unit(
     stay = await session.get(FittedUnit, unit_id)
     if stay is None:
         raise NotFound("Fitted unit not found")
-    assert_site_permission(user, stay.site_code, "em_report:write")
+    assert_site_permission(user, stay.site_code, "em_entry:write")
     if stay.removed_on is not None:
         raise ValidationError(
             "This unit is already recorded as removed",

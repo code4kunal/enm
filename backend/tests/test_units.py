@@ -212,6 +212,17 @@ async def test_an_executive_cannot_record_units(client: AsyncClient) -> None:
     assert (await _fit(client, h, types["Traction Motor"], "2026-08-01")).status_code == 403
 
 
+async def test_a_supervisor_can_fit_and_remove_a_unit(client: AsyncClient) -> None:
+    """Gated on em_entry:write, the same bar Daily Work Done uses — fitting a
+    unit from that form must not need a permission its own save does not."""
+    h = await auth_headers(client, "TV4102")
+    types = await _unit_types()
+    fit = await _fit(client, h, types["Traction Motor"], "2026-08-01")
+    assert fit.status_code == 201, fit.text
+    remove = await _remove(client, h, fit.json()["id"], "2026-08-05")
+    assert remove.status_code == 200, remove.text
+
+
 async def test_what_is_on_a_bus_right_now(client: AsyncClient) -> None:
     h = await auth_headers(client)
     types = await _unit_types()
