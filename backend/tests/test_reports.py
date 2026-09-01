@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import csv
 from datetime import date, timedelta
+from io import BytesIO
 
 from httpx import AsyncClient
+from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -238,6 +241,55 @@ async def test_the_month_grid_exports_in_the_depots_layout(
     assert "Location :- MBMT" in text
     assert "Total fleet" in text
     assert "Nos of tyres scrapped" in text
+
+    rows = list(csv.reader(text.splitlines()))
+    header = next(r for r in rows if r and r[0] == "Sl.No")
+    assert header[-1] == "Total"
+    breakdowns_row = next(r for r in rows if r[:2] == ["13", "Daily breakdowns"])
+    assert breakdowns_row[-1] == "1"
+    # A point-in-time stock count carries no Total — summing it would count
+    # the same bus once per day it sat in that state.
+    fleet_row = next(r for r in rows if r[:2] == ["1", "Total fleet"])
+    assert fleet_row[-1] == ""
+
+
+async def test_the_month_export_offers_pdf_and_xlsx(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    await _breakdown(client, h)
+
+    pdf_resp = await client.get(
+        "/sites/MBMT/reports/dmr/export",
+        params={"month": "2026-08", "format": "pdf"},
+        headers=h,
+    )
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.headers["content-type"] == "application/pdf"
+
+    xlsx_resp = await client.get(
+        "/sites/MBMT/reports/dmr/export",
+        params={"month": "2026-08", "format": "xlsx"},
+        headers=h,
+    )
+    assert xlsx_resp.status_code == 200
+    assert xlsx_resp.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    workbook = load_workbook(BytesIO(xlsx_resp.content))
+    sheet = workbook.active
+    header_row = next(
+        row for row in sheet.iter_rows(values_only=True) if row[0] == "Sl.No"
+    )
+    assert header_row[-1] == "Total"
+
+
+def test_monthly_total_excludes_point_in_time_stock_counts() -> None:
+    by_number = {p.number: p for p in dmr.PARAMETERS}
+    values = [1.0, 2.0, None, 4.0]
+    for excluded in (1, 2, 3, 4, 12):
+        assert dmr.monthly_total(by_number[excluded], values) is None
+    summable = by_number[19]  # "Loss of Kms due to breakdowns"
+    assert dmr.monthly_total(summable, values) == 7.0
+    assert dmr.monthly_total(summable, [None, None]) is None
 
 
 # --- off-road cases ---------------------------------------------------------

@@ -70,6 +70,23 @@ void main() {
       expect(seen.queryParameters['format'], 'pdf');
     });
 
+    test('the month report can ask for excel instead', () async {
+      late Uri seen;
+      final repo = ApiReportRepository(
+        _clientReturning(_pdf, onRequest: (r) => seen = r.url),
+      );
+
+      final file = await repo.downloadReport(
+        ReportDoc.dmrMonth,
+        siteCode: 'MBMT',
+        month: '2026-08',
+        format: 'xlsx',
+      );
+
+      expect(seen.queryParameters['format'], 'xlsx');
+      expect(file.name, 'mbmt-dmr-month-2026-08.xlsx');
+    });
+
     test('a control chart carries its kind and its window', () async {
       late Uri seen;
       final repo = ApiReportRepository(

@@ -40,7 +40,7 @@ from app.schemas.report import (
     RemoveUnitIn,
     UnitTypeOut,
 )
-from app.services import audit, control_charts, dmr, investigations, pdf, units
+from app.services import audit, control_charts, dmr, investigations, pdf, units, xlsx
 from app.services.common import today_ist
 
 router = APIRouter(tags=["reports"])
@@ -55,6 +55,7 @@ MAX_REPORT_DAYS = 62
 class ExportFormat(StrEnum):
     csv = "csv"
     pdf = "pdf"
+    xlsx = "xlsx"
 
 
 FormatQuery = Annotated[ExportFormat, Query(alias="format")]
@@ -242,16 +243,31 @@ async def export_dmr(
     grid = await _month_grid(session, site_code, target)
     await session.commit()
 
+    values = {k: list(v) for k, v in grid.values.items()}
+
     if fmt is ExportFormat.pdf:
         return _pdf_response(
             pdf.dmr_month(
                 site_code=site_code,
                 month=target,
                 dates=grid.dates,
-                values={k: list(v) for k, v in grid.values.items()},
+                values=values,
             ),
             "dmr-month",
             target,
+        )
+
+    if fmt is ExportFormat.xlsx:
+        name = f"dmr-{site_code}-{target}.xlsx"
+        return Response(
+            content=xlsx.dmr_month(
+                site_code=site_code,
+                month=target,
+                dates=grid.dates,
+                values=values,
+            ),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
     buffer = io.StringIO()
@@ -259,9 +275,10 @@ async def export_dmr(
     writer.writerow(["Daily Maintenance Report (DMR)"])
     writer.writerow([f"Location :- {site_code}"])
     writer.writerow([])
-    writer.writerow(["Sl.No", "Parameters", *[d.isoformat() for d in grid.dates]])
+    writer.writerow(["Sl.No", "Parameters", *[d.isoformat() for d in grid.dates], "Total"])
     for parameter in dmr.PARAMETERS:
-        row = grid.values[parameter.key]
+        row = values[parameter.key]
+        total = dmr.monthly_total(parameter, row)
         writer.writerow(
             [
                 parameter.number,
@@ -272,6 +289,9 @@ async def export_dmr(
                     else (f"{v:.1f}" if parameter.decimal else f"{int(v)}")
                     for v in row
                 ],
+                ""
+                if total is None
+                else (f"{total:.1f}" if parameter.decimal else f"{int(total)}"),
             ]
         )
 

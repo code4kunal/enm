@@ -145,23 +145,30 @@ def dmr_month(
 
     header: list = ["#", Paragraph("Parameters", CELL)]
     header += [Paragraph(str(d.day), CELL_CENTRE) for d in dates]
+    header.append(Paragraph("Total", CELL_CENTRE))
     rows: list[list] = [header]
     for parameter in dmr.PARAMETERS:
+        row_values = values.get(parameter.key, [])
         row: list = [str(parameter.number), Paragraph(parameter.label, CELL)]
-        for value in values.get(parameter.key, []):
+        for value in row_values:
             if value is None:
                 row.append("—")
             elif parameter.decimal:
                 row.append(f"{float(value):.1f}")
             else:
                 row.append(f"{int(value)}")
+        total = dmr.monthly_total(parameter, row_values)
+        row.append(
+            "—" if total is None else (f"{total:.1f}" if parameter.decimal else f"{int(total)}")
+        )
         rows.append(row)
 
     label = 75 * mm
+    total_width = 10 * mm
     day_width = base.grid_column(
-        columns=len(dates), label_width=label, cap=8.5 * mm
+        columns=len(dates), label_width=label + total_width, cap=8.5 * mm
     )
-    widths = [7 * mm, label - 7 * mm] + [day_width] * len(dates)
+    widths = [7 * mm, label - 7 * mm] + [day_width] * len(dates) + [total_width]
     story.add(
         base.table(
             rows,
@@ -173,6 +180,7 @@ def dmr_month(
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("LEFTPADDING", (2, 0), (-1, -1), 1),
                 ("RIGHTPADDING", (2, 0), (-1, -1), 1),
+                ("FONTNAME", (-1, 0), (-1, -1), "Helvetica-Bold"),
             ],
         )
     )

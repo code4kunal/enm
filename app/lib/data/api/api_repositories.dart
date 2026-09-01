@@ -1325,6 +1325,7 @@ class ApiReportRepository implements ReportRepository {
     String? fromDate,
     String? toDate,
     String? vehicleId,
+    String format = 'pdf',
   }) async {
     final site = '/sites/$siteCode/reports';
     final (String path, Map<String, String> query) = switch (doc) {
@@ -1333,7 +1334,7 @@ class ApiReportRepository implements ReportRepository {
         }),
       ReportDoc.dmrMonth => ('$site/dmr/export', <String, String>{
           if (month != null) 'month': month,
-          'format': 'pdf',
+          'format': format,
         }),
       ReportDoc.controlChart => (
           '$site/control-charts/${chartKind ?? ''}/export',
@@ -1360,14 +1361,19 @@ class ApiReportRepository implements ReportRepository {
     };
 
     return ReportFile(
-      name: _pdfName(doc, siteCode, date ?? month ?? ''),
+      name: _reportName(doc, siteCode, date ?? month ?? '', format),
       bytes: await _api.download(path, query: query),
     );
   }
 
   /// The server sets the real filename on the response; this is what the
   /// share sheet shows if the platform needs a name up front.
-  static String _pdfName(ReportDoc doc, String site, String period) {
+  static String _reportName(
+    ReportDoc doc,
+    String site,
+    String period,
+    String format,
+  ) {
     final kind = switch (doc) {
       ReportDoc.dmrDay => 'dmr',
       ReportDoc.dmrMonth => 'dmr-month',
@@ -1378,6 +1384,7 @@ class ApiReportRepository implements ReportRepository {
       ReportDoc.busHistory => 'bus-history',
     };
     final stem = <String>[site, kind, period].where((p) => p.isNotEmpty).join('-');
-    return '${stem.toLowerCase()}.pdf';
+    final ext = doc == ReportDoc.dmrMonth && format == 'xlsx' ? 'xlsx' : 'pdf';
+    return '${stem.toLowerCase()}.$ext';
   }
 }

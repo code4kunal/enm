@@ -334,6 +334,13 @@ class DmrMonthPane extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             ReportDownloadButton(doc: ReportDoc.dmrMonth, month: month),
+            const SizedBox(width: 10),
+            ReportDownloadButton(
+              doc: ReportDoc.dmrMonth,
+              month: month,
+              format: 'xlsx',
+              label: 'Download Excel',
+            ),
           ],
         ),
         const SizedBox(height: 14),

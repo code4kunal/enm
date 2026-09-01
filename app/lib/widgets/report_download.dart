@@ -26,6 +26,7 @@ class ReportDownloadButton extends ConsumerStatefulWidget {
     this.toDate,
     this.vehicleId,
     this.enabled = true,
+    this.format = 'pdf',
   });
 
   final ReportDoc doc;
@@ -41,6 +42,9 @@ class ReportDownloadButton extends ConsumerStatefulWidget {
 
   /// False when there is nothing to print yet — no bus picked, say.
   final bool enabled;
+
+  /// 'pdf' or 'xlsx' — only [ReportDoc.dmrMonth] honours anything but pdf.
+  final String format;
 
   @override
   ConsumerState<ReportDownloadButton> createState() =>
@@ -65,13 +69,17 @@ class _ReportDownloadButtonState extends ConsumerState<ReportDownloadButton> {
             fromDate: widget.fromDate,
             toDate: widget.toDate,
             vehicleId: widget.vehicleId,
+            format: widget.format,
           );
 
+      final mimeType = widget.format == 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf';
       await Share.shareXFiles(
         <XFile>[
           XFile.fromData(
             file.bytes,
-            mimeType: 'application/pdf',
+            mimeType: mimeType,
             name: file.name,
           ),
         ],

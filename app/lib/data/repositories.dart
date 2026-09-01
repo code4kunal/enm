@@ -526,7 +526,9 @@ abstract interface class ReportRepository {
   ///
   /// One method rather than seven so no screen has to know a URL — the
   /// repository is still the only thing that does. Which of the optional
-  /// scopes matter depends on [doc]; the rest are ignored.
+  /// scopes matter depends on [doc]; the rest are ignored. [format] only
+  /// matters where the server offers a choice — currently [ReportDoc.dmrMonth]
+  /// alone; every other doc keeps printing as a PDF regardless.
   Future<ReportFile> downloadReport(
     ReportDoc doc, {
     required String siteCode,
@@ -536,6 +538,7 @@ abstract interface class ReportRepository {
     String? fromDate,
     String? toDate,
     String? vehicleId,
+    String format = 'pdf',
   });
 }
 

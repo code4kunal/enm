@@ -93,6 +93,24 @@ PARAMETERS: list[Parameter] = [
 DERIVED_KEYS = tuple(p.key for p in PARAMETERS if p.derived)
 ENTERED_KEYS = tuple(p.key for p in PARAMETERS if not p.derived)
 
+#: Parameters 1-4 and 12 are point-in-time stock counts (fleet size, on-road,
+#: spare, currently-defective, currently-held-over-3-days) — a monthly sum of
+#: a stock count double- and triple-counts the same bus for every day it sat
+#: in that state, not a real monthly total. Every other line is a daily
+#: occurrence count or consumption figure a sum genuinely answers.
+NOT_SUMMABLE_NUMBERS = frozenset({1, 2, 3, 4, 12})
+
+
+def monthly_total(parameter: Parameter, values: list[float | None]) -> float | None:
+    """The Total column for one parameter's row, or None where a sum would
+    not mean what it looks like it means."""
+    if parameter.number in NOT_SUMMABLE_NUMBERS:
+        return None
+    present = [v for v in values if v is not None]
+    if not present:
+        return None
+    return sum(present)
+
 
 # --- deriving ---------------------------------------------------------------
 
