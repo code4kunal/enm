@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
@@ -57,11 +56,9 @@ class SsoConfig {
 /// entirely: the two halves run in different page loads, which is why the
 /// one-time values are persisted rather than held in memory.
 class MicrosoftSignIn {
-  MicrosoftSignIn(this._api, {http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  MicrosoftSignIn(this._api);
 
   final ApiClient _api;
-  final http.Client _http;
 
   static const String _pendingKey = 'transvolt.sso_pending';
 
@@ -108,12 +105,18 @@ class MicrosoftSignIn {
     return query.containsKey('code') || query.containsKey('error');
   }
 
-  /// Finishes a sign-in that [begin] started, returning the id_token for the
-  /// API to verify. Null when this page load is not a return from Entra.
+  /// Finishes a sign-in that [begin] started, returning the E&M session the
+  /// server minted. Null when this page load is not a return from Entra.
   ///
   /// Always clears the pending secrets and the address bar, including on
   /// failure — a half-finished attempt must not be resumable.
-  Future<String?> complete(SsoConfig config) async {
+  ///
+  /// The code is redeemed server-side (`POST /auth/sso/exchange`), not by
+  /// this client directly against Microsoft: the app registration's redirect
+  /// URI is typed "Web", and Azure blocks a browser from redeeming a code
+  /// itself for that platform type (AADSTS9002326). E&M holds the client
+  /// secret this exchange needs; the browser never sees it.
+  Future<Map<String, dynamic>?> complete(SsoConfig config) async {
     if (!isReturning) return null;
     final query = currentUri().queryParameters;
     final prefs = await SharedPreferences.getInstance();
@@ -139,57 +142,11 @@ class MicrosoftSignIn {
       throw const ApiException('Microsoft sign-in could not be verified.');
     }
 
-    final idToken = await _exchange(
-      config,
-      code: query['code']!,
-      verifier: pending.verifier,
-    );
-
-    // The server validates everything else about this token; the nonce is the
-    // one claim only this client can check, and it is what stops a token from
-    // an older sign-in being replayed into this one.
-    if (nonceOf(idToken) != pending.nonce) {
-      throw const ApiException('Microsoft sign-in could not be verified.');
-    }
-    return idToken;
-  }
-
-  Future<String> _exchange(
-    SsoConfig config, {
-    required String code,
-    required String verifier,
-  }) async {
-    final response = await _http.post(
-      Uri.parse('${config.authority}/oauth2/v2.0/token'),
-      headers: const <String, String>{
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: <String, String>{
-        'client_id': config.clientId!,
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': redirectUri().toString(),
-        'code_verifier': verifier,
-        'scope': config.scopes.join(' '),
-      },
-    );
-    final body = jsonDecode(response.body);
-    if (response.statusCode >= 400 || body is! Map<String, dynamic>) {
-      final detail = body is Map<String, dynamic>
-          ? (body['error_description'] as String? ?? body['error'] as String?)
-          : null;
-      throw ApiException(detail ?? 'Microsoft would not issue a token.');
-    }
-    final idToken = body['id_token'] as String?;
-    if (idToken == null || idToken.isEmpty) {
-      // Almost always the app registration missing the openid scope or the
-      // "ID tokens" checkbox, so say which.
-      throw const ApiException(
-        'Microsoft returned no id_token. Check the app registration grants '
-        'the openid scope.',
-      );
-    }
-    return idToken;
+    return await _api.post('/auth/sso/exchange', body: <String, dynamic>{
+      'code': query['code']!,
+      'redirect_uri': redirectUri().toString(),
+      'code_verifier': pending.verifier,
+    }) as Map<String, dynamic>;
   }
 }
 

@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # --- Microsoft Entra ID (SSO) ---
     ms_tenant_id: str | None = None
     ms_client_id: str | None = None
+    #: Only needed while the app registration's redirect URI is under "Web"
+    #: rather than "Single-page application" — Azure blocks browser-side
+    #: (CORS) token redemption for a Web-typed URI, so the code exchange
+    #: happens server-side here instead, as a confidential client.
+    ms_client_secret: str | None = None
     ms_jwks_cache_seconds: int = 3600
 
     # --- CORS ---

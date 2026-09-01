@@ -16,6 +16,7 @@ from app.schemas.auth import (
     LoginIn,
     RefreshIn,
     SSOConfigOut,
+    SSOExchangeIn,
     SSOLoginIn,
     TokenOut,
 )
@@ -29,7 +30,7 @@ from app.security import (
 )
 from app.services import platform_identity, siteops
 from app.services.siteops import SiteOpsUnavailable
-from app.services.sso import verify_ms_id_token
+from app.services.sso import exchange_code_for_id_token, verify_ms_id_token
 
 logger = logging.getLogger("enm")
 
@@ -244,6 +245,39 @@ async def sso_config() -> SSOConfigOut:
 async def sso_login(
     payload: SSOLoginIn, request: Request, session: SessionDep
 ) -> TokenOut:
+    """Sign in with a verified Microsoft identity (browser-verified id_token).
+
+    Used when the app registration's redirect URI is typed "Single-page
+    application" — the browser can redeem the code itself, and only the
+    resulting id_token reaches E&M.
+    """
+    claims = verify_ms_id_token(payload.ms_id_token)
+    return await _complete_sso(claims, request, session)
+
+
+@router.post("/sso/exchange", response_model=TokenOut)
+async def sso_exchange(
+    payload: SSOExchangeIn, request: Request, session: SessionDep
+) -> TokenOut:
+    """Sign in with a verified Microsoft identity (server-redeemed code).
+
+    Used while the app registration's redirect URI is typed "Web" — Azure
+    blocks the browser from redeeming the code itself for that platform
+    type, so the browser sends the raw code here and E&M redeems it as a
+    confidential client (`sso.exchange_code_for_id_token`).
+    """
+    id_token = await exchange_code_for_id_token(
+        code=payload.code,
+        redirect_uri=payload.redirect_uri,
+        code_verifier=payload.code_verifier,
+    )
+    claims = verify_ms_id_token(id_token)
+    return await _complete_sso(claims, request, session)
+
+
+async def _complete_sso(
+    claims: dict, request: Request, session: SessionDep
+) -> TokenOut:
     """Sign in with a verified Microsoft identity.
 
     A local row wins first — the break-glass admin, or anyone predating the
@@ -254,7 +288,6 @@ async def sso_login(
     adopted local account is left as is (`source="login"`, the default) —
     not converted to platform-managed.
     """
-    claims = verify_ms_id_token(payload.ms_id_token)
     email = claims["_email"]
     user = await session.scalar(select(User).where(User.email == email))
     if user is not None:

@@ -14,6 +14,20 @@ class SSOLoginIn(BaseModel):
     ms_id_token: str = Field(min_length=10)
 
 
+class SSOExchangeIn(BaseModel):
+    """The authorization code flow's second half, done server-side.
+
+    Used while the app registration's redirect URI is typed "Web" rather
+    than "Single-page application" — Azure blocks a browser from redeeming
+    the code itself for a Web-typed URI, so the browser sends the code here
+    instead and this exchanges it as a confidential client.
+    """
+
+    code: str = Field(min_length=1)
+    redirect_uri: str = Field(min_length=1)
+    code_verifier: str = Field(min_length=1)
+
+
 class RefreshIn(BaseModel):
     refresh_token: str = Field(min_length=10)
 

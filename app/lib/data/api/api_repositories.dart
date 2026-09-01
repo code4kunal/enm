@@ -799,12 +799,8 @@ class ApiAuthRepository implements AuthRepository {
 
   @override
   Future<AppUser?> completeMicrosoftSignIn(SsoConfig config) async {
-    final idToken = await _sso.complete(config);
-    if (idToken == null) return null;
-    final json = await _api.post(
-      '/auth/sso',
-      body: <String, dynamic>{'ms_id_token': idToken},
-    ) as Map<String, dynamic>;
+    final json = await _sso.complete(config);
+    if (json == null) return null;
 
     await _api.setTokens(
       json['access_token'] as String?,
