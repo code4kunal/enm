@@ -159,6 +159,23 @@ async def find_user_by_email(email: str) -> dict[str, Any] | None:
     return None
 
 
+async def get_user_profile(user_id: str) -> dict[str, Any] | None:
+    """Full profile for a known platform id — used to recover the exact,
+    case-preserved `username` SiteOps has on file, since login is
+    case-sensitive but a mechanic types whatever case is habitual.
+
+    `None` when the platform does not know this id.
+    """
+    try:
+        body = await _get(f"/users/{user_id}", {}, missing_ok=True)
+    except SiteOpsUnavailable:
+        raise
+    except (ValidationError, TypeError, AttributeError):
+        return None
+    data = body.get("data") if isinstance(body, dict) else None
+    return data if isinstance(data, dict) else None
+
+
 async def user_grants(user_id: str) -> dict[str, Any] | None:
     """A user's current roles and permissions, server-to-server.
 

@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.db import SessionLocal
+from app.models.enums import Role
 from app.models.master import Site
 from app.models.user import User
 from app.services import siteops
@@ -298,6 +299,73 @@ async def test_list_site_users_none_omits_the_filter(monkeypatch) -> None:
     monkeypatch.setattr(siteops, "_get", fake_get)
     await siteops.list_site_users("some-site-id", is_active=None)
     assert "is_active" not in seen_params[0]
+
+
+async def test_login_resolves_a_known_identitys_exact_case_from_siteops(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mixed-case SiteOps username (`KunalS`) survives neither an
+    as-typed-in-caps attempt nor the lowercase retry — but once this
+    person is already synced locally, E&M knows their platform id and can
+    ask SiteOps for the exact spelling instead of guessing."""
+    sub = str(uuid.uuid4())
+    async with SessionLocal() as session:
+        session.add(
+            User(
+                id=sub.replace("-", ""),
+                name="Kunal Saxena",
+                user_id="KUNALS",
+                role=Role.executive,
+                password_hash=None,
+            )
+        )
+        await session.commit()
+
+    seen: list[str] = []
+
+    async def fake_login(username: str, password: str) -> dict | None:
+        seen.append(username)
+        if username == "KunalS":
+            return login_reply(sub=sub, username="KunalS")
+        return None
+
+    async def fake_profile(user_id: str) -> dict:
+        assert user_id == sub
+        return {"username": "KunalS"}
+
+    monkeypatch.setattr(siteops, "login", fake_login)
+    monkeypatch.setattr(siteops, "get_user_profile", fake_profile)
+
+    resp = await client.post(
+        "/auth/login", json={"user_id": "KUNALS", "password": "whatever"}
+    )
+    assert resp.status_code == 200, resp.text
+    # Resolved and tried the canonical spelling first — no guessing needed.
+    assert seen == ["KunalS"]
+
+
+async def test_login_falls_back_to_guessing_for_an_unknown_identity(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No local row yet (first-ever login) — canonical-handle resolution has
+    nothing to look up, so the existing as-typed/lowercase retry still runs."""
+    seen: list[str] = []
+
+    async def fake_login(username: str, password: str) -> dict | None:
+        seen.append(username)
+        return None
+
+    async def never(user_id: str) -> dict:
+        raise AssertionError("no local row to resolve — must not call SiteOps")
+
+    monkeypatch.setattr(siteops, "login", fake_login)
+    monkeypatch.setattr(siteops, "get_user_profile", never)
+
+    resp = await client.post(
+        "/auth/login", json={"user_id": "BRANDNEW", "password": "whatever"}
+    )
+    assert resp.status_code == 401
+    assert seen == ["BRANDNEW", "brandnew"]
 
 
 def test_redact_tokens_masks_access_and_refresh_tokens_only() -> None:

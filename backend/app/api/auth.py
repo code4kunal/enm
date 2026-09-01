@@ -116,16 +116,52 @@ def _grants_from_login(data: dict) -> dict[str, object]:
     }
 
 
-async def _platform_login(handle: str, password: str) -> dict | None:
+async def _resolve_canonical_handle(session: SessionDep, handle: str) -> str | None:
+    """A person already synced from SiteOps has their real, case-preserved
+    username on file there (`KunalS`, not `KUNALS`) — login is case-sensitive,
+    but nothing about this app hints at that, so a mechanic types whatever
+    case is habitual. If we already know this identity locally, ask SiteOps
+    for the exact spelling instead of guessing case variants.
+    """
+    local_id = await session.scalar(
+        select(User.id).where(
+            User.user_id == handle.upper(), User.password_hash.is_(None)
+        )
+    )
+    if local_id is None:
+        return None
+    try:
+        sub = str(uuid.UUID(hex=local_id))
+    except ValueError:
+        return None
+    try:
+        profile = await siteops.get_user_profile(sub)
+    except SiteOpsUnavailable:
+        return None
+    username = str((profile or {}).get("username") or "").strip()
+    return username or None
+
+
+async def _platform_login(
+    session: SessionDep, handle: str, password: str
+) -> dict | None:
     """Ask the platform, tolerating either spelling of the handle.
 
     Ground staff type `TV4021`; the platform stores usernames as entered
     there, which for the accounts we have seen is lowercase. One retry is
-    cheaper than a support call about capital letters.
+    cheaper than a support call about capital letters — but a handle SiteOps
+    stores in mixed case (`KunalS`) survives neither the as-typed attempt nor
+    the lowercase retry, so a known identity's canonical spelling is tried
+    first.
     """
     if not settings.platform_login_enabled:
         return None
     try:
+        canonical = await _resolve_canonical_handle(session, handle)
+        if canonical and canonical != handle:
+            data = await siteops.login(canonical, password)
+            if data is not None:
+                return data
         data = await siteops.login(handle, password)
         if data is None and handle != handle.lower():
             data = await siteops.login(handle.lower(), password)
@@ -150,7 +186,7 @@ async def login(payload: LoginIn, request: Request, session: SessionDep) -> Toke
     the break-glass admin, and anyone not yet migrated to the platform.
     """
     handle = payload.user_id.strip()
-    data = await _platform_login(handle, payload.password)
+    data = await _platform_login(session, handle, payload.password)
 
     if data is not None:
         sub = str(data.get("user_id") or "").strip()
