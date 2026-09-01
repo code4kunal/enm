@@ -480,13 +480,18 @@ class _SiteStage extends ConsumerWidget {
           },
         ),
         const SizedBox(height: 20),
-        FilledActionButton(
-          label: onboarding ? 'Continue' : 'Continue to ${session.site}',
-          onPressed: (session.site.isEmpty && !onboarding)
-              ? null
-              : controller.enterApp,
-          expand: true,
-        ),
+        if (sites.isEmpty && !onboarding)
+          FilledActionButton(
+            label: 'Back to sign in',
+            onPressed: controller.signOut,
+            expand: true,
+          )
+        else
+          FilledActionButton(
+            label: onboarding ? 'Continue' : 'Continue to ${session.site}',
+            onPressed: session.site.isEmpty ? null : controller.enterApp,
+            expand: true,
+          ),
       ],
     );
   }
