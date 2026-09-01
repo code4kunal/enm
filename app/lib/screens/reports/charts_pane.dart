@@ -5,7 +5,9 @@ import '../../data/repositories.dart';
 import '../../models/entry.dart';
 import '../../models/report.dart';
 import '../../state/entries.dart';
+import '../../state/providers.dart';
 import '../../state/reports.dart';
+import '../../state/session.dart';
 import '../../state/toast.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
@@ -207,20 +209,33 @@ class _ChartGrid extends ConsumerWidget {
             const SizedBox(height: 10),
             Panel(
               padding: const EdgeInsets.all(12),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    _HeaderRow(dates: chart.dates),
-                    for (final row in chart.rows)
-                      _BusRow(
-                        row: row,
-                        dates: chart.dates,
-                        registerId: registerId,
-                      ),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // A day column no wider than it has to be on a phone, but
+                  // one that actually uses a desktop's width instead of
+                  // staying phone-sized and forcing "2.5" or "BD2" through
+                  // the same aggressive scale-down a 34px block needs — that
+                  // scale-down is what reads as garbled at a glance.
+                  final dayWidth = ((constraints.maxWidth - _kBusColumn) /
+                          chart.dates.length)
+                      .clamp(_kDayColumnMin, _kDayColumnMax);
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        _HeaderRow(dates: chart.dates, dayWidth: dayWidth),
+                        for (final row in chart.rows)
+                          _BusRow(
+                            row: row,
+                            dates: chart.dates,
+                            registerId: registerId,
+                            dayWidth: dayWidth,
+                          ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 10),
@@ -233,13 +248,15 @@ class _ChartGrid extends ConsumerWidget {
 }
 
 const double _kBusColumn = 132;
-const double _kDayColumn = 34;
+const double _kDayColumnMin = 34;
+const double _kDayColumnMax = 56;
 const double _kRowHeight = 26;
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.dates});
+  const _HeaderRow({required this.dates, required this.dayWidth});
 
   final List<String> dates;
+  final double dayWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -262,7 +279,7 @@ class _HeaderRow extends StatelessWidget {
           ),
           for (final date in dates)
             SizedBox(
-              width: _kDayColumn,
+              width: dayWidth,
               height: _kRowHeight,
               child: Center(
                 child: Text(
@@ -278,10 +295,16 @@ class _HeaderRow extends StatelessWidget {
 }
 
 class _BusRow extends StatelessWidget {
-  const _BusRow({required this.row, required this.dates, this.registerId});
+  const _BusRow({
+    required this.row,
+    required this.dates,
+    required this.dayWidth,
+    this.registerId,
+  });
 
   final ChartRow row;
   final List<String> dates;
+  final double dayWidth;
   final String? registerId;
 
   @override
@@ -306,6 +329,7 @@ class _BusRow extends StatelessWidget {
               registerId: registerId,
               registrationNo: row.registrationNo,
               date: dates[i],
+              dayWidth: dayWidth,
             ),
         ],
       ),
@@ -313,9 +337,11 @@ class _BusRow extends StatelessWidget {
   }
 }
 
-/// One block. The value is often longer than the column — a ten-day service
-/// code in a 34px cell — so it shrinks rather than clipping, and the whole
-/// value is on the tooltip.
+/// One block. The column is only as wide as the window has room for — up to
+/// [_kDayColumnMax], down to [_kDayColumnMin] on a phone — and the value can
+/// still be longer than that, a ten-day service code being the usual case,
+/// so it shrinks rather than clipping. The whole value is on the tooltip
+/// either way.
 ///
 /// Tappable when [registerId] is set: opens Registers filtered to that
 /// register, that bus, and that single day. Charts with no register behind
@@ -327,12 +353,14 @@ class _Block extends ConsumerWidget {
     required this.registerId,
     required this.registrationNo,
     required this.date,
+    required this.dayWidth,
   });
 
   final ChartCell cell;
   final String? registerId;
   final String registrationNo;
   final String date;
+  final double dayWidth;
 
   static const Map<CellMark, Color> _fill = <CellMark, Color>{
     CellMark.plain: Colors.transparent,
@@ -352,21 +380,31 @@ class _Block extends ConsumerWidget {
   Future<void> _openEntry(WidgetRef ref, BuildContext context) async {
     final id = registerId;
     if (id == null) return;
-    final entries =
-        ref.read(entriesProvider).valueOrNull ?? const <RegisterEntry>[];
-    final matches = entries
-        .where(
-          (e) =>
-              e.registerId == id &&
-              e.date == date &&
-              e.data['bus'] == registrationNo,
-        )
+    final site = ref.read(sessionProvider).site;
+    // A direct, day-scoped fetch — not the Registers list's cache, which is
+    // capped to a site's 200 most recent entries and can miss an older day
+    // a control chart is still showing.
+    List<RegisterEntry> dayEntries;
+    try {
+      dayEntries = await ref.read(entryRepositoryProvider).fetchEntries(
+            site: site,
+            registerId: id,
+            dateFrom: date,
+            dateTo: date,
+          );
+    } catch (e) {
+      ref.read(toastProvider.notifier).show('Could not load the entry — $e');
+      return;
+    }
+    final matches = dayEntries
+        .where((e) => e.data['bus'] == registrationNo)
         .toList();
 
     if (matches.isEmpty) {
       ref.read(toastProvider.notifier).show('No entry found for this day');
       return;
     }
+    if (!context.mounted) return;
     if (matches.length == 1) {
       await showRegisterEntrySheet(context, entryId: matches.first.id);
       return;
@@ -402,7 +440,7 @@ class _Block extends ConsumerWidget {
     // half a pixel per side, drifting the grid a column further from its
     // date header with every column to the right.
     final block = SizedBox(
-      width: _kDayColumn,
+      width: dayWidth,
       height: _kRowHeight,
       child: Padding(
         padding: const EdgeInsets.all(0.5),

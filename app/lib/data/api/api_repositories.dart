@@ -589,12 +589,20 @@ class ApiEntryRepository implements EntryRepository {
   final ApiClient _api;
 
   @override
-  Future<List<RegisterEntry>> fetchEntries({required String site}) async {
+  Future<List<RegisterEntry>> fetchEntries({
+    required String site,
+    String? registerId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
     final json = await _api.get(
       '/entries',
       query: <String, String>{
         'site': site,
         'page_size': '200',
+        if (registerId != null) 'register': _registerToWire[registerId] ?? registerId,
+        if (dateFrom != null) 'date_from': dateFrom,
+        if (dateTo != null) 'date_to': dateTo,
       },
     );
     return itemsOf(json).map(_fromWire).toList();

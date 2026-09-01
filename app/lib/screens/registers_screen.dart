@@ -70,7 +70,19 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
   Widget build(BuildContext context) {
     final filters = ref.watch(entryFiltersProvider);
     final controller = ref.read(entryFiltersProvider.notifier);
-    final results = ref.watch(filteredEntriesProvider);
+    // The month picker asks the server directly — filteredEntriesProvider
+    // filters entriesProvider's capped cache, which a month picked further
+    // back than that cache's page would make look empty rather than old.
+    final results = filters.dateMode == DateMode.month
+        ? ref
+                .watch(registerMonthEntriesProvider((
+                  site: ref.watch(sessionProvider.select((s) => s.site)),
+                  registerId: filters.registerId,
+                  month: filters.month,
+                )))
+                .valueOrNull ??
+            const <RegisterEntry>[]
+        : ref.watch(filteredEntriesProvider);
     final inspections = ref.watch(filteredInspectionsProvider);
     final showingInspections = isInspectionFilter(filters.registerId);
     final siteName = ref.watch(siteDisplayNameProvider);
@@ -196,6 +208,11 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                   onChanged: controller.setTo,
                 ),
               ],
+              if (filters.dateMode == DateMode.month)
+                _MonthPicker(
+                  month: filters.month,
+                  onChanged: controller.setMonth,
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -320,6 +337,45 @@ class _InspectionRow extends ConsumerWidget {
 }
 
 /// Compact date input for the custom-range bounds.
+class _MonthPicker extends StatelessWidget {
+  const _MonthPicker({required this.month, required this.onChanged});
+
+  final String month;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        OutlineActionButton(
+          label: '‹',
+          fontSize: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          onPressed: () => onChanged(Dates.shiftMonth(month, -1)),
+        ),
+        SizedBox(
+          width: 108,
+          child: Text(
+            Dates.monthLabel('$month-01'),
+            textAlign: TextAlign.center,
+            style: AppText.sans(size: 13.5, weight: FontWeight.w600),
+          ),
+        ),
+        OutlineActionButton(
+          label: '›',
+          fontSize: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          // Next month past the current one is nothing to file yet.
+          onPressed: month.compareTo(Dates.currentMonthPrefix()) < 0
+              ? () => onChanged(Dates.shiftMonth(month, 1))
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
 class _DateBound extends StatelessWidget {
   const _DateBound({
     required this.value,

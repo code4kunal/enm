@@ -231,4 +231,67 @@ void main() {
       expect(container.read(filteredEntriesProvider), isEmpty);
     });
   });
+
+  group('registerMonthEntriesProvider', () {
+    test('finds an entry a month picked back reaches', () async {
+      final container = await signedInContainer();
+      // The seed's oldest MBMT entry, ~35 days back — reliably a different
+      // calendar month from "This month", which is exactly the case
+      // filteredEntriesProvider's capped cache would otherwise miss.
+      final oldDate = Dates.today(-35);
+      final oldMonth = oldDate.substring(0, 7);
+
+      final results = await container.read(
+        registerMonthEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          month: oldMonth,
+        )).future,
+      );
+
+      expect(results.any((e) => e.date == oldDate), isTrue);
+      expect(results.every((e) => e.date.startsWith(oldMonth)), isTrue);
+    });
+
+    test('a different month does not carry the entry over', () async {
+      final container = await signedInContainer();
+      final oldMonth = Dates.today(-35).substring(0, 7);
+      final thisMonth = Dates.currentMonthPrefix();
+
+      final results = await container.read(
+        registerMonthEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          month: thisMonth,
+        )).future,
+      );
+
+      expect(results.any((e) => e.date.startsWith(oldMonth)), isFalse);
+    });
+
+    test('still filters by register and the free-text query', () async {
+      final container = await signedInContainer();
+      final oldMonth = Dates.today(-35).substring(0, 7);
+
+      final wrongRegister = await container.read(
+        registerMonthEntriesProvider((
+          site: 'MBMT',
+          registerId: 'coolant',
+          month: oldMonth,
+        )).future,
+      );
+      expect(wrongRegister, isEmpty);
+
+      container.read(entryFiltersProvider.notifier).setQuery('hvac filter');
+      final searched = await container.read(
+        registerMonthEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          month: oldMonth,
+        )).future,
+      );
+      expect(searched, hasLength(1));
+      expect(searched.first.data['defects'], contains('HVAC filter'));
+    });
+  });
 }

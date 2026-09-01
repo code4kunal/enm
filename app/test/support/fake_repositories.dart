@@ -130,9 +130,18 @@ class FakeEntryRepository implements EntryRepository {
   final FakeStore _store;
 
   @override
-  Future<List<RegisterEntry>> fetchEntries({required String site}) async {
+  Future<List<RegisterEntry>> fetchEntries({
+    required String site,
+    String? registerId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
     await Future<void>.delayed(_latency);
-    return scopedEntries(_store, site);
+    return scopedEntries(_store, site)
+        .where((e) => registerId == null || e.registerId == registerId)
+        .where((e) => dateFrom == null || e.date.compareTo(dateFrom) >= 0)
+        .where((e) => dateTo == null || e.date.compareTo(dateTo) <= 0)
+        .toList();
   }
 
   @override

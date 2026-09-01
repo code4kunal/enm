@@ -3,21 +3,50 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
-/// Opens an editor as a bottom sheet.
+/// Opens an editor — a bottom sheet below [T.mobileBreakpoint], a centred
+/// dialog above it.
 ///
-/// Every sheet in the app goes through here, for a reason that is easy to get
-/// wrong one screen at a time: the app is laid out under a `ShellRoute`, so the
-/// nearest Navigator is the shell's, and a sheet pushed onto it is bounded by
-/// the shell's content box rather than the window. [useRootNavigator] puts it
-/// on the root overlay, which is the size of the window.
+/// A sheet sliding up from the bottom is a phone's own idiom, built for a
+/// thumb reaching the bottom edge; stretched full-width across a desktop
+/// window it reads as an unfinished mobile screen rather than a considered
+/// one. Above the breakpoint this opens a width-capped dialog instead —
+/// [EditorSheet] hides the drag handle to match.
+///
+/// Every editor in the app goes through here, for a reason that is easy to
+/// get wrong one screen at a time: the app is laid out under a `ShellRoute`,
+/// so the nearest Navigator is the shell's, and a route pushed onto it is
+/// bounded by the shell's content box rather than the window.
+/// [useRootNavigator] puts it on the root overlay, which is the size of the
+/// window, in both branches.
 ///
 /// Prefer [EditorSheet] for the content — it keeps the save button reachable.
 Future<R?> showEditorSheet<R>({
   required BuildContext context,
   required WidgetBuilder builder,
-  /// Fraction of the window the sheet may grow to before its body scrolls.
+  /// Fraction of the window the editor may grow to before its body scrolls.
   double maxHeightFactor = 0.92,
 }) {
+  if (MediaQuery.sizeOf(context).width >= T.mobileBreakpoint) {
+    return showDialog<R>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: T.maxFormWidth,
+            maxHeight:
+                MediaQuery.sizeOf(dialogContext).height * maxHeightFactor,
+          ),
+          child: Material(
+            color: T.card,
+            borderRadius: T.cardShape,
+            clipBehavior: Clip.antiAlias,
+            child: builder(dialogContext),
+          ),
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<R>(
     context: context,
     useRootNavigator: true,
@@ -70,6 +99,9 @@ class EditorSheet extends StatelessWidget {
     final subtitle = this.subtitle;
     final action = this.action;
     final footnote = this.footnote;
+    // The drag handle is a phone affordance — "swipe down to dismiss" means
+    // nothing on the dialog `showEditorSheet` opens at this width.
+    final isDialog = MediaQuery.sizeOf(context).width >= T.mobileBreakpoint;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -85,17 +117,18 @@ class EditorSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: T.border,
-                      borderRadius: BorderRadius.circular(2),
+                if (!isDialog)
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: T.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
+                if (!isDialog) const SizedBox(height: 14),
                 Text(title, style: AppText.sectionTitle),
                 if (subtitle != null) ...<Widget>[
                   const SizedBox(height: 4),

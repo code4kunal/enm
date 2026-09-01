@@ -575,7 +575,16 @@ class ReportFile {
 /// Register entries. All reads are site-scoped — the site switcher in the
 /// header is the single tenant boundary the UI exposes.
 abstract interface class EntryRepository {
-  Future<List<RegisterEntry>> fetchEntries({required String site});
+  /// Capped to (at most) the newest 200 entries the filters admit — plenty
+  /// for a period a depot actually files against, but pass [registerId] and
+  /// a [dateFrom]/[dateTo] bound whenever the caller has one, rather than
+  /// relying on an unbounded fetch to happen to still hold an older day.
+  Future<List<RegisterEntry>> fetchEntries({
+    required String site,
+    String? registerId,
+    String? dateFrom,
+    String? dateTo,
+  });
 
   Future<RegisterEntry> createEntry(RegisterEntry entry);
 

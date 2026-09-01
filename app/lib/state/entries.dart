@@ -24,13 +24,14 @@ enum DateMode {
 
 @immutable
 class EntryFilters {
-  const EntryFilters({
+  EntryFilters({
     this.query = '',
     this.registerId = 'all',
     this.dateMode = DateMode.month,
     this.from = '',
     this.to = '',
-  });
+    String? month,
+  }) : month = month ?? Dates.currentMonthPrefix();
 
   final String query;
 
@@ -43,12 +44,18 @@ class EntryFilters {
   final String from;
   final String to;
 
+  /// `yyyy-MM`, only meaningful when [dateMode] is [DateMode.month] — which
+  /// month, not just "the current one". Defaults to the current month so a
+  /// fresh session shows what "This month" already implies.
+  final String month;
+
   EntryFilters copyWith({
     String? query,
     String? registerId,
     DateMode? dateMode,
     String? from,
     String? to,
+    String? month,
   }) {
     return EntryFilters(
       query: query ?? this.query,
@@ -56,6 +63,7 @@ class EntryFilters {
       dateMode: dateMode ?? this.dateMode,
       from: from ?? this.from,
       to: to ?? this.to,
+      month: month ?? this.month,
     );
   }
 }
@@ -73,6 +81,8 @@ class EntryFiltersController extends Notifier<EntryFilters> {
   void setFrom(String d) => state = state.copyWith(from: d);
 
   void setTo(String d) => state = state.copyWith(to: d);
+
+  void setMonth(String m) => state = state.copyWith(month: m);
 }
 
 final entryFiltersProvider =
@@ -216,7 +226,7 @@ final filteredEntriesProvider = Provider<List<RegisterEntry>>((ref) {
         return e.date.compareTo(Dates.today(-6)) >= 0 &&
             e.date.compareTo(Dates.today()) <= 0;
       case DateMode.month:
-        return e.date.startsWith(Dates.currentMonthPrefix());
+        return e.date.startsWith(f.month);
       case DateMode.custom:
         final afterFrom = f.from.isEmpty || e.date.compareTo(f.from) >= 0;
         final beforeTo = f.to.isEmpty || e.date.compareTo(f.to) <= 0;
@@ -242,6 +252,46 @@ final filteredEntriesProvider = Provider<List<RegisterEntry>>((ref) {
     });
   return out;
 });
+
+/// Key for [registerMonthEntriesProvider]: which site, which register
+/// (`all` included), which `yyyy-MM`.
+typedef MonthEntriesKey = ({String site, String registerId, String month});
+
+/// One month's entries for the Registers view, fetched directly rather than
+/// filtered from [entriesProvider]'s capped cache.
+///
+/// [filteredEntriesProvider] answers "this month" by filtering a page of the
+/// site's newest ~200 entries — fine for the current month on a quiet site,
+/// wrong the moment a picked month is older than that page, where it would
+/// come back empty instead of just old. Query filtering still happens after,
+/// same as the cached path, so a month's search results stay correct too.
+final registerMonthEntriesProvider =
+    FutureProvider.family<List<RegisterEntry>, MonthEntriesKey>((
+  ref,
+  key,
+) async {
+  if (key.site.isEmpty) return const <RegisterEntry>[];
+  final entries = await ref.watch(entryRepositoryProvider).fetchEntries(
+        site: key.site,
+        registerId: key.registerId == 'all' ? null : key.registerId,
+        dateFrom: '${key.month}-01',
+        dateTo: Dates.lastOfMonth(key.month),
+      );
+  final needle = ref.watch(
+    entryFiltersProvider.select((f) => f.query.trim().toLowerCase()),
+  );
+  return entries.where((e) => _matchesQuery(e, needle)).toList()
+    ..sort((a, b) {
+      final byDate = b.date.compareTo(a.date);
+      return byDate != 0 ? byDate : b.time.compareTo(a.time);
+    });
+});
+
+bool _matchesQuery(RegisterEntry e, String needle) {
+  if (needle.isEmpty) return true;
+  if (e.enteredBy.toLowerCase().contains(needle)) return true;
+  return jsonEncode(e.data).toLowerCase().contains(needle);
+}
 
 /// One-line summary shown on entry rows and in the CSV export.
 String entrySummary(RegisterEntry e) {
