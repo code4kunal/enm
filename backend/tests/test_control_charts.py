@@ -286,6 +286,93 @@ async def test_two_breakdowns_in_a_day_say_so(client: AsyncClient) -> None:
     assert cell(body, BUS, 4) == {"value": "BD2", "mark": "breakdown", "title": ""}
 
 
+# --- D.I and 10-day service, split out of pmSchedule ------------------------
+
+
+async def test_di_inspection_ticks_only_di_days(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    types = await _inspection_types()
+    await _inspect(client, h, types["D.I"], 2)
+    await _inspect(client, h, types["10 DAYS SERVICE"], 6)
+
+    body = await chart(client, h, "diInspection")
+    assert cell(body, BUS, 2) == {"value": "✓", "mark": "plain", "title": ""}
+    assert cell(body, BUS, 6) == {"value": "", "mark": "plain", "title": ""}
+
+
+async def test_ten_day_service_ticks_only_ten_day_days(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    types = await _inspection_types()
+    await _inspect(client, h, types["D.I"], 2)
+    await _inspect(client, h, types["10 DAYS SERVICE"], 6)
+
+    body = await chart(client, h, "tenDayService")
+    assert cell(body, BUS, 2) == {"value": "", "mark": "plain", "title": ""}
+    assert cell(body, BUS, 6) == {"value": "✓", "mark": "plain", "title": ""}
+
+
+async def test_di_and_ten_day_both_tick_when_a_bus_has_both_the_same_day(
+    client: AsyncClient,
+) -> None:
+    """The merged pmSchedule chart can only show one code per day (the longer
+    one wins); the two split charts must not inherit that loss."""
+    h = await auth_headers(client)
+    types = await _inspection_types()
+    await _inspect(client, h, types["D.I"], 5)
+    await _inspect(client, h, types["10 DAYS SERVICE"], 5)
+
+    assert cell(await chart(client, h, "diInspection"), BUS, 5)["value"] == "✓"
+    assert cell(await chart(client, h, "tenDayService"), BUS, 5)["value"] == "✓"
+
+
+# --- driver complaints and breakdowns, split apart ---------------------------
+
+
+async def test_driver_complaints_chart_carries_the_complaint_text(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    await _entry(client, h, "driver_complaint", 2, {"complaint": "AC weak"})
+
+    body = await chart(client, h, "driverComplaints")
+    assert cell(body, BUS, 2) == {"value": "C", "mark": "plain", "title": "AC weak"}
+
+
+async def test_driver_complaints_chart_counts_and_joins_multiple_same_day(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    await _entry(client, h, "driver_complaint", 2, {"complaint": "AC weak"})
+    await _entry(client, h, "driver_complaint", 2, {"complaint": "Door slow"})
+
+    body = await chart(client, h, "driverComplaints")
+    cell_ = cell(body, BUS, 2)
+    assert cell_["value"] == "2"
+    assert cell_["title"] == "AC weak; Door slow"
+
+
+async def test_breakdowns_chart_is_its_own_grid_not_folded_into_complaints(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    await _entry(client, h, "driver_complaint", 8, {"complaint": "Noise"})
+    await _entry(client, h, "breakdown", 8, {"complaint": "No traction"})
+
+    breakdowns = await chart(client, h, "breakdowns")
+    assert cell(breakdowns, BUS, 8) == {
+        "value": "BD",
+        "mark": "breakdown",
+        "title": "No traction",
+    }
+    # A breakdown on the same day no longer erases the complaint's own chart.
+    complaints = await chart(client, h, "driverComplaints")
+    assert cell(complaints, BUS, 8) == {
+        "value": "C",
+        "mark": "plain",
+        "title": "Noise",
+    }
+
+
 # --- the two charts a checklist line answers ---------------------------------
 
 
@@ -421,7 +508,7 @@ async def test_the_chart_list_marks_which_ones_have_data_behind_them(
     resp = await client.get("/reports/control-charts", headers=h)
     assert resp.status_code == 200, resp.text
     charts = {c["kind"]: c for c in resp.json()}
-    assert len(charts) == 6
+    assert len(charts) == 10
     assert charts["energy"]["available"] is False
     assert [k for k, c in charts.items() if not c["available"]] == ["energy"]
     assert charts["pmSchedule"]["title"] == "P.M schedule"

@@ -26,12 +26,19 @@ from app.models.checklist import (
     InspectionEntry,
     InspectionResult,
 )
-from app.models.entry import CoolantEntry, Entry
+from app.models.entry import BreakdownEntry, CoolantEntry, DriverComplaintEntry, Entry
 from app.models.enums import CheckResult, Register, StrEnum
 from app.models.master import Vehicle, WorkType
 
 #: A grid wider than this stops being readable and starts being a download.
 MAX_CHART_DAYS = 31
+
+#: The two `WorkType.code`s that route to the `pm_schedule` register and that
+#: `di_inspection`/`ten_day_service` each isolate — must match
+#: `inspection_plans.DEFAULT_INSPECTION_PLANS` exactly, it's the same string
+#: the nightly rotation uses to name the plan.
+DI_CODE = "D.I"
+TEN_DAY_CODE = "10 DAYS SERVICE"
 
 
 class ChartKind(StrEnum):
@@ -41,6 +48,15 @@ class ChartKind(StrEnum):
     complaints_breakdowns = "complaintsBreakdowns"
     tyre_pressure = "tyrePressure"
     bus_washing = "busWashing"
+    #: D.I and the 10-day service, split out of `pm_schedule` — a tick per
+    #: bus per day rather than the merged chart's abbreviated work-type code.
+    di_inspection = "diInspection"
+    ten_day_service = "tenDayService"
+    #: Driver complaints and breakdowns, split out of `complaints_breakdowns`
+    #: — the merged chart let a breakdown silently overwrite that day's
+    #: complaint count, so splitting them is also what fixes that.
+    driver_complaints = "driverComplaints"
+    breakdowns = "breakdowns"
 
 
 class CellMark(StrEnum):
@@ -104,6 +120,26 @@ CHARTS: list[ChartSpec] = [
         ChartKind.bus_washing,
         "Bus washing and deep cleaning",
         "Ticked where the washing line was answered on an inspection.",
+    ),
+    ChartSpec(
+        ChartKind.di_inspection,
+        "D.I inspection",
+        "Ticked where the daily inspection was attended.",
+    ),
+    ChartSpec(
+        ChartKind.ten_day_service,
+        "10-day service",
+        "Ticked where the ten-day service was attended.",
+    ),
+    ChartSpec(
+        ChartKind.driver_complaints,
+        "Driver complaints",
+        "Complaint raised that day. Hover a block for the full complaint.",
+    ),
+    ChartSpec(
+        ChartKind.breakdowns,
+        "Breakdowns",
+        "Breakdown that day. Hover a block for the full description.",
     ),
 ]
 
@@ -222,6 +258,68 @@ async def _inspection_days(
         if code.upper().replace(".", "") == "PM":
             dockings.add(key)
     return attended, dockings
+
+
+async def _inspection_days_for_code(
+    session: AsyncSession, site_code: str, dates: list[date_t], code: str
+) -> set[tuple[str, date_t]]:
+    """(bus, day) where this exact work-type code was attended.
+
+    A separate query from `_inspection_days` rather than filtering its
+    result: that one keeps only the longer of two same-day codes, which
+    would silently drop a D.I entry on a day that also had a 10-day service.
+    """
+    rows = await session.execute(
+        select(InspectionEntry.vehicle_id, InspectionEntry.inspected_on)
+        .join(WorkType, WorkType.id == InspectionEntry.work_type_id)
+        .where(
+            InspectionEntry.site_code == site_code,
+            InspectionEntry.inspected_on >= dates[0],
+            InspectionEntry.inspected_on <= dates[-1],
+            WorkType.code == code,
+        )
+    )
+    return {(vehicle_id, day) for vehicle_id, day in rows.all()}
+
+
+async def _complaint_texts(
+    session: AsyncSession, site_code: str, dates: list[date_t]
+) -> dict[tuple[str, date_t], list[str]]:
+    """(bus, day) -> every complaint text raised that day, in entry order."""
+    rows = await session.execute(
+        select(Entry.bus_id, Entry.entry_date, DriverComplaintEntry.complaint)
+        .join(DriverComplaintEntry, DriverComplaintEntry.entry_id == Entry.id)
+        .where(
+            Entry.site_code == site_code,
+            Entry.entry_date >= dates[0],
+            Entry.entry_date <= dates[-1],
+        )
+        .order_by(Entry.entry_time)
+    )
+    texts: dict[tuple[str, date_t], list[str]] = {}
+    for bus, day, complaint in rows.all():
+        texts.setdefault((bus, day), []).append(complaint)
+    return texts
+
+
+async def _breakdown_texts(
+    session: AsyncSession, site_code: str, dates: list[date_t]
+) -> dict[tuple[str, date_t], list[str]]:
+    """(bus, day) -> every breakdown description that day, in entry order."""
+    rows = await session.execute(
+        select(Entry.bus_id, Entry.entry_date, BreakdownEntry.complaint)
+        .join(BreakdownEntry, BreakdownEntry.entry_id == Entry.id)
+        .where(
+            Entry.site_code == site_code,
+            Entry.entry_date >= dates[0],
+            Entry.entry_date <= dates[-1],
+        )
+        .order_by(Entry.entry_time)
+    )
+    texts: dict[tuple[str, date_t], list[str]] = {}
+    for bus, day, complaint in rows.all():
+        texts.setdefault((bus, day), []).append(complaint)
+    return texts
 
 
 async def site_availability(
@@ -433,6 +531,27 @@ async def build(
         )
         for key in done:
             values[key] = "✓"
+
+    elif kind is ChartKind.di_inspection:
+        for key in await _inspection_days_for_code(session, site_code, dates, DI_CODE):
+            values[key] = "✓"
+
+    elif kind is ChartKind.ten_day_service:
+        for key in await _inspection_days_for_code(
+            session, site_code, dates, TEN_DAY_CODE
+        ):
+            values[key] = "✓"
+
+    elif kind is ChartKind.driver_complaints:
+        for key, texts in (await _complaint_texts(session, site_code, dates)).items():
+            values[key] = str(len(texts)) if len(texts) > 1 else "C"
+            titles[key] = "; ".join(texts)
+
+    elif kind is ChartKind.breakdowns:
+        for key, texts in (await _breakdown_texts(session, site_code, dates)).items():
+            values[key] = f"BD{len(texts)}" if len(texts) > 1 else "BD"
+            titles[key] = "; ".join(texts)
+            marks[key] = CellMark.breakdown
 
     index = {day: i for i, day in enumerate(dates)}
     for row in chart.rows:

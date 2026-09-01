@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/repositories.dart';
 import '../../models/report.dart';
+import '../../router.dart';
+import '../../state/entries.dart';
 import '../../state/reports.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
@@ -11,6 +14,24 @@ import '../../widgets/buttons.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
+
+/// Which register a chart's blocks come from, when they come from one at
+/// all — the inspection- and checklist-sourced charts (P.M schedule, D.I,
+/// the ten-day service, tyre pressure, bus washing) have no register to
+/// open, so their cells stay untappable rather than opening an empty list.
+String? _registerIdFor(String kind) {
+  switch (kind) {
+    case 'coolantTopping':
+      return 'coolant';
+    case 'driverComplaints':
+    case 'complaintsBreakdowns':
+      return 'complaint';
+    case 'breakdowns':
+      return 'breakdown';
+    default:
+      return null;
+  }
+}
 
 /// Annexure-IV: the fleet down the side, the month across the top.
 ///
@@ -167,6 +188,7 @@ class _ChartGrid extends ConsumerWidget {
             message: 'No buses at this site yet — nothing to chart.',
           );
         }
+        final registerId = _registerIdFor(chart.kind);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -191,7 +213,12 @@ class _ChartGrid extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     _HeaderRow(dates: chart.dates),
-                    for (final row in chart.rows) _BusRow(row: row),
+                    for (final row in chart.rows)
+                      _BusRow(
+                        row: row,
+                        dates: chart.dates,
+                        registerId: registerId,
+                      ),
                   ],
                 ),
               ),
@@ -251,9 +278,11 @@ class _HeaderRow extends StatelessWidget {
 }
 
 class _BusRow extends StatelessWidget {
-  const _BusRow({required this.row});
+  const _BusRow({required this.row, required this.dates, this.registerId});
 
   final ChartRow row;
+  final List<String> dates;
+  final String? registerId;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +300,13 @@ class _BusRow extends StatelessWidget {
               child: Text(row.registrationNo, style: AppText.mono(size: 11.5)),
             ),
           ),
-          for (final cell in row.cells) _Block(cell: cell),
+          for (var i = 0; i < row.cells.length; i++)
+            _Block(
+              cell: row.cells[i],
+              registerId: registerId,
+              registrationNo: row.registrationNo,
+              date: dates[i],
+            ),
         ],
       ),
     );
@@ -281,10 +316,23 @@ class _BusRow extends StatelessWidget {
 /// One block. The value is often longer than the column — a ten-day service
 /// code in a 34px cell — so it shrinks rather than clipping, and the whole
 /// value is on the tooltip.
-class _Block extends StatelessWidget {
-  const _Block({required this.cell});
+///
+/// Tappable when [registerId] is set: opens Registers filtered to that
+/// register, that bus, and that single day. Charts with no register behind
+/// them (the inspection- and checklist-sourced ones) pass `null` and stay
+/// untappable — there is nothing for a tap to open.
+class _Block extends ConsumerWidget {
+  const _Block({
+    required this.cell,
+    required this.registerId,
+    required this.registrationNo,
+    required this.date,
+  });
 
   final ChartCell cell;
+  final String? registerId;
+  final String registrationNo;
+  final String date;
 
   static const Map<CellMark, Color> _fill = <CellMark, Color>{
     CellMark.plain: Colors.transparent,
@@ -300,8 +348,21 @@ class _Block extends StatelessWidget {
     CellMark.breakdown: T.red,
   };
 
+  void _openRegister(WidgetRef ref, BuildContext context) {
+    final id = registerId;
+    if (id == null) return;
+    final filters = ref.read(entryFiltersProvider.notifier);
+    filters.setRegister(id);
+    filters.setDateMode(DateMode.custom);
+    filters.setFrom(date);
+    filters.setTo(date);
+    filters.setQuery(registrationNo);
+    context.go(Routes.registers);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tappable = registerId != null && !cell.isEmpty;
     final block = Container(
       width: _kDayColumn,
       height: _kRowHeight,
@@ -329,13 +390,20 @@ class _Block extends StatelessWidget {
               ),
             ),
     );
-    if (cell.isEmpty) return block;
+    final wrapped = tappable
+        ? InkWell(
+            borderRadius: BorderRadius.circular(3),
+            onTap: () => _openRegister(ref, context),
+            child: block,
+          )
+        : block;
+    if (cell.isEmpty) return wrapped;
     // The block often shows a shortened code, so the full one has to be
     // reachable — otherwise "10D" is the only record of a ten-day service.
     final full = cell.title.isNotEmpty
         ? cell.title
         : (cell.value.isEmpty ? cell.mark.name : cell.value);
-    return Tooltip(message: full, child: block);
+    return Tooltip(message: full, child: wrapped);
   }
 }
 
