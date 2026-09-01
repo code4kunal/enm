@@ -7,6 +7,7 @@ import '../data/repositories.dart';
 import '../models/entry.dart';
 import '../models/register.dart';
 import '../models/report.dart';
+import '../models/site.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
@@ -193,12 +194,24 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
     // Work Done entry above (already saved) also failed.
     final picked = _unitDrafts.where((d) => d.unitTypeId != null).toList();
     if (picked.isNotEmpty) {
-      final vehicles = ref.read(siteVehiclesProvider).valueOrNull ?? const [];
+      // `.future` rather than a cached `.valueOrNull` — this screen never
+      // otherwise watches the provider, so on a session's first Work Done
+      // save it would still be loading and every pick would silently no-op.
+      List<Vehicle> vehicles;
+      try {
+        vehicles = await ref.read(siteVehiclesProvider.future);
+      } catch (_) {
+        vehicles = const [];
+      }
       final vehicleId = vehicles
           .where((v) => v.registrationNo == (_values['bus'] ?? ''))
           .map((v) => v.id)
           .firstOrNull;
-      if (vehicleId != null) {
+      if (vehicleId == null) {
+        ref.read(toastProvider.notifier).show(
+              'Entry saved, but the unit(s) could not be fitted — bus not found',
+            );
+      } else {
         var fitted = 0;
         var failed = 0;
         for (final draft in picked) {
