@@ -208,14 +208,52 @@ async def sso_config() -> SSOConfigOut:
 async def sso_login(
     payload: SSOLoginIn, request: Request, session: SessionDep
 ) -> TokenOut:
+    """Sign in with a verified Microsoft identity.
+
+    A local row wins first — the break-glass admin, or anyone predating the
+    integration. Otherwise SiteOps is asked whether this email belongs to
+    one of its people and, if so, a shadow row is provisioned the same way
+    a password login provisions one. A live Microsoft sign-in is at least
+    as strong a proof of identity as SiteOps's own password check, so an
+    adopted local account is left as is (`source="login"`, the default) —
+    not converted to platform-managed.
+    """
     claims = verify_ms_id_token(payload.ms_id_token)
     email = claims["_email"]
     user = await session.scalar(select(User).where(User.email == email))
-    if user is None:
+    if user is not None:
+        if not user.is_active:
+            raise InactiveUser("Account deactivated, contact site manager")
+        return await issue_tokens(session, user, request.headers.get("User-Agent"))
+
+    person = await siteops.find_user_by_email(email)
+    if person is None:
         raise NotFound(f"No E&M user record found for {email}")
-    if not user.is_active:
+    sub = str(person.get("id") or "").strip()
+    if not sub:
+        raise NotFound(f"No E&M user record found for {email}")
+
+    username = str(person.get("username") or "").strip()
+    provisioned = await platform_identity.ensure_user(
+        session,
+        sub=sub,
+        user_name=username or email,
+        name=str(person.get("full_name") or "") or None,
+        email=email,
+    )
+    if not provisioned.is_active:
         raise InactiveUser("Account deactivated, contact site manager")
-    return await issue_tokens(session, user, request.headers.get("User-Agent"))
+
+    grants_data = await siteops.user_grants(sub)
+    grants = {
+        "user_name": username,
+        "roles": (grants_data or {}).get("roles") or [],
+        "permissions": (grants_data or {}).get("permissions") or [],
+        "site_ids": await siteops.user_site_ids(sub),
+    }
+    return await issue_tokens(
+        session, provisioned, request.headers.get("User-Agent"), grants=grants
+    )
 
 
 async def _regrant(user: User) -> dict[str, object] | None:

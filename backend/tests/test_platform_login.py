@@ -298,3 +298,24 @@ async def test_list_site_users_none_omits_the_filter(monkeypatch) -> None:
     monkeypatch.setattr(siteops, "_get", fake_get)
     await siteops.list_site_users("some-site-id", is_active=None)
     assert "is_active" not in seen_params[0]
+
+
+def test_redact_tokens_masks_access_and_refresh_tokens_only() -> None:
+    body = (
+        '{"result":true,"data":{"access_token":"eyJabc.def.ghi",'
+        '"refresh_token":"eyJxyz.uvw.rst","username":"kunals",'
+        '"roles":["Manager"],"permissions":["em_entry:read"]}}'
+    )
+    redacted = siteops._redact_tokens(body)
+    assert "eyJabc.def.ghi" not in redacted
+    assert "eyJxyz.uvw.rst" not in redacted
+    assert '"access_token": "***redacted***"' in redacted
+    assert '"refresh_token": "***redacted***"' in redacted
+    # Everything else — the useful debugging signal — survives untouched.
+    assert '"username":"kunals"' in redacted
+    assert '"roles":["Manager"]' in redacted
+
+
+def test_redact_tokens_is_a_no_op_on_an_error_body() -> None:
+    body = '{"result":false,"message":"Invalid username or password.","error":"unauthorized"}'
+    assert siteops._redact_tokens(body) == body

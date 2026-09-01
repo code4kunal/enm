@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 import httpx
 
 from app.config import settings
 from app.errors import AppError, ValidationError
+
+logger = logging.getLogger("enm")
 
 #: SiteOps rejects any page_size above this.
 _MAX_PAGE_SIZE = 100
@@ -16,6 +20,21 @@ _MAX_PAGES = 50
 class SiteOpsUnavailable(AppError):
     code = "SITEOPS_UNAVAILABLE"
     http_status = 502
+
+
+def _redact_tokens(raw_body: str) -> str:
+    """Mask token values in a raw JSON response before it hits the logs.
+
+    A successful login's body carries a live SiteOps access/refresh token —
+    logging it verbatim would put a 24h-valid credential into log storage.
+    Everything else (result, message, roles, permissions, site_ids) is fine
+    to log in full and is exactly what's useful for diagnosing a rejection.
+    """
+    return re.sub(
+        r'"((?:access|refresh)_token)"\s*:\s*"[^"]*"',
+        r'"\1": "***redacted***"',
+        raw_body,
+    )
 
 
 async def _get(path: str, params: dict[str, Any], *, missing_ok: bool = False) -> Any:
@@ -86,13 +105,29 @@ async def login(username: str, password: str) -> dict[str, Any] | None:
     credentials that they are wrong.
     """
     url = f"{settings.siteops_base_url.rstrip('/')}/auth/login"
+    logger.info(
+        "SiteOps login request: POST %s grant_type=password username=%r",
+        url, username,
+    )
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                url, data={"username": username, "password": password}
+                url,
+                data={
+                    "grant_type": "password",
+                    "username": username,
+                    "password": password,
+                },
             )
     except httpx.HTTPError as e:
+        logger.info("SiteOps login request failed: %s", e)
         raise SiteOpsUnavailable(f"Cannot reach SiteOps: {e}") from e
+
+    logger.info(
+        "SiteOps login response: status=%d body=%s",
+        resp.status_code,
+        _redact_tokens(resp.text),
+    )
 
     if resp.status_code == 401:
         return None
@@ -107,6 +142,21 @@ async def login(username: str, password: str) -> dict[str, Any] | None:
         return None
     data = body.get("data")
     return data if isinstance(data, dict) else None
+
+
+async def find_user_by_email(email: str) -> dict[str, Any] | None:
+    """Look up a platform identity by email, for SSO provisioning.
+
+    `search` is SiteOps's free-text filter — case-insensitive but not
+    exact, so the match is narrowed here to a real email equality rather
+    than trusting the search ranking to return only one row.
+    """
+    rows = await _get_all_pages("/users/", {"search": email})
+    needle = email.strip().lower()
+    for row in rows:
+        if str(row.get("email") or "").strip().lower() == needle:
+            return row
+    return None
 
 
 async def user_grants(user_id: str) -> dict[str, Any] | None:
