@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../data/repositories.dart';
+import '../../models/entry.dart';
 import '../../models/report.dart';
-import '../../router.dart';
 import '../../state/entries.dart';
 import '../../state/reports.dart';
+import '../../state/toast.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../../utils/dates.dart';
@@ -14,6 +14,7 @@ import '../../widgets/buttons.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
+import '../register_form_screen.dart';
 
 /// Which register a chart's blocks come from, when they come from one at
 /// all — the inspection- and checklist-sourced charts (P.M schedule, D.I,
@@ -24,7 +25,6 @@ String? _registerIdFor(String kind) {
     case 'coolantTopping':
       return 'coolant';
     case 'driverComplaints':
-    case 'complaintsBreakdowns':
       return 'complaint';
     case 'breakdowns':
       return 'breakdown';
@@ -337,63 +337,105 @@ class _Block extends ConsumerWidget {
   static const Map<CellMark, Color> _fill = <CellMark, Color>{
     CellMark.plain: Colors.transparent,
     CellMark.pm: T.amberTint,
-    CellMark.docking: T.redTint,
     CellMark.breakdown: T.redTint,
   };
 
   static const Map<CellMark, Color> _ink = <CellMark, Color>{
     CellMark.plain: T.ink,
     CellMark.pm: T.amber,
-    CellMark.docking: T.red,
     CellMark.breakdown: T.red,
   };
 
-  void _openRegister(WidgetRef ref, BuildContext context) {
+  /// Opens the entry(s) behind this block as a sheet over the chart —
+  /// never a route change, so the chart is exactly where the user left it
+  /// once the sheet closes.
+  Future<void> _openEntry(WidgetRef ref, BuildContext context) async {
     final id = registerId;
     if (id == null) return;
-    final filters = ref.read(entryFiltersProvider.notifier);
-    filters.setRegister(id);
-    filters.setDateMode(DateMode.custom);
-    filters.setFrom(date);
-    filters.setTo(date);
-    filters.setQuery(registrationNo);
-    context.go(Routes.registers);
+    final entries =
+        ref.read(entriesProvider).valueOrNull ?? const <RegisterEntry>[];
+    final matches = entries
+        .where(
+          (e) =>
+              e.registerId == id &&
+              e.date == date &&
+              e.data['bus'] == registrationNo,
+        )
+        .toList();
+
+    if (matches.isEmpty) {
+      ref.read(toastProvider.notifier).show('No entry found for this day');
+      return;
+    }
+    if (matches.length == 1) {
+      await showRegisterEntrySheet(context, entryId: matches.first.id);
+      return;
+    }
+    final picked = await showModalBottomSheet<RegisterEntry>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: T.card,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final entry in matches)
+              ListTile(
+                title: Text(entry.time, style: AppText.mono(size: 13)),
+                subtitle: Text(entrySummary(entry)),
+                onTap: () => Navigator.of(sheetContext).pop(entry),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && context.mounted) {
+      await showRegisterEntrySheet(context, entryId: picked.id);
+    }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tappable = registerId != null && !cell.isEmpty;
-    final block = Container(
+    // Fixed outer footprint, matching `_HeaderRow`'s date cell exactly — a
+    // margin here (rather than this inset padding) would grow each block by
+    // half a pixel per side, drifting the grid a column further from its
+    // date header with every column to the right.
+    final block = SizedBox(
       width: _kDayColumn,
       height: _kRowHeight,
-      margin: const EdgeInsets.all(0.5),
-      decoration: BoxDecoration(
-        color: _fill[cell.mark] ?? Colors.transparent,
-        borderRadius: BorderRadius.circular(3),
-      ),
-      alignment: Alignment.center,
-      child: cell.value.isEmpty
-          ? null
-          : FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Text(
-                  cell.value,
-                  maxLines: 1,
-                  style: AppText.mono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    color: _ink[cell.mark] ?? T.ink,
+      child: Padding(
+        padding: const EdgeInsets.all(0.5),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _fill[cell.mark] ?? Colors.transparent,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          alignment: Alignment.center,
+          child: cell.value.isEmpty
+              ? null
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Text(
+                      cell.value,
+                      maxLines: 1,
+                      style: AppText.mono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: _ink[cell.mark] ?? T.ink,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
+        ),
+      ),
     );
     final wrapped = tappable
         ? InkWell(
             borderRadius: BorderRadius.circular(3),
-            onTap: () => _openRegister(ref, context),
+            onTap: () => _openEntry(ref, context),
             child: block,
           )
         : block;
@@ -432,8 +474,6 @@ class _Legend extends StatelessWidget {
             children: <Widget>[
               if (marks.contains(CellMark.pm))
                 const _Swatch(mark: CellMark.pm, label: 'PM attended'),
-              if (marks.contains(CellMark.docking))
-                const _Swatch(mark: CellMark.docking, label: 'Docking'),
               if (marks.contains(CellMark.breakdown))
                 const _Swatch(mark: CellMark.breakdown, label: 'Breakdown'),
             ],

@@ -22,14 +22,26 @@ import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../widgets/sheet.dart';
 
 /// New-entry and edit-entry form. Exactly one of [registerId] / [entryId] is
 /// supplied; on edit the register is derived from the entry.
 class RegisterFormScreen extends ConsumerStatefulWidget {
-  const RegisterFormScreen({super.key, this.registerId, this.entryId});
+  const RegisterFormScreen({
+    super.key,
+    this.registerId,
+    this.entryId,
+    this.onClose,
+  });
 
   final String? registerId;
   final String? entryId;
+
+  /// Overrides the default close-and-navigate behaviour — set when this
+  /// screen is embedded in a modal (a control chart cell's "view this entry"
+  /// sheet, say) rather than reached by its own route, so closing pops the
+  /// sheet instead of routing the whole app to Registers.
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<RegisterFormScreen> createState() => _RegisterFormScreenState();
@@ -52,23 +64,24 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
 
   // --- Unit section — Daily Work Done only ---------------------------------
   //
-  // A unit fit is not a register entry (`FittedUnit` has no FK to `entries`,
-  // Bus History reads it directly) — this section is a visual convenience
-  // that makes a second, independent `fitUnit` call alongside the Work Done
-  // entry's own save, not a new field on `work_done_entries`.
-  int? _unitTypeId;
-  final _unitNoController = TextEditingController();
-  final _odometerController = TextEditingController();
-  final _unitRemarksController = TextEditingController();
+  // A unit fit is not a register entry (`FittedUnit` has no FK to `entries`
+  // for how a *stay* is read back — Bus History and the statement still read
+  // by vehicle + unit_type + date, unchanged). It does carry an optional
+  // `entry_id` back-reference now, purely so this list can find "what did
+  // this entry touch" without guessing from a shared vehicle+date that a
+  // second shift's entry could also match. A day's work can touch more than
+  // one component (a battery and a motor, say), so this is a list, not a
+  // single pick.
+  final List<_UnitDraft> _unitDrafts = <_UnitDraft>[_UnitDraft()];
 
   @override
   void dispose() {
     for (final c in _controllers.values) {
       c.dispose();
     }
-    _unitNoController.dispose();
-    _odometerController.dispose();
-    _unitRemarksController.dispose();
+    for (final draft in _unitDrafts) {
+      draft.dispose();
+    }
     super.dispose();
   }
 
@@ -153,15 +166,16 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
     final data = Map<String, String>.of(_values)
       ..removeWhere((_, v) => v.trim().isEmpty);
 
+    RegisterEntry saved;
     try {
       final existing = _editing;
       if (existing != null) {
-        await entries.edit(original: existing, data: data);
+        saved = await entries.edit(original: existing, data: data);
         ref
             .read(toastProvider.notifier)
             .show('Entry updated in ${register.name} register');
       } else {
-        await entries.create(registerId: register.id, data: data);
+        saved = await entries.create(registerId: register.id, data: data);
         ref
             .read(toastProvider.notifier)
             .show('Entry saved to ${register.name} register');
@@ -174,32 +188,41 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
       return;
     }
 
-    // A unit was picked in the Unit section — fit it as a second, independent
-    // action. A failure here must not look like the Work Done entry above
-    // (already saved) also failed.
-    final unitTypeId = _unitTypeId;
-    if (unitTypeId != null) {
+    // One or more units were picked in the Unit section — fit each as a
+    // second, independent action. A failure here must not look like the
+    // Work Done entry above (already saved) also failed.
+    final picked = _unitDrafts.where((d) => d.unitTypeId != null).toList();
+    if (picked.isNotEmpty) {
       final vehicles = ref.read(siteVehiclesProvider).valueOrNull ?? const [];
       final vehicleId = vehicles
           .where((v) => v.registrationNo == (_values['bus'] ?? ''))
           .map((v) => v.id)
           .firstOrNull;
       if (vehicleId != null) {
-        try {
-          await ref.read(reportControllerProvider).fitUnit(
-                vehicleId: vehicleId,
-                unitTypeId: unitTypeId,
-                fittedOn: _values['date'] ?? Dates.today(),
-                unitNo: _unitNoController.text.trim(),
-                fittedOdometerKm: int.tryParse(_odometerController.text.trim()),
-                remarks: _unitRemarksController.text.trim(),
-              );
-          ref.read(toastProvider.notifier).show('Unit fitted');
-        } catch (e) {
-          ref
-              .read(toastProvider.notifier)
-              .show('Entry saved, but the unit could not be fitted — $e');
+        var fitted = 0;
+        var failed = 0;
+        for (final draft in picked) {
+          try {
+            await ref.read(reportControllerProvider).fitUnit(
+                  vehicleId: vehicleId,
+                  unitTypeId: draft.unitTypeId!,
+                  fittedOn: _values['date'] ?? Dates.today(),
+                  entryId: saved.id,
+                  unitNo: draft.unitNoController.text.trim(),
+                  fittedOdometerKm:
+                      int.tryParse(draft.odometerController.text.trim()),
+                  remarks: draft.remarksController.text.trim(),
+                );
+            fitted++;
+          } catch (_) {
+            failed++;
+          }
         }
+        final message = failed == 0
+            ? '$fitted unit${fitted == 1 ? '' : 's'} fitted'
+            : 'Entry saved, but $failed of ${picked.length} '
+                'unit${picked.length == 1 ? '' : 's'} could not be fitted';
+        ref.read(toastProvider.notifier).show(message);
       }
     }
 
@@ -207,6 +230,11 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   }
 
   void _close() {
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose();
+      return;
+    }
     // Editing started from Registers; a new entry started from Home (or from
     // Breakdowns for a new breakdown report).
     if (_editing != null) {
@@ -361,11 +389,14 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
               if (register.id == 'work') ...<Widget>[
                 const SizedBox(height: 16),
                 _UnitSection(
-                  unitTypeId: _unitTypeId,
-                  unitNoController: _unitNoController,
-                  odometerController: _odometerController,
-                  remarksController: _unitRemarksController,
-                  onUnitTypeChanged: (id) => setState(() => _unitTypeId = id),
+                  entryId: existing?.id,
+                  drafts: _unitDrafts,
+                  onAdd: () => setState(() => _unitDrafts.add(_UnitDraft())),
+                  onRemove: (draft) => setState(() {
+                    _unitDrafts.remove(draft);
+                    draft.dispose();
+                  }),
+                  onChanged: () => setState(() {}),
                 ),
               ],
               const SizedBox(height: 16),
@@ -404,30 +435,61 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   }
 }
 
-/// Optional unit-fitting block on the Daily Work Done form.
-///
-/// A visual convenience, not a new field on `work_done_entries` — filling it
-/// in makes a second, independent `fitUnit` call when the entry is saved.
-/// Leaving Unit unpicked (the default) submits the Work Done entry exactly
-/// as before, with nothing added.
-class _UnitSection extends ConsumerWidget {
-  const _UnitSection({
-    required this.unitTypeId,
-    required this.unitNoController,
-    required this.odometerController,
-    required this.remarksController,
-    required this.onUnitTypeChanged,
-  });
+/// One unfit-yet component pick in the Unit section. Its own controllers, so
+/// removing one row never disturbs another's text.
+class _UnitDraft {
+  _UnitDraft()
+      : unitNoController = TextEditingController(),
+        odometerController = TextEditingController(),
+        remarksController = TextEditingController();
 
-  final int? unitTypeId;
+  int? unitTypeId;
   final TextEditingController unitNoController;
   final TextEditingController odometerController;
   final TextEditingController remarksController;
-  final ValueChanged<int?> onUnitTypeChanged;
+
+  void dispose() {
+    unitNoController.dispose();
+    odometerController.dispose();
+    remarksController.dispose();
+  }
+}
+
+/// Optional unit-fitting block on the Daily Work Done form.
+///
+/// A day's work can touch more than one component (a battery and a motor,
+/// say), so this is a list of picks — each filled-in row makes its own,
+/// independent `fitUnit` call when the entry is saved. Leaving every row
+/// unpicked (the default) submits the Work Done entry exactly as before,
+/// with nothing added.
+class _UnitSection extends ConsumerWidget {
+  const _UnitSection({
+    required this.entryId,
+    required this.drafts,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onChanged,
+  });
+
+  /// Set only when editing an existing entry — used to show what is already
+  /// fit to it, read-only; removing one still goes through Bus History.
+  final String? entryId;
+  final List<_UnitDraft> drafts;
+  final VoidCallback onAdd;
+  final ValueChanged<_UnitDraft> onRemove;
+
+  /// Called after any in-place change to a draft — the drafts don't carry
+  /// their own `setState`, so the form decides when a rebuild is worth it.
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final types = ref.watch(unitTypesProvider).valueOrNull ?? const <UnitType>[];
+    final entryId = this.entryId;
+    final existing = entryId == null
+        ? const <FittedUnit>[]
+        : ref.watch(unitsByEntriesProvider(entryId)).valueOrNull ??
+            const <FittedUnit>[];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
@@ -444,45 +506,105 @@ class _UnitSection extends ConsumerWidget {
           Text(
             'Fitting a component here starts its life the same as Reports → '
             'Units — it reaches the bus history and failure statement when '
-            'it comes off. Leave blank if this entry has nothing to do with '
-            'a unit.',
+            'it comes off. A day can touch more than one; add as many picks '
+            'as this entry needs, or leave them blank.',
             style: AppText.sans(size: 12.5, color: T.secondary, height: 1.4),
           ),
-          const SizedBox(height: 14),
-          const FieldLabel(label: 'Unit'),
-          const SizedBox(height: 6),
-          AppSelect(
-            value: types
-                .where((t) => t.id == unitTypeId)
-                .map((t) => t.name)
-                .firstOrNull,
-            options: types.map((t) => t.name).toList(),
-            placeholder: 'Not fitting a unit on this entry',
-            onChanged: (name) => onUnitTypeChanged(
-              types.where((t) => t.name == name).map((t) => t.id).firstOrNull,
-            ),
-          ),
-          if (unitTypeId != null) ...<Widget>[
+          if (existing.isNotEmpty) ...<Widget>[
             const SizedBox(height: 14),
-            const FieldLabel(label: 'Unit No'),
-            const SizedBox(height: 6),
-            AppTextField(
-              controller: unitNoController,
-              placeholder: 'The maker’s serial, if it has one',
+            Text(
+              'ALREADY FIT TO THIS ENTRY',
+              style: AppText.sans(size: 10, color: T.muted),
             ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Odometer at fitting'),
             const SizedBox(height: 6),
-            AppTextField(
-              controller: odometerController,
-              placeholder: 'Leave blank to use the bus’s last reading',
-              numeric: true,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                for (final unit in existing)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: T.subtleFill,
+                      borderRadius: T.cardSmShape,
+                    ),
+                    child: Text(
+                      (unit.unitNo ?? '').isEmpty
+                          ? unit.unitName
+                          : '${unit.unitName} · ${unit.unitNo}',
+                      style: AppText.sans(size: 12, weight: FontWeight.w600),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Remarks'),
-            const SizedBox(height: 6),
-            AppTextField(controller: remarksController, placeholder: 'Optional'),
           ],
+          for (var i = 0; i < drafts.length; i++) ...<Widget>[
+            const SizedBox(height: 14),
+            if (i > 0) const Divider(height: 1, color: T.border),
+            if (i > 0) const SizedBox(height: 14),
+            Row(
+              children: <Widget>[
+                const Expanded(child: FieldLabel(label: 'Unit')),
+                if (drafts.length > 1)
+                  InkWell(
+                    onTap: () => onRemove(drafts[i]),
+                    child: Text(
+                      'Remove',
+                      style: AppText.sans(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: T.red,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            AppSelect(
+              value: types
+                  .where((t) => t.id == drafts[i].unitTypeId)
+                  .map((t) => t.name)
+                  .firstOrNull,
+              options: types.map((t) => t.name).toList(),
+              placeholder: 'Not fitting a unit here',
+              onChanged: (name) {
+                drafts[i].unitTypeId = types
+                    .where((t) => t.name == name)
+                    .map((t) => t.id)
+                    .firstOrNull;
+                onChanged();
+              },
+            ),
+            if (drafts[i].unitTypeId != null) ...<Widget>[
+              const SizedBox(height: 14),
+              const FieldLabel(label: 'Unit No'),
+              const SizedBox(height: 6),
+              AppTextField(
+                controller: drafts[i].unitNoController,
+                placeholder: 'The maker’s serial, if it has one',
+              ),
+              const SizedBox(height: 14),
+              const FieldLabel(label: 'Odometer at fitting'),
+              const SizedBox(height: 6),
+              AppTextField(
+                controller: drafts[i].odometerController,
+                placeholder: 'Leave blank to use the bus’s last reading',
+                numeric: true,
+              ),
+              const SizedBox(height: 14),
+              const FieldLabel(label: 'Remarks'),
+              const SizedBox(height: 6),
+              AppTextField(
+                controller: drafts[i].remarksController,
+                placeholder: 'Optional',
+              ),
+            ],
+          ],
+          const SizedBox(height: 14),
+          OutlineActionButton(label: '+ Add another unit', onPressed: onAdd),
         ],
       ),
     );
@@ -724,4 +846,23 @@ extension _FirstOrNull<E> on Iterable<E> {
     final it = iterator;
     return it.moveNext() ? it.current : null;
   }
+}
+
+/// Opens one entry's edit form as a bottom sheet, overlaying whatever screen
+/// asked for it — a control chart cell, say — instead of routing away to
+/// Registers. Closing it (Cancel, Save, or the back link) just pops the
+/// sheet; the caller's screen is exactly as it was.
+Future<void> showRegisterEntrySheet(
+  BuildContext context, {
+  required String entryId,
+}) {
+  return showEditorSheet<void>(
+    context: context,
+    builder: (sheetContext) => SingleChildScrollView(
+      child: RegisterFormScreen(
+        entryId: entryId,
+        onClose: () => Navigator.of(sheetContext).pop(),
+      ),
+    ),
+  );
 }

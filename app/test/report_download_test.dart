@@ -96,14 +96,14 @@ void main() {
       await repo.downloadReport(
         ReportDoc.controlChart,
         siteCode: 'MBMT',
-        chartKind: 'pmSchedule',
+        chartKind: 'diInspection',
         fromDate: '2026-08-01',
         toDate: '2026-08-31',
       );
 
       expect(
         seen.path,
-        '/api/v1/sites/MBMT/reports/control-charts/pmSchedule/export',
+        '/api/v1/sites/MBMT/reports/control-charts/diInspection/export',
       );
       expect(seen.queryParameters['from'], '2026-08-01');
       expect(seen.queryParameters['to'], '2026-08-31');
@@ -139,7 +139,7 @@ void main() {
           siteCode: 'MBMT',
           date: '2026-08-05',
           month: '2026-08',
-          chartKind: 'pmSchedule',
+          chartKind: 'diInspection',
           fromDate: '2026-08-01',
           toDate: '2026-08-31',
           vehicleId: 'v1',

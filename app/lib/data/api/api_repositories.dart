@@ -1258,11 +1258,24 @@ class ApiReportRepository implements ReportRepository {
       )).map(FittedUnit.fromJson).toList();
 
   @override
+  Future<List<FittedUnit>> fetchUnitsByEntries({
+    required String siteCode,
+    required List<String> entryIds,
+  }) async {
+    if (entryIds.isEmpty) return const <FittedUnit>[];
+    return itemsOf(await _api.get(
+      '/sites/$siteCode/units/by-entries',
+      query: <String, String>{'entry_ids': entryIds.join(',')},
+    )).map(FittedUnit.fromJson).toList();
+  }
+
+  @override
   Future<FittedUnit> fitUnit({
     required String siteCode,
     required String vehicleId,
     required int unitTypeId,
     required String fittedOn,
+    String? entryId,
     String? unitNo,
     int? fittedOdometerKm,
     String? remarks,
@@ -1273,6 +1286,7 @@ class ApiReportRepository implements ReportRepository {
         'vehicle_id': vehicleId,
         'unit_type_id': unitTypeId,
         'fitted_on': fittedOn,
+        if (entryId != null) 'entry_id': entryId,
         if (unitNo != null && unitNo.isNotEmpty) 'unit_no': unitNo,
         if (fittedOdometerKm != null) 'fitted_odometer_km': fittedOdometerKm,
         if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,

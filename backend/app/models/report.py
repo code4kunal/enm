@@ -271,6 +271,7 @@ class FittedUnit(Base):
     __table_args__ = (
         Index("ix_fitted_units_site_code_removed_on", "site_code", "removed_on"),
         Index("ix_fitted_units_vehicle_id_unit_type_id", "vehicle_id", "unit_type_id"),
+        Index("ix_fitted_units_entry_id", "entry_id"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
@@ -282,6 +283,15 @@ class FittedUnit(Base):
     )
     unit_type_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("unit_types.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: The Work Done entry this fit was recorded alongside, when it was fit
+    #: that way. Not how a stay is read back (that's still vehicle + unit_type
+    #: + date, so Bus History and the statement never change shape) — only how
+    #: the register list finds "which units did this entry touch" without
+    #: guessing from a shared vehicle+date that a second shift's entry could
+    #: also match.
+    entry_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("entries.id", ondelete="SET NULL"), nullable=True
     )
     #: The manufacturer's serial. Null when the depot did not record one.
     unit_no: Mapped[str | None] = mapped_column(String(120), nullable=True)

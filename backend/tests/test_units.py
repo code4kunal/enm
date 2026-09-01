@@ -239,6 +239,86 @@ async def test_what_is_on_a_bus_right_now(client: AsyncClient) -> None:
     assert [i["id"] for i in r.json()["items"]] == [kept["id"]]
 
 
+async def _work_entry(
+    client: AsyncClient, headers: dict, *, site: str = "MBMT", reg: str = BUS
+) -> str:
+    resp = await client.post(
+        "/entries",
+        json={
+            "register": "work_done",
+            "site": site,
+            "date": "2026-08-01",
+            "data": {"bus_no": reg, "reported_defects": "AC not cooling"},
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+async def test_a_fit_can_be_linked_to_the_entry_that_recorded_it(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    types = await _unit_types()
+    entry_id = await _work_entry(client, h)
+
+    fit = await _fit(
+        client, h, types["Traction Motor"], "2026-08-01", entry_id=entry_id
+    )
+    assert fit.status_code == 201, fit.text
+    assert fit.json()["entry_id"] == entry_id
+
+
+async def test_by_entries_finds_every_unit_two_entries_fit(
+    client: AsyncClient,
+) -> None:
+    """Two shifts, two Work Done entries, one battery each — the lookup must
+    not conflate them just because both are the same bus on the same day."""
+    h = await auth_headers(client)
+    types = await _unit_types()
+    entry_a = await _work_entry(client, h)
+    entry_b = await _work_entry(client, h)
+
+    fit_a = await _fit(
+        client, h, types["Battery pack 1"], "2026-08-01", entry_id=entry_a
+    )
+    fit_b = await _fit(
+        client, h, types["Traction Motor"], "2026-08-01", entry_id=entry_b
+    )
+    assert fit_a.status_code == 201 and fit_b.status_code == 201
+
+    r = await client.get(
+        "/sites/MBMT/units/by-entries",
+        params={"entry_ids": f"{entry_a},{entry_b}"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    ids = {i["id"] for i in r.json()["items"]}
+    assert ids == {fit_a.json()["id"], fit_b.json()["id"]}
+
+    # Asking for only one entry must not leak the other's unit.
+    only_a = await client.get(
+        "/sites/MBMT/units/by-entries",
+        params={"entry_ids": entry_a},
+        headers=h,
+    )
+    assert [i["id"] for i in only_a.json()["items"]] == [fit_a.json()["id"]]
+
+
+async def test_an_entry_from_another_site_is_refused(client: AsyncClient) -> None:
+    """TV4021 can reach both sites, so this is the site check on `entry_id`
+    itself, not a permission gate that would 403 regardless."""
+    h = await auth_headers(client)
+    types = await _unit_types()
+    umt_entry = await _work_entry(client, h, site="UMT", reg="MH05GX4410")
+
+    fit = await _fit(
+        client, h, types["Traction Motor"], "2026-08-01", entry_id=umt_entry
+    )
+    assert fit.status_code == 404, fit.text
+
+
 # --- the Unit Failure Statement ----------------------------------------------
 
 

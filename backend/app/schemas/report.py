@@ -222,6 +222,8 @@ class FittedUnitOut(BaseModel):
     registration_no: str
     unit_type_id: int
     unit_name: str
+    #: The Work Done entry this was fit alongside, when it was fit that way.
+    entry_id: str | None = None
     unit_no: str | None = None
     fitted_on: date_t
     fitted_odometer_km: int | None = None
@@ -246,6 +248,9 @@ class FitUnitIn(BaseModel):
     vehicle_id: str = Field(min_length=1, max_length=32)
     unit_type_id: int
     fitted_on: date_t
+    #: Set when this fit is recorded alongside a Work Done entry's own save —
+    #: lets the register list find it without guessing from vehicle + date.
+    entry_id: str | None = Field(default=None, max_length=32)
     unit_no: str | None = Field(default=None, max_length=120)
     #: Defaults to the bus's last odometer reading when left out.
     fitted_odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)

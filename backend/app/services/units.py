@@ -69,6 +69,7 @@ async def fit_unit(
     vehicle: Vehicle,
     unit_type_id: int,
     fitted_on: date_t,
+    entry_id: str | None = None,
     unit_no: str | None = None,
     fitted_odometer_km: int | None = None,
     remarks: str | None = None,
@@ -102,6 +103,7 @@ async def fit_unit(
         site_code=site_code,
         vehicle_id=vehicle.id,
         unit_type_id=unit_type_id,
+        entry_id=entry_id,
         unit_no=unit_no or None,
         fitted_on=fitted_on,
         fitted_odometer_km=(
@@ -162,6 +164,25 @@ async def fitted_to(
             FittedUnit.site_code == site_code,
             FittedUnit.vehicle_id == vehicle_id,
             FittedUnit.removed_on.is_(None),
+        )
+        .order_by(UnitType.sort_order, UnitType.name)
+    )
+    return list(rows.unique().all())
+
+
+async def by_entries(
+    session: AsyncSession, site_code: str, entry_ids: list[str]
+) -> list[FittedUnit]:
+    """Every unit fit alongside any of these entries, for the register list
+    to show inline without a call per row."""
+    if not entry_ids:
+        return []
+    rows = await session.scalars(
+        select(FittedUnit)
+        .join(UnitType, UnitType.id == FittedUnit.unit_type_id)
+        .where(
+            FittedUnit.site_code == site_code,
+            FittedUnit.entry_id.in_(entry_ids),
         )
         .order_by(UnitType.sort_order, UnitType.name)
     )

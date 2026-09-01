@@ -222,10 +222,7 @@ def control_chart(chart: control_charts.Chart) -> Story:
             if cell.mark is control_charts.CellMark.pm:
                 fills.append(("BACKGROUND", (c, r), (c, r), AMBER_FILL))
                 inks.append(("TEXTCOLOR", (c, r), (c, r), AMBER_INK))
-            elif cell.mark in (
-                control_charts.CellMark.docking,
-                control_charts.CellMark.breakdown,
-            ):
+            elif cell.mark is control_charts.CellMark.breakdown:
                 fills.append(("BACKGROUND", (c, r), (c, r), RED_FILL))
                 inks.append(("TEXTCOLOR", (c, r), (c, r), RED_INK))
         rows.append(cells)

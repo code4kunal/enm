@@ -206,87 +206,7 @@ async def test_a_pm_day_with_no_topping_is_still_shaded(
     assert cell(body, BUS, 4) == {"value": "", "mark": "pm", "title": ""}
 
 
-# --- the P.M schedule chart --------------------------------------------------
-
-
-async def test_pm_schedule_names_the_inspection_and_reds_the_docking(
-    client: AsyncClient,
-) -> None:
-    h = await auth_headers(client)
-    types = await _inspection_types()
-    await _inspect(client, h, types["D.I"], 2)
-    await _inspect(client, h, types["10 DAYS SERVICE"], 6)
-    await _inspect(client, h, types["P.M"], 9)
-
-    body = await chart(client, h, "pmSchedule")
-    assert cell(body, BUS, 2) == {"value": "D.I", "mark": "pm", "title": "D.I"}
-    # Fifteen characters do not fit in a block, so the grid shows the short
-    # form and keeps the code itself.
-    assert cell(body, BUS, 6) == {
-        "value": "10D",
-        "mark": "pm",
-        "title": "10 DAYS SERVICE",
-    }
-    # "The blocks of docking schedule attend date to be marked in red."
-    assert cell(body, BUS, 9) == {
-        "value": "P.M",
-        "mark": "docking",
-        "title": "P.M",
-    }
-    assert body["filled"] == 3
-
-
-async def test_two_inspections_in_a_day_show_the_longer_one(
-    client: AsyncClient,
-) -> None:
-    """One block, two jobs: the ten-day service is the one that matters."""
-    h = await auth_headers(client)
-    types = await _inspection_types()
-    await _inspect(client, h, types["D.I"], 5)
-    await _inspect(client, h, types["10 DAYS SERVICE"], 5)
-
-    body = await chart(client, h, "pmSchedule")
-    assert cell(body, BUS, 5)["title"] == "10 DAYS SERVICE"
-
-
-# --- driver complaints and breakdowns ----------------------------------------
-
-
-async def test_complaints_are_counted_and_breakdown_days_go_red(
-    client: AsyncClient,
-) -> None:
-    h = await auth_headers(client)
-    await _entry(client, h, "driver_complaint", 2, {"complaint": "AC weak"})
-    await _entry(client, h, "driver_complaint", 2, {"complaint": "Door slow"})
-    await _entry(client, h, "driver_complaint", 8, {"complaint": "Noise"})
-    await _entry(client, h, "breakdown", 8, {"complaint": "No traction"})
-
-    body = await chart(client, h, "complaintsBreakdowns")
-    assert cell(body, BUS, 2) == {"value": "2", "mark": "plain", "title": ""}
-    assert cell(body, BUS, 8) == {"value": "1", "mark": "breakdown", "title": ""}
-
-
-async def test_a_breakdown_with_no_complaint_still_fills_its_block(
-    client: AsyncClient,
-) -> None:
-    """A red block with nothing written in it reads as an empty one."""
-    h = await auth_headers(client)
-    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
-
-    body = await chart(client, h, "complaintsBreakdowns")
-    assert cell(body, BUS, 4) == {"value": "BD", "mark": "breakdown", "title": ""}
-
-
-async def test_two_breakdowns_in_a_day_say_so(client: AsyncClient) -> None:
-    h = await auth_headers(client)
-    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
-    await _entry(client, h, "breakdown", 4, {"complaint": "No traction"})
-
-    body = await chart(client, h, "complaintsBreakdowns")
-    assert cell(body, BUS, 4) == {"value": "BD2", "mark": "breakdown", "title": ""}
-
-
-# --- D.I and 10-day service, split out of pmSchedule ------------------------
+# --- D.I and 10-day service --------------------------------------------------
 
 
 async def test_di_inspection_ticks_only_di_days(client: AsyncClient) -> None:
@@ -314,8 +234,8 @@ async def test_ten_day_service_ticks_only_ten_day_days(client: AsyncClient) -> N
 async def test_di_and_ten_day_both_tick_when_a_bus_has_both_the_same_day(
     client: AsyncClient,
 ) -> None:
-    """The merged pmSchedule chart can only show one code per day (the longer
-    one wins); the two split charts must not inherit that loss."""
+    """Each chart reads its own work-type code — a D.I and a ten-day service
+    on the same day must not fight over which one shows."""
     h = await auth_headers(client)
     types = await _inspection_types()
     await _inspect(client, h, types["D.I"], 5)
@@ -325,7 +245,7 @@ async def test_di_and_ten_day_both_tick_when_a_bus_has_both_the_same_day(
     assert cell(await chart(client, h, "tenDayService"), BUS, 5)["value"] == "✓"
 
 
-# --- driver complaints and breakdowns, split apart ---------------------------
+# --- driver complaints and breakdowns -----------------------------------------
 
 
 async def test_driver_complaints_chart_carries_the_complaint_text(
@@ -508,10 +428,10 @@ async def test_the_chart_list_marks_which_ones_have_data_behind_them(
     resp = await client.get("/reports/control-charts", headers=h)
     assert resp.status_code == 200, resp.text
     charts = {c["kind"]: c for c in resp.json()}
-    assert len(charts) == 10
+    assert len(charts) == 8
     assert charts["energy"]["available"] is False
     assert [k for k, c in charts.items() if not c["available"]] == ["energy"]
-    assert charts["pmSchedule"]["title"] == "P.M schedule"
+    assert charts["diInspection"]["title"] == "D.I inspection"
 
 
 # --- the export --------------------------------------------------------------
@@ -521,32 +441,16 @@ async def test_the_export_carries_the_colour_a_csv_cannot_hold(
     client: AsyncClient,
 ) -> None:
     h = await auth_headers(client)
-    types = await _inspection_types()
-    await _inspect(client, h, types["P.M"], 9)
-    await _inspect(client, h, types["D.I"], 2)
+    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
 
     resp = await client.get(
-        "/sites/MBMT/reports/control-charts/pmSchedule/export",
+        "/sites/MBMT/reports/control-charts/breakdowns/export",
         params=window(),
         headers=h,
     )
     assert resp.status_code == 200, resp.text
     assert "text/csv" in resp.headers["content-type"]
     body = resp.text
-    assert "P.M schedule" in body
-    assert "D.I (PM)" in body
-    assert "P.M (DOCKING)" in body
+    assert "Breakdowns" in body
+    assert "Air leak (BD)" in body
     assert BUS in body and OTHER in body
-
-
-def test_a_code_too_long_for_a_block_keeps_its_leading_number() -> None:
-    """The depot writes "10D" on the paper chart; a block four characters wide
-    cannot hold more than that either."""
-    from app.services.control_charts import abbreviate
-
-    assert abbreviate("D.I") == "D.I"
-    assert abbreviate("P.M") == "P.M"
-    assert abbreviate("10 DAYS SERVICE") == "10D"
-    assert abbreviate("30 DAYS SERVICE") == "30D"
-    # Nothing numeric to lead with, so the first letters have to do.
-    assert abbreviate("Preventive docking") == "PRE"

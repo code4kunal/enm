@@ -174,7 +174,7 @@ async def test_a_control_chart_pdf_has_the_fleet_and_the_days(
         "/sites/MBMT/inspections",
         json={
             "vehicle_id": await _vehicle_id(),
-            "work_type_id": types["P.M"],
+            "work_type_id": types["D.I"],
             "inspected_on": DAY.isoformat(),
             "results": [],
         },
@@ -182,17 +182,16 @@ async def test_a_control_chart_pdf_has_the_fleet_and_the_days(
     )
 
     r = await client.get(
-        "/sites/MBMT/reports/control-charts/pmSchedule/export",
+        "/sites/MBMT/reports/control-charts/diInspection/export",
         params={"from": "2026-08-01", "to": "2026-08-10", "format": "pdf"},
         headers=h,
     )
     text, _ = read(r)
-    assert "P.M schedule" in text
+    assert "D.I inspection" in text
     assert BUS in text
     # The other active bus is a row too — an empty row is the finding.
     assert "MH40LY1895" in text
-    assert "P.M" in text
-    assert attachment(r) == "mbmt-chart-pmschedule-2026-08-01-to-2026-08-10.pdf"
+    assert attachment(r) == "mbmt-chart-diinspection-2026-08-01-to-2026-08-10.pdf"
 
 
 async def test_a_chart_with_no_feed_prints_the_reason(

@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../data/registers.dart';
 import '../models/entry.dart';
+import '../models/report.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
+import '../state/reports.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -72,6 +74,15 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
     final inspections = ref.watch(filteredInspectionsProvider);
     final showingInspections = isInspectionFilter(filters.registerId);
     final siteName = ref.watch(siteDisplayNameProvider);
+    // One batched call for every Work Done row on screen, rather than one
+    // per row — units_pane's list already proved the pattern.
+    final workDoneIds = results
+        .where((e) => e.registerId == 'work')
+        .map((e) => e.id)
+        .join(',');
+    final unitsByEntry =
+        ref.watch(unitsByEntriesProvider(workDoneIds)).valueOrNull ??
+            const <FittedUnit>[];
 
     return FadeUp(
       key: const ValueKey<String>('registers'),
@@ -230,7 +241,10 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 for (final e in results) ...<Widget>[
-                  _ResultRow(entry: e),
+                  _ResultRow(
+                    entry: e,
+                    units: unitsByEntry.where((u) => u.entryId == e.id),
+                  ),
                   const SizedBox(height: 8),
                 ],
               ],
@@ -362,9 +376,13 @@ class _DateBound extends StatelessWidget {
 }
 
 class _ResultRow extends ConsumerWidget {
-  const _ResultRow({required this.entry});
+  const _ResultRow({required this.entry, this.units = const <FittedUnit>[]});
 
   final RegisterEntry entry;
+
+  /// Units fit alongside this entry — empty for every register but Work
+  /// Done, and for a Work Done entry that touched no unit.
+  final Iterable<FittedUnit> units;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -415,6 +433,23 @@ class _ResultRow extends ConsumerWidget {
           ),
           const SizedBox(height: 7),
           Text(entrySummary(entry), style: AppText.bodyText),
+          if (units.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final unit in units)
+                  TagBadge(
+                    label: (unit.unitNo ?? '').isEmpty
+                        ? unit.unitName
+                        : '${unit.unitName} · ${unit.unitNo}',
+                    background: T.subtleFill,
+                    foreground: T.secondary,
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

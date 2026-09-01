@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import NotFound, ValidationError
+from app.models.entry import Entry
 from app.models.enums import AuditAction, StrEnum
 from app.models.master import Vehicle
 from app.models.report import FittedUnit, OffRoadCase, UnitType
@@ -640,7 +641,6 @@ async def export_control_chart(
 
     suffix = {
         control_charts.CellMark.pm: " (PM)",
-        control_charts.CellMark.docking: " (DOCKING)",
         control_charts.CellMark.breakdown: " (BD)",
     }
     buffer = io.StringIO()
@@ -681,6 +681,7 @@ def _unit_out(stay: FittedUnit) -> FittedUnitOut:
         registration_no=stay.vehicle.registration_no if stay.vehicle else "",
         unit_type_id=stay.unit_type_id,
         unit_name=stay.unit_type.name if stay.unit_type else "",
+        entry_id=stay.entry_id,
         unit_no=stay.unit_no,
         fitted_on=stay.fitted_on,
         fitted_odometer_km=stay.fitted_odometer_km,
@@ -728,6 +729,24 @@ async def units_on_bus(
     )
 
 
+@router.get("/sites/{code}/units/by-entries", response_model=FittedUnitList)
+async def units_by_entries(
+    code: str,
+    user: CurrentUser,
+    session: SessionDep,
+    entry_ids: Annotated[str, Query()],
+) -> FittedUnitList:
+    """Every unit fit alongside any of these entries — one call for a whole
+    page of the register list rather than one per row. Comma-separated
+    because the client's query helper takes a flat string map."""
+    site_code = assert_site_permission(user, code, "em_report:read")
+    ids = [i for i in entry_ids.split(",") if i]
+    rows = await units.by_entries(session, site_code, ids)
+    return FittedUnitList(
+        site_code=site_code, items=[_unit_out(row) for row in rows]
+    )
+
+
 @router.post(
     "/sites/{code}/units",
     response_model=FittedUnitOut,
@@ -749,12 +768,19 @@ async def fit_unit(
     if vehicle is None or vehicle.site_code != site_code:
         raise NotFound("Vehicle not found")
 
+    entry_id = payload.entry_id
+    if entry_id is not None:
+        entry = await session.get(Entry, entry_id)
+        if entry is None or entry.site_code != site_code:
+            raise NotFound("Entry not found")
+
     stay = await units.fit_unit(
         session,
         site_code=site_code,
         vehicle=vehicle,
         unit_type_id=payload.unit_type_id,
         fitted_on=payload.fitted_on,
+        entry_id=entry_id,
         unit_no=payload.unit_no,
         fitted_odometer_km=payload.fitted_odometer_km,
         remarks=payload.remarks,

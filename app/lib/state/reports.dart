@@ -66,7 +66,7 @@ final outstandingInvestigationsProvider = Provider<int>((ref) {
 // ─── Annexure-IV control charts ───────────────────────────────────────────
 
 /// The chart on screen. The wire value, not the index — the list is served.
-final chartKindProvider = StateProvider<String>((ref) => 'pmSchedule');
+final chartKindProvider = StateProvider<String>((ref) => 'coolantTopping');
 
 /// The window the chart covers, as `yyyy-MM`. A control chart is read a month
 /// at a time; that is the shape the depot files.
@@ -137,6 +137,22 @@ final fittedUnitsProvider = FutureProvider<List<FittedUnit>>((ref) {
       .fetchFittedUnits(siteCode: site, vehicleId: vehicleId);
 });
 
+/// The units fit alongside a set of Work Done entries, keyed by their ids
+/// joined with commas rather than the `List` itself — a fresh list literal on
+/// every build would otherwise mint a new family instance each time and never
+/// cache. Empty key (no `work_done` entries on screen) skips the call.
+final unitsByEntriesProvider =
+    FutureProvider.family<List<FittedUnit>, String>((ref, entryIdsKey) {
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty || entryIdsKey.isEmpty) {
+    return Future<List<FittedUnit>>.value(const <FittedUnit>[]);
+  }
+  return ref.watch(reportRepositoryProvider).fetchUnitsByEntries(
+        siteCode: site,
+        entryIds: entryIdsKey.split(','),
+      );
+});
+
 final busHistoryProvider = FutureProvider<BusHistory>((ref) {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   final vehicleId = ref.watch(historyVehicleProvider);
@@ -168,6 +184,7 @@ class ReportController {
     required String vehicleId,
     required int unitTypeId,
     required String fittedOn,
+    String? entryId,
     String? unitNo,
     int? fittedOdometerKm,
     String? remarks,
@@ -177,6 +194,7 @@ class ReportController {
       vehicleId: vehicleId,
       unitTypeId: unitTypeId,
       fittedOn: fittedOn,
+      entryId: entryId,
       unitNo: unitNo,
       fittedOdometerKm: fittedOdometerKm,
       remarks: remarks,

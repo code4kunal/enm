@@ -14,10 +14,10 @@ import 'package:transvolt_em/utils/dates.dart';
 /// most of a screen of parsing, and a field renamed on the server has to fail
 /// here rather than render as a month nobody serviced.
 const Map<String, dynamic> _chartJson = <String, dynamic>{
-  'kind': 'pmSchedule',
-  'title': 'P.M schedule',
-  'legend': 'The inspection attended. Dockings marked red.',
-  'unit': '',
+  'kind': 'coolantTopping',
+  'title': 'Coolant topping',
+  'legend': 'Litres topped up. Shaded where a PM was attended that day.',
+  'unit': 'litres',
   'available': true,
   'unavailable_reason': '',
   'site_code': 'MBMT',
@@ -29,12 +29,12 @@ const Map<String, dynamic> _chartJson = <String, dynamic>{
       'vehicle_id': 'v1',
       'registration_no': 'MH40LY1894',
       'cells': <dynamic>[
-        <String, dynamic>{'value': 'D.I', 'mark': 'pm', 'title': 'D.I'},
+        <String, dynamic>{'value': '2', 'mark': 'pm', 'title': ''},
         <String, dynamic>{'value': '', 'mark': 'plain'},
         <String, dynamic>{
-          'value': '10D',
-          'mark': 'docking',
-          'title': '10 DAYS SERVICE',
+          'value': 'BD',
+          'mark': 'breakdown',
+          'title': 'No traction',
         },
       ],
     },
@@ -133,20 +133,19 @@ void main() {
         Map<String, dynamic>.from(_chartJson),
       );
 
-      expect(chart.title, 'P.M schedule');
+      expect(chart.title, 'Coolant topping');
       expect(chart.dates.length, 3);
       expect(chart.rows.length, 2);
       expect(chart.filled, 2);
 
       final first = chart.rows.first;
       expect(first.registrationNo, 'MH40LY1894');
-      expect(first.cells[0].value, 'D.I');
+      expect(first.cells[0].value, '2');
       expect(first.cells[0].mark, CellMark.pm);
       expect(first.cells[1].isEmpty, isTrue);
-      expect(first.cells[2].mark, CellMark.docking);
-      // The block is shortened to fit; the code itself is still carried.
-      expect(first.cells[2].value, '10D');
-      expect(first.cells[2].title, '10 DAYS SERVICE');
+      expect(first.cells[2].mark, CellMark.breakdown);
+      expect(first.cells[2].value, 'BD');
+      expect(first.cells[2].title, 'No traction');
     });
 
     test('an unknown mark falls back to plain rather than throwing', () {
@@ -189,7 +188,7 @@ void main() {
 
       await _pump(tester, container);
 
-      expect(repo.lastKind, 'pmSchedule');
+      expect(repo.lastKind, 'coolantTopping');
       expect(repo.lastFrom, '2026-08-01');
       expect(repo.lastTo, '2026-08-31');
     });
@@ -204,8 +203,8 @@ void main() {
       // The bus with nothing recorded is the whole point of the grid.
       expect(find.text('MH40LY1894'), findsOneWidget);
       expect(find.text('MH40LY1895'), findsOneWidget);
-      expect(find.text('D.I'), findsOneWidget);
-      expect(find.text('10D'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('BD'), findsOneWidget);
     });
 
     testWidgets('a chart with no feed shows the reason, not an empty grid',
@@ -226,7 +225,7 @@ void main() {
       addTearDown(container.dispose);
 
       await _pump(tester, container);
-      expect(repo.lastKind, 'pmSchedule');
+      expect(repo.lastKind, 'coolantTopping');
 
       await tester.tap(find.text('kWh / km'));
       await tester.pumpAndSettle();

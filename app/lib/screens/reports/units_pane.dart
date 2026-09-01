@@ -3,10 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories.dart';
 import '../../models/report.dart';
-import '../../models/site.dart';
-import '../../state/providers.dart';
 import '../../state/reports.dart';
-import '../../state/session.dart';
 import '../../state/toast.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
@@ -31,7 +28,6 @@ class UnitsPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final month = ref.watch(unitMonthProvider);
     final async = ref.watch(unitFailuresProvider);
-    final canEdit = ref.watch(sessionProvider).can('em_report:write');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -85,13 +81,6 @@ class UnitsPane extends ConsumerWidget {
                       style: AppText.sans(size: 13.5, weight: FontWeight.w600),
                     ),
                   ),
-                  if (canEdit) ...<Widget>[
-                    OutlineActionButton(
-                      label: 'Fit a unit',
-                      onPressed: () => showFitUnitEditor(context, ref),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
                   ReportDownloadButton(
                     doc: ReportDoc.unitFailures,
                     month: month,
@@ -218,14 +207,7 @@ class _Fact extends StatelessWidget {
   }
 }
 
-// ─── fitting and removing ─────────────────────────────────────────────────
-
-Future<void> showFitUnitEditor(BuildContext context, WidgetRef ref) {
-  return showEditorSheet<void>(
-    context: context,
-    builder: (_) => const _FitUnitSheet(),
-  );
-}
+// ─── removing ───────────────────────────────────────────────────────────
 
 Future<void> showRemoveUnitEditor(
   BuildContext context,
@@ -236,142 +218,6 @@ Future<void> showRemoveUnitEditor(
     context: context,
     builder: (_) => _RemoveUnitSheet(unit: unit),
   );
-}
-
-class _FitUnitSheet extends ConsumerStatefulWidget {
-  const _FitUnitSheet();
-
-  @override
-  ConsumerState<_FitUnitSheet> createState() => _FitUnitSheetState();
-}
-
-class _FitUnitSheetState extends ConsumerState<_FitUnitSheet> {
-  String _vehicleId = '';
-  int? _unitTypeId;
-  String _fittedOn = Dates.today();
-  final TextEditingController _unitNo = TextEditingController();
-  final TextEditingController _odometer = TextEditingController();
-  final TextEditingController _remarks = TextEditingController();
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _unitNo.dispose();
-    _odometer.dispose();
-    _remarks.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final unitTypeId = _unitTypeId;
-    if (_vehicleId.isEmpty || unitTypeId == null) return;
-
-    setState(() => _busy = true);
-    try {
-      await ref.read(reportControllerProvider).fitUnit(
-            vehicleId: _vehicleId,
-            unitTypeId: unitTypeId,
-            fittedOn: _fittedOn,
-            unitNo: _unitNo.text.trim(),
-            fittedOdometerKm: int.tryParse(_odometer.text.trim()),
-            remarks: _remarks.text.trim(),
-          );
-      if (mounted) Navigator.of(context).pop();
-      ref.read(toastProvider.notifier).show('Unit fitted');
-    } on Object catch (e) {
-      ref.read(toastProvider.notifier).show(e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fleet = (ref.watch(siteVehiclesProvider).valueOrNull ?? <Vehicle>[])
-        .where((v) => v.isActive)
-        .toList();
-    final types = ref.watch(unitTypesProvider).valueOrNull ?? <UnitType>[];
-
-    return EditorSheet(
-      title: 'Fit a unit',
-      subtitle: 'Recording this starts the unit’s life. It reaches the '
-          'failure statement when it comes off.',
-      action: FilledActionButton(
-        label: _busy ? 'Saving…' : 'Fit unit',
-        expand: true,
-        onPressed:
-            _busy || _vehicleId.isEmpty || _unitTypeId == null ? null : _save,
-      ),
-      children: <Widget>[
-            const FieldLabel(label: 'Bus No', required: true),
-            const SizedBox(height: 6),
-            AppSelect(
-              value: fleet
-                  .where((v) => v.id == _vehicleId)
-                  .map((v) => v.registrationNo)
-                  .firstOrNull,
-              options: fleet.map((v) => v.registrationNo).toList(),
-              placeholder: 'Pick a bus',
-              mono: true,
-              onChanged: (reg) => setState(() {
-                _vehicleId =
-                    fleet.firstWhere((v) => v.registrationNo == reg).id;
-              }),
-            ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Unit', required: true),
-            const SizedBox(height: 6),
-            AppSelect(
-              value: types
-                  .where((t) => t.id == _unitTypeId)
-                  .map((t) => t.name)
-                  .firstOrNull,
-              options: types.map((t) => t.name).toList(),
-              placeholder: 'Pick a unit',
-              onChanged: (name) => setState(() {
-                _unitTypeId = types.firstWhere((t) => t.name == name).id;
-              }),
-            ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Date fitted', required: true),
-            const SizedBox(height: 6),
-            OutlineActionButton(
-              label: Dates.dayLabel(_fittedOn),
-              onPressed: () async {
-                final current = Dates.parse(_fittedOn) ?? DateTime.now();
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: current,
-                  firstDate: DateTime(current.year - 5),
-                  lastDate: DateTime(current.year + 1),
-                );
-                if (picked != null) {
-                  setState(() => _fittedOn = Dates.iso(picked));
-                }
-              },
-            ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Unit No'),
-            const SizedBox(height: 6),
-            AppTextField(
-              controller: _unitNo,
-              placeholder: 'The maker’s serial, if it has one',
-            ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Odometer at fitting'),
-            const SizedBox(height: 6),
-            AppTextField(
-              controller: _odometer,
-              placeholder: 'Leave blank to use the bus’s last reading',
-              numeric: true,
-            ),
-            const SizedBox(height: 14),
-            const FieldLabel(label: 'Remarks'),
-            const SizedBox(height: 6),
-            AppTextField(controller: _remarks, placeholder: '', rows: 2),
-      ],
-    );
-  }
 }
 
 class _RemoveUnitSheet extends ConsumerStatefulWidget {

@@ -494,13 +494,22 @@ abstract interface class ReportRepository {
     required String vehicleId,
   });
 
+  /// Every unit fit alongside any of these Work Done entries — one call for
+  /// a whole page of the register list rather than one per row.
+  Future<List<FittedUnit>> fetchUnitsByEntries({
+    required String siteCode,
+    required List<String> entryIds,
+  });
+
   /// Put a component on a bus. The odometer defaults to the bus's last
-  /// reading, so leaving it out is the normal case.
+  /// reading, so leaving it out is the normal case. [entryId] links it back
+  /// to the Work Done entry it was fit alongside, when it was fit that way.
   Future<FittedUnit> fitUnit({
     required String siteCode,
     required String vehicleId,
     required int unitTypeId,
     required String fittedOn,
+    String? entryId,
     String? unitNo,
     int? fittedOdometerKm,
     String? remarks,

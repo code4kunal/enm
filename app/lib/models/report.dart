@@ -353,9 +353,7 @@ enum CellMark {
   plain,
   /// A PM was attended that day — shaded on the coolant and energy charts.
   pm,
-  /// A docking, which the P.M schedule chart marks red.
-  docking,
-  /// A breakdown, which the complaints chart marks red.
+  /// A breakdown, which the breakdowns chart marks red.
   breakdown;
 
   static CellMark parse(String? raw) => CellMark.values.firstWhere(
@@ -533,6 +531,7 @@ class FittedUnit {
     required this.unitName,
     required this.fittedOn,
     this.siteCode = '',
+    this.entryId,
     this.unitNo,
     this.fittedOdometerKm,
     this.removedOn,
@@ -549,6 +548,9 @@ class FittedUnit {
   final String registrationNo;
   final int unitTypeId;
   final String unitName;
+
+  /// The Work Done entry this was fit alongside, when it was fit that way.
+  final String? entryId;
   final String? unitNo;
   final String fittedOn;
   final int? fittedOdometerKm;
@@ -571,6 +573,7 @@ class FittedUnit {
         registrationNo: json['registration_no'] as String? ?? '',
         unitTypeId: (json['unit_type_id'] as num).toInt(),
         unitName: json['unit_name'] as String? ?? '',
+        entryId: json['entry_id'] as String?,
         unitNo: json['unit_no'] as String?,
         fittedOn: json['fitted_on'] as String,
         fittedOdometerKm: (json['fitted_odometer_km'] as num?)?.toInt(),
