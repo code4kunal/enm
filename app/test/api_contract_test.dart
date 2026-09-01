@@ -43,46 +43,6 @@ ApiClient clientServing(Map<String, ({int status, String body})> routes) {
   return ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
 }
 
-/// SiteOps client that always succeeds at credential login (contract tests).
-SiteOpsClient siteOpsServingOk() {
-  final mock = MockClient((http.Request request) async {
-    if (request.url.path.endsWith('/auth/login')) {
-      return http.Response(
-        jsonEncode(<String, dynamic>{
-          'result': true,
-          'data': <String, dynamic>{
-            'access_token': 'siteops-token',
-            'username': 'kunal',
-            'full_name': 'Kunal Saxena',
-          },
-        }),
-        200,
-        headers: <String, String>{'content-type': 'application/json'},
-      );
-    }
-    return http.Response('{}', 404);
-  });
-  return SiteOpsClient(
-    baseUrl: 'https://siteops.test/api/v1',
-    httpClient: mock,
-  );
-}
-
-/// SiteOps client that rejects credential login.
-SiteOpsClient siteOpsServingUnauthorized() {
-  final mock = MockClient((http.Request request) async {
-    return http.Response(
-      jsonEncode(<String, dynamic>{'message': 'Invalid User ID or password'}),
-      401,
-      headers: <String, String>{'content-type': 'application/json'},
-    );
-  });
-  return SiteOpsClient(
-    baseUrl: 'https://siteops.test/api/v1',
-    httpClient: mock,
-  );
-}
-
 ({int status, String body}) ok(String name) =>
     (status: 200, body: fixture(name));
 
@@ -353,11 +313,20 @@ void main() {
 
   group('error mapping', () {
     test('the error envelope becomes a readable message', () async {
-      // Credential login fails at SiteOps before any E&M call.
-      final client = clientServing(<String, ({int status, String body})>{});
+      final client = clientServing(<String, ({int status, String body})>{
+        '/auth/login': (
+          status: 401,
+          body: jsonEncode(<String, dynamic>{
+            'error': <String, String>{
+              'code': 'UNAUTHORIZED',
+              'message': 'Invalid User ID or password',
+            },
+          }),
+        ),
+      });
 
       await expectLater(
-        ApiAuthRepository(client, siteOps: siteOpsServingUnauthorized())
+        ApiAuthRepository(client)
             .signInWithCredentials(userId: 'KUNAL', password: 'nope'),
         throwsA(
           isA<ApiException>().having(
@@ -396,36 +365,14 @@ void main() {
   });
 
   group('auth', () {
-    test('login hits SiteOps then stores E&M tokens', () async {
+    test('login stores E&M tokens from the login response', () async {
       final client = clientServing(<String, ({int status, String body})>{
         '/auth/login': ok('login'),
       });
-      late Uri siteOpsUri;
-      final siteOpsMock = MockClient((http.Request request) async {
-        siteOpsUri = request.url;
-        expect(request.headers['content-type'],
-            contains('application/x-www-form-urlencoded'));
-        return http.Response(
-          jsonEncode(<String, dynamic>{
-            'result': true,
-            'data': <String, dynamic>{'access_token': 'siteops-token'},
-          }),
-          200,
-          headers: <String, String>{'content-type': 'application/json'},
-        );
-      });
-      final siteOps = SiteOpsClient(
-        baseUrl: 'https://platform-service.transvolt.in/api/v1',
-        httpClient: siteOpsMock,
-      );
 
-      final user = await ApiAuthRepository(client, siteOps: siteOps)
+      final user = await ApiAuthRepository(client)
           .signInWithCredentials(userId: 'kunal', password: 'x');
 
-      expect(
-        siteOpsUri.toString(),
-        'https://platform-service.transvolt.in/api/v1/auth/login',
-      );
       expect(user.userId, 'KUNAL');
       expect(user.role, UserRole.superAdmin);
       // A super admin's site_access is empty and must stay empty — it reaches
@@ -444,7 +391,7 @@ void main() {
       final client =
           ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
 
-      await ApiAuthRepository(client, siteOps: siteOpsServingOk())
+      await ApiAuthRepository(client)
           .signInWithCredentials(userId: ' kunal ', password: 'x');
       expect(sent['user_id'], 'KUNAL');
     });

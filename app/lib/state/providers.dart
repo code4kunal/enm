@@ -52,10 +52,7 @@ final userRepositoryProvider = Provider<UserRepository>(
 );
 
 final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => ApiAuthRepository(
-    ref.watch(apiClientProvider),
-    siteOps: ref.watch(siteOpsClientProvider),
-  ),
+  (ref) => ApiAuthRepository(ref.watch(apiClientProvider)),
 );
 
 final siteRepositoryProvider = Provider<SiteRepository>(

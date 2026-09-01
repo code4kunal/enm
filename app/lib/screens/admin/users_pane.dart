@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories.dart';
 import '../../models/app_user.dart';
+import '../../models/site.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/toast.dart';
@@ -169,6 +170,16 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
         ? ref.watch(siteCodesProvider)
         : session.availableSites;
 
+    // Once every assignable site is linked to SiteOps, local creation has
+    // nothing left to do — new users there only ever arrive through a sync.
+    final allSites = ref.watch(sitesProvider).valueOrNull ?? const <Site>[];
+    final linkedSiteCodes = <String>{
+      for (final s in allSites)
+        if (s.isLinkedToSiteOps) s.code,
+    };
+    final canCreateLocally = assignableSites.isEmpty ||
+        assignableSites.any((code) => !linkedSiteCodes.contains(code));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -196,19 +207,23 @@ class _UsersPaneState extends ConsumerState<UsersPane> {
                   style: AppText.sans(size: 14, weight: FontWeight.w600),
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledActionButton(
-                label: '+ Create user',
-                onPressed: () => _open(
-                  UserDraft(
-                    role: session.user?.role.grantableRoles.last ??
-                        UserRole.executive,
+              if (canCreateLocally) ...<Widget>[
+                const SizedBox(width: 8),
+                FilledActionButton(
+                  label: '+ Create user',
+                  onPressed: () => _open(
+                    UserDraft(
+                      role: session.user?.role.grantableRoles.last ??
+                          UserRole.executive,
+                    ),
+                  ),
+                  fontSize: 14,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 11,
                   ),
                 ),
-                fontSize: 14,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-              ),
+              ],
             ],
           ),
         ),

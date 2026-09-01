@@ -786,12 +786,9 @@ class ApiAuthRepository implements AuthRepository {
   ApiAuthRepository(
     this._api, {
     MicrosoftSignIn? sso,
-    SiteOpsClient? siteOps,
-  })  : _sso = sso ?? MicrosoftSignIn(_api),
-        _siteOps = siteOps ?? SiteOpsClient();
+  }) : _sso = sso ?? MicrosoftSignIn(_api);
 
   final ApiClient _api;
-  final SiteOpsClient _siteOps;
   final MicrosoftSignIn _sso;
 
   @override
@@ -822,48 +819,24 @@ class ApiAuthRepository implements AuthRepository {
     required String userId,
     required String password,
   }) async {
-    // Credential authority is SiteOps — the browser POSTs to
-    // SITEOPS_BASE_URL/auth/login first (not E&M). Local-only seed accounts
-    // that SiteOps does not know still fall through to the E&M login below.
-    ApiException? siteOpsError;
-    try {
-      await _siteOps.loginWithPassword(
-        username: userId,
-        password: password,
-      );
-    } on ApiException catch (e) {
-      siteOpsError = e;
-    }
+    // E&M's own /auth/login is the single source of truth for a credential
+    // sign-in: it asks SiteOps server-side (no browser CORS exposure) and
+    // falls back to the local user table for accounts SiteOps doesn't know.
+    // A prior version also POSTed directly from the browser to SiteOps in
+    // parallel — that call depended on SiteOps allow-listing this origin's
+    // CORS policy, and its failure was shown in preference to E&M's own
+    // (more informative) result even when this call would have succeeded.
+    final json = await _api.post('/auth/login', body: <String, dynamic>{
+      'user_id': userId.trim().toUpperCase(),
+      'password': password,
+    }) as Map<String, dynamic>;
 
-    // Mint an E&M session so ApiClient can call registers / entries / etc.
-    // There is no SiteOps-token exchange: E&M /auth/login re-checks SiteOps
-    // server-side (or falls back to the local user table) and returns E&M
-    // JWTs. SiteOps tokens are not accepted by the E&M API.
-    try {
-      final json = await _api.post('/auth/login', body: <String, dynamic>{
-        'user_id': userId.trim().toUpperCase(),
-        'password': password,
-      }) as Map<String, dynamic>;
-
-      await _api.setTokens(
-        json['access_token'] as String?,
-        json['refresh_token'] as String?,
-      );
-      return ApiUserRepository(_api)
-          ._userFromWire(json['user'] as Map<String, dynamic>);
-    } on ApiException catch (e) {
-      // Prefer the SiteOps message when both reject — that is the IdP the
-      // browser is meant to hit. If SiteOps already succeeded, keep the
-      // E&M error (often CORS / network on enm-service).
-      if (siteOpsError != null) throw siteOpsError;
-      final msg = e.message;
-      if (msg.contains('CORS_ORIGINS') || msg.contains('Failed to fetch')) {
-        throw ApiException(
-          'SiteOps sign-in succeeded, but minting an E&M session failed. $msg',
-        );
-      }
-      rethrow;
-    }
+    await _api.setTokens(
+      json['access_token'] as String?,
+      json['refresh_token'] as String?,
+    );
+    return ApiUserRepository(_api)
+        ._userFromWire(json['user'] as Map<String, dynamic>);
   }
 
   @override
