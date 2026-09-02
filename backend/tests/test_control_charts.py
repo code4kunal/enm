@@ -171,15 +171,31 @@ async def test_coolant_topping_shows_litres_and_shades_pm_days(
         client, h, "coolant", 3, {"bcs_litres": 1.5, "tcs_litres": 0.5}
     )
     await _entry(client, h, "coolant", 7, {"bcs_litres": 2})
-    await _inspect(client, h, types["10 DAYS SERVICE"], 7)
+    await _inspect(client, h, types["P.M"], 7)
 
     body = await chart(client, h, "coolantTopping")
     assert cell(body, BUS, 3) == {"value": "2", "mark": "plain", "title": ""}
-    # Topped up on the day it was serviced — the depot shades that block so the
+    # Topped up on the day it was docked — the depot shades that block so the
     # two are not read as unrelated.
     assert cell(body, BUS, 7) == {"value": "2", "mark": "pm", "title": ""}
     assert cell(body, BUS, 4) == {"value": "", "mark": "plain", "title": ""}
     assert cell(body, OTHER, 3) == {"value": "", "mark": "plain", "title": ""}
+
+
+async def test_a_di_or_ten_day_day_does_not_shade_coolant_topping(
+    client: AsyncClient,
+) -> None:
+    """PM shading is a specific claim — a docking happened — not "some
+    inspection happened". D.I. runs daily on every bus; shading the coolant
+    chart for it would shade almost the whole grid and bury the signal."""
+    h = await auth_headers(client)
+    types = await _inspection_types()
+    await _inspect(client, h, types["D.I"], 4)
+    await _inspect(client, h, types["10 DAYS SERVICE"], 6)
+
+    body = await chart(client, h, "coolantTopping")
+    assert cell(body, BUS, 4) == {"value": "", "mark": "plain", "title": ""}
+    assert cell(body, BUS, 6) == {"value": "", "mark": "plain", "title": ""}
 
 
 async def test_coolant_topping_adds_up_two_toppings_in_one_day(
@@ -196,11 +212,11 @@ async def test_coolant_topping_adds_up_two_toppings_in_one_day(
 async def test_a_pm_day_with_no_topping_is_still_shaded(
     client: AsyncClient,
 ) -> None:
-    """The shading says "serviced", not "topped up"; losing it would hide the
-    days a service needed no coolant at all."""
+    """The shading says "docked", not "topped up"; losing it would hide the
+    days a docking needed no coolant at all."""
     h = await auth_headers(client)
     types = await _inspection_types()
-    await _inspect(client, h, types["D.I"], 4)
+    await _inspect(client, h, types["P.M"], 4)
 
     body = await chart(client, h, "coolantTopping")
     assert cell(body, BUS, 4) == {"value": "", "mark": "pm", "title": ""}

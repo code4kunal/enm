@@ -40,6 +40,10 @@ MAX_CHART_DAYS = 31
 DI_CODE = "D.I"
 TEN_DAY_CODE = "10 DAYS SERVICE"
 
+#: A docking's work-type code, handwritten as either spelling — same pair
+#: `dmr.py`'s `_count_inspections` uses for the "dockings" DMR parameter.
+PM_CODES = ("P.M", "PM")
+
 
 class ChartKind(StrEnum):
     coolant_topping = "coolantTopping"
@@ -211,33 +215,6 @@ async def _fleet(session: AsyncSession, site_code: str) -> list[Vehicle]:
     return list(rows.unique().all())
 
 
-async def _inspection_days(
-    session: AsyncSession, site_code: str, dates: list[date_t]
-) -> dict[tuple[str, date_t], str]:
-    """(bus, day) -> the inspection code attended."""
-    rows = await session.execute(
-        select(
-            InspectionEntry.vehicle_id,
-            InspectionEntry.inspected_on,
-            WorkType.code,
-        )
-        .join(WorkType, WorkType.id == InspectionEntry.work_type_id)
-        .where(
-            InspectionEntry.site_code == site_code,
-            InspectionEntry.inspected_on >= dates[0],
-            InspectionEntry.inspected_on <= dates[-1],
-        )
-    )
-    attended: dict[tuple[str, date_t], str] = {}
-    for vehicle_id, day, code in rows.all():
-        key = (vehicle_id, day)
-        # A bus can have two inspections in a day; the longer one is the one
-        # worth showing.
-        if key not in attended or len(code) > len(attended[key]):
-            attended[key] = code
-    return attended
-
-
 async def _inspection_days_for_code(
     session: AsyncSession, site_code: str, dates: list[date_t], code: str
 ) -> set[tuple[str, date_t]]:
@@ -255,6 +232,29 @@ async def _inspection_days_for_code(
             InspectionEntry.inspected_on >= dates[0],
             InspectionEntry.inspected_on <= dates[-1],
             WorkType.code == code,
+        )
+    )
+    return {(vehicle_id, day) for vehicle_id, day in rows.all()}
+
+
+async def _docking_days(
+    session: AsyncSession, site_code: str, dates: list[date_t]
+) -> set[tuple[str, date_t]]:
+    """(bus, day) where a docking (P.M/PM) was attended — not any inspection.
+
+    `_inspection_days` returns the longer of *any* same-day work-type code
+    (D.I, 10-day service, or a docking), which is right for its own callers
+    but wrong here: shading a coolant-chart cell "PM" is a specific claim —
+    a docking happened that day — and a D.I or 10-day day is not that claim.
+    """
+    rows = await session.execute(
+        select(InspectionEntry.vehicle_id, InspectionEntry.inspected_on)
+        .join(WorkType, WorkType.id == InspectionEntry.work_type_id)
+        .where(
+            InspectionEntry.site_code == site_code,
+            InspectionEntry.inspected_on >= dates[0],
+            InspectionEntry.inspected_on <= dates[-1],
+            func.upper(WorkType.code).in_(PM_CODES),
         )
     )
     return {(vehicle_id, day) for vehicle_id, day in rows.all()}
@@ -431,8 +431,6 @@ async def build(
     if not spec.available or not fleet:
         return chart
 
-    attended = await _inspection_days(session, site_code, dates)
-
     values: dict[tuple[str, date_t], str] = {}
     titles: dict[tuple[str, date_t], str] = {}
     marks: dict[tuple[str, date_t], CellMark] = {}
@@ -443,7 +441,7 @@ async def build(
                 values[key] = _trim(litres)
         # The depot shades PM days on this chart so a topping right after a
         # service is read differently from one in the middle of a cycle.
-        for key in attended:
+        for key in await _docking_days(session, site_code, dates):
             marks[key] = CellMark.pm
 
     elif kind in CHECKLIST_CHARTS:
