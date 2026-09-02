@@ -641,6 +641,25 @@ class ApiEntryRepository implements EntryRepository {
     return _fromWire(json as Map<String, dynamic>);
   }
 
+  @override
+  Future<String> attachPhoto(
+    String entryId, {
+    required String filename,
+    required List<int> bytes,
+  }) async {
+    final json = await _api.upload(
+      '/entries/$entryId/photo',
+      field: 'photo',
+      fileName: filename,
+      bytes: Uint8List.fromList(bytes),
+    );
+    return (json as Map<String, dynamic>)['photo_url'] as String;
+  }
+
+  @override
+  Future<void> removePhoto(String entryId) =>
+      _api.delete('/entries/$entryId/photo');
+
   RegisterEntry _fromWire(Map<String, dynamic> json) {
     final createdBy = json['created_by'];
     final registerId = _registerFromWire[json['register'] as String] ?? 'work';
@@ -673,6 +692,7 @@ class ApiEntryRepository implements EntryRepository {
       status: (json['status'] as String?) == 'open'
           ? EntryStatus.open
           : EntryStatus.done,
+      photoUrl: json['photo_url'] as String?,
     );
   }
 }

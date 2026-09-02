@@ -158,6 +158,7 @@ class FakeEntryRepository implements EntryRepository {
       enteredBy: entry.enteredBy,
       data: entry.data,
       status: entry.status,
+      photoUrl: entry.photoUrl,
     );
     _store.entries.insert(0, created);
     return created;
@@ -181,6 +182,28 @@ class FakeEntryRepository implements EntryRepository {
     final updated = _store.entries[i].copyWith(status: status);
     _store.entries[i] = updated;
     return updated;
+  }
+
+  @override
+  Future<String> attachPhoto(
+    String entryId, {
+    required String filename,
+    required List<int> bytes,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == entryId);
+    if (i == -1) throw ApiException('Entry $entryId not found');
+    final url = 'fake://photos/$entryId/$filename';
+    _store.entries[i] = _store.entries[i].withPhotoUrl(url);
+    return url;
+  }
+
+  @override
+  Future<void> removePhoto(String entryId) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == entryId);
+    if (i == -1) throw ApiException('Entry $entryId not found');
+    _store.entries[i] = _store.entries[i].withPhotoUrl(null);
   }
 }
 

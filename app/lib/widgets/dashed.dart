@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -120,18 +121,20 @@ class EmptyState extends StatelessWidget {
 }
 
 /// Photo attach toggle on the entry form. Turns green-tinted once attached.
-///
-/// The prototype only simulates attachment; wire this to `image_picker` when
-/// the media service lands — the toggle contract stays the same.
 class PhotoAttachButton extends StatefulWidget {
   const PhotoAttachButton({
     super.key,
     required this.attached,
-    required this.onToggle,
+    required this.onAttach,
+    required this.onRemove,
   });
 
   final bool attached;
-  final VoidCallback onToggle;
+
+  /// Fires once a file was actually picked — never on a cancelled picker,
+  /// which is how "tap did nothing but somehow attached a photo" happened.
+  final void Function(String filename, List<int> bytes) onAttach;
+  final VoidCallback onRemove;
 
   @override
   State<PhotoAttachButton> createState() => _PhotoAttachButtonState();
@@ -139,6 +142,31 @@ class PhotoAttachButton extends StatefulWidget {
 
 class _PhotoAttachButtonState extends State<PhotoAttachButton> {
   bool _hovered = false;
+  bool _picking = false;
+
+  Future<void> _tap() async {
+    if (widget.attached) {
+      widget.onRemove();
+      return;
+    }
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        // The web picker only hands back bytes when asked.
+        withData: true,
+      );
+      // Cancelled — nothing picked, so nothing is attached.
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+      widget.onAttach(file.name, bytes);
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +176,7 @@ class _PhotoAttachButtonState extends State<PhotoAttachButton> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: widget.onToggle,
+        onTap: _tap,
         child: DashedBorder(
           radius: 10,
           color: _hovered ? T.green : T.dashed,
@@ -161,7 +189,9 @@ class _PhotoAttachButtonState extends State<PhotoAttachButton> {
             child: Text(
               attached
                   ? '1 photo attached ✓ (tap to remove)'
-                  : '+ Attach photo (optional)',
+                  : _picking
+                      ? 'Choosing…'
+                      : '+ Attach photo (optional)',
               textAlign: TextAlign.center,
               style: AppText.sans(
                 size: 14.5,

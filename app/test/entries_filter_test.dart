@@ -130,6 +130,48 @@ void main() {
     });
   });
 
+  group('photo', () {
+    test('attachPhoto sets photoUrl on the entry', () async {
+      final container = await signedInContainer();
+      final notifier = container.read(entriesProvider.notifier);
+      final created = await notifier.create(
+        registerId: 'coolant',
+        data: <String, String>{'bus': 'MH40LY1721', 'date': Dates.today()},
+      );
+      expect(created.photoUrl, isNull);
+
+      final url = await notifier.attachPhoto(
+        entryId: created.id,
+        filename: 'leak.jpg',
+        bytes: <int>[1, 2, 3],
+      );
+
+      final entries = container.read(entriesProvider).requireValue;
+      final updated = entries.firstWhere((e) => e.id == created.id);
+      expect(updated.photoUrl, url);
+      expect(updated.photoUrl, isNotNull);
+    });
+
+    test('removePhoto clears photoUrl on the entry', () async {
+      final container = await signedInContainer();
+      final notifier = container.read(entriesProvider.notifier);
+      final created = await notifier.create(
+        registerId: 'coolant',
+        data: <String, String>{'bus': 'MH40LY1721', 'date': Dates.today()},
+      );
+      await notifier.attachPhoto(
+        entryId: created.id,
+        filename: 'leak.jpg',
+        bytes: <int>[1, 2, 3],
+      );
+
+      await notifier.removePhoto(created.id);
+
+      final entries = container.read(entriesProvider).requireValue;
+      expect(entries.firstWhere((e) => e.id == created.id).photoUrl, isNull);
+    });
+  });
+
   group('resolveBreakdown', () {
     test('clears the entry from the open list', () async {
       final container = await signedInContainer();

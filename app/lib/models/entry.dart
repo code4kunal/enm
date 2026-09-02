@@ -20,6 +20,7 @@ class RegisterEntry {
     required this.enteredBy,
     required this.data,
     this.status = EntryStatus.done,
+    this.photoUrl,
   });
 
   final String id;
@@ -35,6 +36,9 @@ class RegisterEntry {
   final String enteredBy;
   final Map<String, String> data;
   final EntryStatus status;
+
+  /// Null when no photo is attached.
+  final String? photoUrl;
 
   String get busNumber => data['bus'] ?? '';
 
@@ -57,6 +61,24 @@ class RegisterEntry {
       enteredBy: enteredBy ?? this.enteredBy,
       data: data ?? this.data,
       status: status ?? this.status,
+      photoUrl: photoUrl,
+    );
+  }
+
+  /// Separate from [copyWith] because a photo removal must be able to set
+  /// [photoUrl] to null, which [copyWith]'s "null means unchanged" contract
+  /// cannot express.
+  RegisterEntry withPhotoUrl(String? photoUrl) {
+    return RegisterEntry(
+      id: id,
+      registerId: registerId,
+      date: date,
+      time: time,
+      site: site,
+      enteredBy: enteredBy,
+      data: data,
+      status: status,
+      photoUrl: photoUrl,
     );
   }
 
@@ -69,6 +91,7 @@ class RegisterEntry {
         'enteredBy': enteredBy,
         'data': data,
         'status': status.name,
+        'photoUrl': photoUrl,
       };
 
   factory RegisterEntry.fromJson(Map<String, dynamic> json) {
@@ -84,6 +107,7 @@ class RegisterEntry {
         (s) => s.name == json['status'],
         orElse: () => EntryStatus.done,
       ),
+      photoUrl: json['photoUrl'] as String?,
     );
   }
 }

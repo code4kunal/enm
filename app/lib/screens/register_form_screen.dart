@@ -56,7 +56,15 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   final Map<String, TextEditingController> _controllers =
       <String, TextEditingController>{};
 
-  bool _photoAttached = false;
+  /// A newly picked, not-yet-uploaded photo — uploaded on save, once the
+  /// entry it attaches to exists (or already has an id, when editing).
+  List<int>? _photoBytes;
+  String? _photoFilename;
+
+  /// Set when the user removed a photo that was already on the entry being
+  /// edited; the removal itself is sent on save, same as an attach.
+  bool _photoRemoved = false;
+
   bool _saving = false;
   bool _initialised = false;
 
@@ -113,6 +121,21 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
 
   static bool _isTextBacked(FieldType type) =>
       type == FieldType.text || type == FieldType.area || type == FieldType.number;
+
+  bool get _hasPhoto =>
+      _photoBytes != null || (!_photoRemoved && _editing?.photoUrl != null);
+
+  void _onAttachPhoto(String filename, List<int> bytes) => setState(() {
+        _photoBytes = bytes;
+        _photoFilename = filename;
+        _photoRemoved = false;
+      });
+
+  void _onRemovePhoto() => setState(() {
+        _photoBytes = null;
+        _photoFilename = null;
+        _photoRemoved = true;
+      });
 
   void _set(String key, String value) => _values[key] = value;
 
@@ -187,6 +210,32 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
         ref.read(toastProvider.notifier).show('Could not save — $e');
       }
       return;
+    }
+
+    // A photo pick/remove is a second, independent action on the now-saved
+    // entry — same reasoning as the unit fit below: its failure must not
+    // read as the entry save (already done) having failed.
+    final photoBytes = _photoBytes;
+    if (photoBytes != null) {
+      try {
+        await entries.attachPhoto(
+          entryId: saved.id,
+          filename: _photoFilename ?? 'photo.jpg',
+          bytes: photoBytes,
+        );
+      } catch (_) {
+        ref
+            .read(toastProvider.notifier)
+            .show('Entry saved, but the photo could not be attached');
+      }
+    } else if (_photoRemoved && _editing?.photoUrl != null) {
+      try {
+        await entries.removePhoto(saved.id);
+      } catch (_) {
+        ref
+            .read(toastProvider.notifier)
+            .show('Entry saved, but the photo could not be removed');
+      }
     }
 
     // One or more units were picked in the Unit section — fit each as a
@@ -394,9 +443,9 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   onSet: (k, v) => setState(() => _set(k, v)),
                   onPickDate: _pickDate,
                   onPickTime: _pickTime,
-                  photoAttached: _photoAttached,
-                  onTogglePhoto: () =>
-                      setState(() => _photoAttached = !_photoAttached),
+                  photoAttached: _hasPhoto,
+                  onAttachPhoto: _onAttachPhoto,
+                  onRemovePhoto: _onRemovePhoto,
                 ),
               ),
               if (register.id == 'work') ...<Widget>[
@@ -641,7 +690,8 @@ class _FieldGrid extends StatelessWidget {
     required this.onPickDate,
     required this.onPickTime,
     required this.photoAttached,
-    required this.onTogglePhoto,
+    required this.onAttachPhoto,
+    required this.onRemovePhoto,
   });
 
   final RegisterDef register;
@@ -656,7 +706,8 @@ class _FieldGrid extends StatelessWidget {
   final Future<void> Function(String key) onPickDate;
   final Future<void> Function(String key) onPickTime;
   final bool photoAttached;
-  final VoidCallback onTogglePhoto;
+  final void Function(String filename, List<int> bytes) onAttachPhoto;
+  final VoidCallback onRemovePhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -704,7 +755,8 @@ class _FieldGrid extends StatelessWidget {
               width: total,
               child: PhotoAttachButton(
                 attached: photoAttached,
-                onToggle: onTogglePhoto,
+                onAttach: onAttachPhoto,
+                onRemove: onRemovePhoto,
               ),
             ),
           ],

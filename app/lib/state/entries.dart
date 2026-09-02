@@ -156,6 +156,31 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     );
   }
 
+  Future<String> attachPhoto({
+    required String entryId,
+    required String filename,
+    required List<int> bytes,
+  }) async {
+    final url = await ref
+        .read(entryRepositoryProvider)
+        .attachPhoto(entryId, filename: filename, bytes: bytes);
+    _replaceAll(
+      (list) => list
+          .map((e) => e.id == entryId ? e.withPhotoUrl(url) : e)
+          .toList(),
+    );
+    return url;
+  }
+
+  Future<void> removePhoto(String entryId) async {
+    await ref.read(entryRepositoryProvider).removePhoto(entryId);
+    _replaceAll(
+      (list) => list
+          .map((e) => e.id == entryId ? e.withPhotoUrl(null) : e)
+          .toList(),
+    );
+  }
+
   void _replaceAll(
     List<RegisterEntry> Function(List<RegisterEntry>) transform,
   ) {
