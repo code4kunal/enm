@@ -5,6 +5,7 @@ export 'api_exception.dart';
 import 'api_exception.dart';
 import 'auth/ms_sso.dart';
 
+import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
@@ -117,6 +118,10 @@ abstract interface class VehicleRepository {
     String make,
     String model,
     double? batteryCapacityKwh,
+    String? checklistVariant,
+    String? registrationDate,
+    String? fitnessRenewalDate,
+    String? insuranceRenewalDate,
   });
 
   Future<Vehicle> updateVehicle(Vehicle vehicle);
@@ -380,6 +385,7 @@ abstract interface class ChecklistRepository {
     String? supervisor,
     int? odometerKm,
     String? remarks,
+    int? milestoneKm,
     required List<InspectionResult> results,
   });
 
@@ -454,6 +460,9 @@ abstract interface class ReportRepository {
   Future<InvestigationDay> fetchInvestigations({
     required String siteCode,
     required String date,
+    String? fromDate,
+    String? toDate,
+    String? busType,
   });
 
   /// Opens one, pre-filled from what is already known about the bus.
@@ -634,6 +643,34 @@ abstract interface class UserRepository {
   /// User IDs are unique across the tenant. [exceptId] lets an edit keep its
   /// own ID without tripping the check.
   Future<bool> isUserIdTaken(String userId, {String? exceptId});
+}
+
+/// Super-admin estate dashboards: summary KPIs and the audit trail.
+abstract interface class AdminEstateRepository {
+  Future<AdminSummary> fetchSummary({
+    String period = 'month',
+    String? dateFrom,
+    String? dateTo,
+    String? month,
+  });
+
+  Future<AuditLogPage> fetchAudit({
+    int page = 1,
+    int pageSize = 50,
+    String? actorId,
+    String? action,
+    String? objectType,
+    String? dateFrom,
+    String? dateTo,
+  });
+
+  Future<List<int>> exportAuditCsv({
+    String? actorId,
+    String? action,
+    String? objectType,
+    String? dateFrom,
+    String? dateTo,
+  });
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────

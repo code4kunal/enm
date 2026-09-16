@@ -89,6 +89,7 @@ class Checklist {
     required this.workTypeName,
     required this.name,
     this.variant,
+    this.milestoneKm,
     this.id = '',
     this.items = const <ChecklistItem>[],
     this.isActive = true,
@@ -107,11 +108,17 @@ class Checklist {
   /// Which buses take this one — MBMT runs a 9M, a 12M AC and a 12M non-AC
   /// daily inspection. Null is the site's unscoped checklist.
   final String? variant;
+
+  /// Docking (P.M) only — odometer rung this sheet is for.
+  final int? milestoneKm;
   final List<ChecklistItem> items;
   final bool isActive;
   final String? updatedAt;
 
   bool get isEmpty => items.isEmpty;
+
+  bool get isDocking =>
+      workTypeCode.toUpperCase() == 'P.M' || workTypeCode.toUpperCase() == 'PM';
 
   List<ChecklistItem> get required =>
       items.where((i) => i.isRequired).toList();
@@ -125,13 +132,23 @@ class Checklist {
     return out;
   }
 
-  Checklist copyWith({String? name, List<ChecklistItem>? items}) => Checklist(
+  Checklist copyWith({
+    String? name,
+    String? variant,
+    int? milestoneKm,
+    List<ChecklistItem>? items,
+    bool clearMilestoneKm = false,
+  }) =>
+      Checklist(
         id: id,
         siteCode: siteCode,
         workTypeId: workTypeId,
         workTypeCode: workTypeCode,
         workTypeName: workTypeName,
         name: name ?? this.name,
+        variant: variant ?? this.variant,
+        milestoneKm:
+            clearMilestoneKm ? null : (milestoneKm ?? this.milestoneKm),
         items: items ?? this.items,
         isActive: isActive,
         updatedAt: updatedAt,
@@ -145,6 +162,7 @@ class Checklist {
         workTypeName: json['work_type_name'] as String? ?? '',
         name: json['name'] as String? ?? '',
         variant: json['variant'] as String?,
+        milestoneKm: (json['milestone_km'] as num?)?.toInt(),
         items: <ChecklistItem>[
           for (final i in (json['items'] as List<dynamic>? ?? <dynamic>[]))
             ChecklistItem.fromJson(i as Map<String, dynamic>),
@@ -211,6 +229,7 @@ class InspectionEntry {
     this.doneBy,
     this.supervisor,
     this.odometerKm,
+    this.milestoneKm,
     this.remarks,
     this.slotId,
     this.failedCount = 0,
@@ -230,6 +249,9 @@ class InspectionEntry {
   final String? doneBy;
   final String? supervisor;
   final int? odometerKm;
+
+  /// Docking (P.M) KM sheet used, when recorded.
+  final int? milestoneKm;
   final String? remarks;
 
   /// The booking this discharged, when it came off the calendar.
@@ -255,6 +277,7 @@ class InspectionEntry {
         doneBy: json['done_by'] as String?,
         supervisor: json['supervisor'] as String?,
         odometerKm: (json['odometer_km'] as num?)?.round(),
+        milestoneKm: (json['milestone_km'] as num?)?.round(),
         remarks: json['remarks'] as String?,
         slotId: json['slot_id'] as String?,
         failedCount: json['failed_count'] as int? ?? 0,

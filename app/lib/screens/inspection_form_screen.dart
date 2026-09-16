@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/docking_km.dart';
 import '../data/repositories.dart';
 import '../models/checklist.dart';
 import '../models/site.dart';
 import '../router.dart';
 import '../state/inspections.dart';
 import '../state/providers.dart';
+import '../state/schedule.dart';
 import '../state/session.dart';
 import '../state/toast.dart';
 import '../theme/app_theme.dart';
@@ -40,10 +42,14 @@ class InspectionFormScreen extends ConsumerStatefulWidget {
 class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   String _vehicleId = '';
   String _date = Dates.today();
-  String _doneBy = '';
+  List<String> _doneBy = <String>[];
   String _supervisor = '';
   bool _saving = false;
   String? _error;
+
+  /// Docking (P.M) KM sheet — null until the mechanic picks one (or a booking
+  /// pre-fills it).
+  int? _milestoneKm;
 
   final TextEditingController _odometer = TextEditingController();
   final TextEditingController _remarks = TextEditingController();
@@ -64,12 +70,39 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
     super.dispose();
   }
 
+  void _clearAnswers() {
+    for (final c in _notes.values) {
+      c.dispose();
+    }
+    _notes.clear();
+    _results.clear();
+  }
+
   TextEditingController _noteFor(String itemId) =>
       _notes.putIfAbsent(itemId, TextEditingController.new);
 
-  Future<void> _save(Checklist checklist) async {
+  int? _bookedKm(String vehicleId, calendar) {
+    if (vehicleId.isEmpty || calendar == null) return null;
+    for (final day in calendar.days) {
+      for (final slot in day.slots) {
+        if (slot.vehicleId == vehicleId &&
+            slot.workTypeId == widget.workTypeId &&
+            slot.status.isOpen &&
+            slot.servicePlanKm != null) {
+          return slot.servicePlanKm;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _save(Checklist checklist, {required bool isDocking}) async {
     if (_vehicleId.isEmpty) {
       setState(() => _error = 'Pick the bus this was done on.');
+      return;
+    }
+    if (isDocking && _milestoneKm == null) {
+      setState(() => _error = 'Pick the KM range for this docking.');
       return;
     }
     setState(() {
@@ -97,10 +130,11 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
             workTypeId: checklist.workTypeId,
             inspectedOn: _date,
             entryTime: Dates.nowClock(),
-            doneBy: _doneBy,
+            doneBy: _doneBy.isEmpty ? null : _doneBy.join(', '),
             supervisor: _supervisor,
             odometerKm: int.tryParse(_odometer.text.trim()),
             remarks: _remarks.text.trim(),
+            milestoneKm: isDocking ? _milestoneKm : null,
             results: results,
           );
       ref.read(toastProvider.notifier).show(
@@ -141,23 +175,72 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
       if (prev == null || prev.isEmpty || prev == next) return;
       setState(() {
         _vehicleId = '';
-        _doneBy = '';
+        _doneBy = <String>[];
         _supervisor = '';
+        _milestoneKm = null;
+        _clearAnswers();
       });
     });
 
-    // The checklist follows the bus, so it changes the moment one is picked.
+    final checklistsAsync = ref.watch(checklistsProvider);
+    final allChecklists = checklistsAsync.valueOrNull ?? const <Checklist>[];
+    final forWorkType =
+        allChecklists.where((c) => c.workTypeId == widget.workTypeId).toList();
+
+    // Prefer an explicit P.M / docking template; fall back to the home-card
+    // representative so we still show the KM picker while templates load.
+    final typeHint = ref
+        .watch(inspectionTypesProvider)
+        .where((c) => c.workTypeId == widget.workTypeId)
+        .firstOrNull;
+    final codeUpper = (forWorkType.isNotEmpty
+            ? forWorkType.first.workTypeCode
+            : (typeHint?.workTypeCode ?? ''))
+        .toUpperCase();
+    final isDocking = forWorkType.any((c) => c.isDocking) ||
+        codeUpper == 'P.M' ||
+        codeUpper == 'PM' ||
+        (typeHint?.isDocking ?? false);
+
+    // Wait for templates before deciding the sheet is missing — otherwise a
+    // slow checklists fetch briefly hides the KM picker and looks broken.
+    if (checklistsAsync.isLoading && forWorkType.isEmpty) {
+      return const EmptyState(message: 'Loading the checklist…');
+    }
+
+    // The checklist follows the bus (and for docking, the selected KM rung).
     final variant = fleet
         .where((v) => v.id == _vehicleId)
         .map((v) => v.checklistVariant)
         .firstOrNull;
+    final calendar = ref.watch(calendarProvider).valueOrNull;
+
+    // Always offer the full docking ladder; prefer sheets that exist for this
+    // bus type when the catalogue is synced.
+    final kmOptions = <int>{
+      for (final c in forWorkType)
+        if (c.milestoneKm != null &&
+            (variant == null ||
+                variant.isEmpty ||
+                c.variant == variant ||
+                c.variant == null))
+          c.milestoneKm!,
+    }.toList()
+      ..sort();
+    final kmLadder =
+        kmOptions.isNotEmpty ? kmOptions : List<int>.from(kDockingMilestoneKm);
+
     final checklist = ref.watch(
       checklistForProvider(
-        (workTypeId: widget.workTypeId, variant: variant),
+        (
+          workTypeId: widget.workTypeId,
+          variant: variant,
+          milestoneKm: isDocking ? _milestoneKm : null,
+        ),
       ),
     );
 
-    if (checklist == null) {
+    if (checklist == null && !isDocking) {
       return const EmptyState(message: 'Loading the checklist…');
     }
 
@@ -171,7 +254,12 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
             children: <Widget>[
               BackLink(onTap: () => context.go(Routes.home)),
               const SizedBox(height: 10),
-              _Heading(checklist: checklist),
+              _Heading(
+                checklist: checklist,
+                workTypeFallback: forWorkType.isNotEmpty
+                    ? forWorkType.first
+                    : null,
+              ),
               const SizedBox(height: 16),
               Panel(
                 child: Column(
@@ -189,9 +277,64 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                             .firstWhere((v) => v.registrationNo == reg,
                                 orElse: () => active.first)
                             .id;
+                        _clearAnswers();
+                        // Prefill from an open docking booking when present.
+                        _milestoneKm = isDocking
+                            ? _bookedKm(_vehicleId, calendar)
+                            : null;
                       }),
                     ),
                     const SizedBox(height: 16),
+                    if (_vehicleId.isNotEmpty) ...<Widget>[
+                      Text(
+                        'Bus Type: ${fleet.where((v) => v.id == _vehicleId).map((v) => v.busTypeLabel).firstOrNull ?? '—'}',
+                        style: AppText.sans(
+                          size: 13.5,
+                          weight: FontWeight.w600,
+                          color: T.secondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (isDocking) ...<Widget>[
+                      const FieldLabel(label: 'KM range', required: true),
+                      const SizedBox(height: 6),
+                      AppSelect(
+                        value: _milestoneKm == null
+                            ? ''
+                            : formatDockingKm(_milestoneKm!),
+                        options: [
+                          for (final km in kmLadder) formatDockingKm(km),
+                        ],
+                        placeholder: 'Select docking KM…',
+                        emptyHint: 'No KM sheets — Sync catalogue on Site → Checklists',
+                        onChanged: (label) => setState(() {
+                          _clearAnswers();
+                          if (label == null || label.isEmpty) {
+                            _milestoneKm = null;
+                            return;
+                          }
+                          _milestoneKm = kmLadder.firstWhere(
+                            (k) => formatDockingKm(k) == label,
+                            orElse: () => kmLadder.first,
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _milestoneKm == null
+                            ? 'Pick the KM rung to load that docking checklist.'
+                            : (checklist == null || checklist.isEmpty)
+                                ? 'No sheet for ${formatDockingKm(_milestoneKm!)}'
+                                    '${variant == null || variant.isEmpty ? '' : ' · $variant'}'
+                                    ' — Sync catalogue or edit Site → Checklists.'
+                                : 'Checklist loaded: ${formatDockingKm(_milestoneKm!)}'
+                                    '${variant == null || variant.isEmpty ? '' : ' · $variant'}'
+                                    ' · ${checklist.items.length} checks',
+                        style: AppText.sans(size: 12.5, color: T.secondary),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -237,14 +380,18 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: <Widget>[
-                              const FieldLabel(label: 'Done by', master: true),
+                              const FieldLabel(
+                                label: 'Done by',
+                                master: true,
+                                hint: '— one or more',
+                              ),
                               const SizedBox(height: 6),
-                              AppSelect(
-                                value: _doneBy,
+                              AppMultiSelect(
+                                values: _doneBy,
                                 options: mechanicOptions,
-                                placeholder: 'Pick a mechanic',
-                                onChanged: (v) =>
-                                    setState(() => _doneBy = v ?? ''),
+                                placeholder: 'Select technician(s)…',
+                                emptyHint: 'No technicians loaded',
+                                onChanged: (v) => setState(() => _doneBy = v),
                               ),
                             ],
                           ),
@@ -255,14 +402,15 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: <Widget>[
                               const FieldLabel(
-                                label: 'Supervisor (Floor)',
+                                label: 'Supervisor',
                                 master: true,
                               ),
                               const SizedBox(height: 6),
                               AppSelect(
                                 value: _supervisor,
                                 options: supervisorOptions,
-                                placeholder: 'Pick a supervisor',
+                                placeholder: 'Select…',
+                                emptyHint: 'No supervisors loaded',
                                 onChanged: (v) =>
                                     setState(() => _supervisor = v ?? ''),
                               ),
@@ -271,42 +419,51 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (checklist.isEmpty)
-                _NoChecklistYet(
-                  checklist: checklist,
-                  waitingForBus: false,
-                )
-              else
-                ..._sections(checklist),
-              const SizedBox(height: 16),
-              Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
+                    const SizedBox(height: 16),
                     const FieldLabel(label: 'Remarks'),
                     const SizedBox(height: 6),
                     AppTextField(
                       controller: _remarks,
-                      placeholder: 'Anything the next shift should know',
-                      rows: 3,
+                      placeholder: 'Optional',
+                      rows: 2,
                     ),
                   ],
                 ),
               ),
-              if (_error != null) InlineError(message: _error!),
-              const SizedBox(height: 20),
-              FilledActionButton(
-                label: _saving ? 'Saving…' : 'Record inspection',
-                expand: true,
-                onPressed: _saving || checklist.isEmpty
-                    ? null
-                    : () => _save(checklist),
-              ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 16),
+              if (isDocking && _milestoneKm == null)
+                const EmptyState(
+                  message: 'Select a KM range above to load the docking checklist.',
+                )
+              else if (checklist == null || checklist.isEmpty)
+                EmptyState(
+                  message: isDocking
+                      ? 'No checklist for this bus type at '
+                          '${formatDockingKm(_milestoneKm!)}. '
+                          'Sync the catalogue or edit Site → Checklists.'
+                      : 'This site has not written a checklist for this '
+                          'inspection yet.',
+                )
+              else ...<Widget>[
+                ..._sections(checklist),
+                const SizedBox(height: 16),
+                if (_error != null) InlineError(message: _error!),
+                FilledActionButton(
+                  label: _saving ? 'Saving…' : 'Save inspection',
+                  expand: true,
+                  onPressed: _saving
+                      ? null
+                      : () => _save(checklist, isDocking: isDocking),
+                ),
+                const SizedBox(height: 40),
+              ],
+              if (_error != null &&
+                  (checklist == null ||
+                      checklist.isEmpty ||
+                      (isDocking && _milestoneKm == null))) ...<Widget>[
+                const SizedBox(height: 12),
+                InlineError(message: _error!),
+              ],
             ],
           ),
         ),
@@ -394,12 +551,17 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                 ),
             ],
           ),
-          // A failed line needs a reason; a reading needs its number.
-          if (isReading || result == CheckResult.notOk) ...<Widget>[
+          if (isReading ||
+              result == CheckResult.notOk ||
+              result == CheckResult.ok) ...<Widget>[
             const SizedBox(height: 6),
             AppTextField(
               controller: _noteFor(item.id),
-              placeholder: isReading ? 'Reading' : 'What is wrong',
+              placeholder: isReading
+                  ? 'Reading'
+                  : (result == CheckResult.notOk
+                      ? 'What is wrong'
+                      : 'Additional remarks (optional)'),
             ),
           ],
         ],
@@ -409,17 +571,32 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
 }
 
 class _Heading extends StatelessWidget {
-  const _Heading({required this.checklist});
+  const _Heading({this.checklist, this.workTypeFallback});
 
-  final Checklist checklist;
+  final Checklist? checklist;
+  final Checklist? workTypeFallback;
+
+  static String _fmtKm(int km) => formatDockingKm(km);
 
   @override
   Widget build(BuildContext context) {
+    final c = checklist ?? workTypeFallback;
+    final code = c?.workTypeCode ?? 'P.M';
+    final name = c?.workTypeName ?? 'Preventive maintenance docking';
+    final meta = checklist == null
+        ? 'Pick bus and KM range to load the sheet'
+        : (checklist!.isEmpty
+            ? 'No checks on this sheet yet'
+            : '${checklist!.items.length} checks · '
+                '${checklist!.required.length} required'
+                '${checklist!.variant == null ? '' : ' · ${checklist!.variant}'}'
+                '${checklist!.milestoneKm == null ? '' : ' · ${_fmtKm(checklist!.milestoneKm!)}'}');
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         TagBadge(
-          label: checklist.workTypeCode,
+          label: code,
           background: T.indigoTint,
           foreground: T.indigo,
         ),
@@ -428,79 +605,13 @@ class _Heading extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(checklist.workTypeName, style: AppText.pageTitle),
+              Text(name, style: AppText.pageTitle),
               const SizedBox(height: 2),
-              Text(
-                checklist.isEmpty
-                    ? 'The checklist depends on the bus'
-                    : '${checklist.items.length} checks · '
-                        '${checklist.required.length} required'
-                        '${checklist.variant == null ? '' : ' · ${checklist.variant}'}',
-                style: AppText.meta,
-              ),
+              Text(meta, style: AppText.meta),
             ],
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Why there are no checks on screen.
-///
-/// Two very different reasons, and telling them apart matters: a site that has
-/// written no checklist needs someone to write one, while a form waiting for a
-/// bus needs nothing but the bus. Saying "this site has no checklist" in the
-/// second case is untrue and reads as "not set up yet".
-class _NoChecklistYet extends ConsumerWidget {
-  const _NoChecklistYet({
-    required this.checklist,
-    this.waitingForBus = false,
-  });
-
-  final Checklist checklist;
-
-  /// The site keeps a checklist per bus model, and no bus is picked yet.
-  final bool waitingForBus;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(sessionProvider).can('em_inspection:write');
-    if (waitingForBus) {
-      return Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('Pick a bus to load its checklist', style: AppText.cardTitle),
-            const SizedBox(height: 6),
-            Text(
-              'This site checks each model differently, so the list arrives '
-              'with the bus.',
-              style: AppText.bodyText,
-            ),
-          ],
-        ),
-      );
-    }
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'This site has no ${checklist.workTypeName.toLowerCase()} '
-            'checklist yet',
-            style: AppText.cardTitle,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            canEdit
-                ? 'Add the checks under Site → Master data → Checklists. Nothing '
-                    'is filled in for you — the list has to be the depot\'s own.'
-                : 'Ask a manager to add it under Site → Master data.',
-            style: AppText.bodyText,
-          ),
-        ],
-      ),
     );
   }
 }

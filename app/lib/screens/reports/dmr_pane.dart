@@ -81,11 +81,15 @@ class _DmrPaneState extends ConsumerState<DmrPane> {
 
   Future<void> _snapshot() async {
     setState(() => _saving = true);
+    final wasFrozen =
+        ref.read(dmrDayProvider).valueOrNull?.isSnapshot ?? false;
     try {
       await ref.read(reportControllerProvider).snapshot();
-      ref
-          .read(toastProvider.notifier)
-          .show('Day frozen — the derived lines will not move again');
+      ref.read(toastProvider.notifier).show(
+            wasFrozen
+                ? 'Re-frozen — derived lines now match the latest registers'
+                : 'Day frozen — the derived lines will not move again',
+          );
     } on Object catch (e) {
       ref.read(toastProvider.notifier).show(e.toString());
     } finally {
@@ -205,11 +209,11 @@ class _Banner extends StatelessWidget {
           Expanded(
             child: Text(
               frozen
-                  ? 'Reported as it stood at the end of the day. The computed '
-                      'lines will not move again.'
+                  ? 'Frozen — new driver complaints, breakdowns and inspections '
+                      'will not change these figures until you tap Re-freeze.'
                   : outstanding == 0
-                      ? 'Computed lines update as the registers are written. '
-                          'Freeze the day to fix them as reported.'
+                      ? 'Computed lines update as registers and inspections '
+                          'are saved. Freeze the day to lock them as reported.'
                       : '$outstanding line${outstanding == 1 ? '' : 's'} still '
                           'to enter — nothing in the system observes those.',
               style: AppText.sans(

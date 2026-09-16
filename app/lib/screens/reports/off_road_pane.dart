@@ -356,6 +356,17 @@ class _OffRoadSheetState extends ConsumerState<_OffRoadSheet> {
                       .id;
                 }),
               ),
+              if (_vehicleId.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(
+                  'Bus Type: ${_busTypeOf(fleet, _vehicleId)}',
+                  style: AppText.sans(
+                    size: 13.5,
+                    weight: FontWeight.w600,
+                    color: T.secondary,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
             ],
             const FieldLabel(label: 'Issue', required: true),
@@ -454,6 +465,13 @@ class _OffRoadSheetState extends ConsumerState<_OffRoadSheet> {
       if (v.id == _vehicleId) return v.registrationNo;
     }
     return '';
+  }
+
+  String _busTypeOf(List<Vehicle> fleet, String vehicleId) {
+    for (final v in fleet) {
+      if (v.id == vehicleId) return v.busTypeLabel;
+    }
+    return '—';
   }
 
   Future<void> _pickSince() async {

@@ -43,7 +43,8 @@ class ChecklistTemplate(Base):
             "site_code",
             "work_type_id",
             "variant",
-            name="uq_checklist_templates_site_work_type_variant",
+            "milestone_km",
+            name="uq_checklist_templates_site_work_type_variant_km",
             postgresql_nulls_not_distinct=True,
         ),
     )
@@ -59,6 +60,9 @@ class ChecklistTemplate(Base):
     #: Which buses take this one — MBMT runs "9M", "12M AC" and "12M Non-AC"
     #: daily inspections. Null is the fallback for a bus that names no variant.
     variant: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: Docking (P.M) sheets only: the odometer rung this checklist is for
+    #: (3000, 10000, …). Null for D.I / 10-day and for a legacy all-rung sheet.
+    milestone_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
@@ -160,11 +164,13 @@ class InspectionEntry(Base):
     service_plan_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("service_plans.id", ondelete="SET NULL"), nullable=True
     )
+    #: Explicit KM sheet used (P.M). Kept even when no service_plan row exists.
+    milestone_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     inspected_on: Mapped[date_t] = mapped_column(Date, nullable=False)
     entry_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     #: Names, not FKs: the mechanic on a 2024 inspection must still read
     #: correctly after they leave the depot.
-    done_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    done_by: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
     odometer_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)

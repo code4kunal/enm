@@ -68,6 +68,8 @@ class InvestigationOut(BaseModel):
     entry_id: str
     registration_no: str
     model: str = ""
+    #: Bus type sheet — `9M` / `12M AC` / `12M Non-AC`.
+    bus_type: str | None = None
     odometer_km: int | None = None
     driver_id: str | None = None
     defect_type: str = ""

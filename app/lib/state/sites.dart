@@ -170,6 +170,10 @@ class VehiclesController extends AsyncNotifier<List<Vehicle>> {
     String make = '',
     String model = '',
     double? batteryCapacityKwh,
+    String? checklistVariant,
+    String? registrationDate,
+    String? fitnessRenewalDate,
+    String? insuranceRenewalDate,
   }) async {
     final site = ref.read(sessionProvider).site;
     final created = await _repo.createVehicle(
@@ -178,6 +182,10 @@ class VehiclesController extends AsyncNotifier<List<Vehicle>> {
       make: make,
       model: model,
       batteryCapacityKwh: batteryCapacityKwh,
+      checklistVariant: checklistVariant,
+      registrationDate: registrationDate,
+      fitnessRenewalDate: fitnessRenewalDate,
+      insuranceRenewalDate: insuranceRenewalDate,
     );
     _patch((list) => <Vehicle>[...list, created]
       ..sort((a, b) => a.registrationNo.compareTo(b.registrationNo)));

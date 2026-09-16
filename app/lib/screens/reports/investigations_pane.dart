@@ -62,9 +62,83 @@ class InvestigationsPane extends ConsumerWidget {
           );
         }
         final outstanding = items.where((i) => !i.isComplete).length;
+        final selectedType = ref.watch(investigationBusTypeProvider);
+        final from = ref.watch(investigationFromProvider);
+        final to = ref.watch(investigationToProvider);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: AppSelect(
+                    value: selectedType,
+                    options: const <String>['9M', '12M AC', '12M Non-AC'],
+                    placeholder: 'Bus Type (all)',
+                    onChanged: (v) => ref
+                        .read(investigationBusTypeProvider.notifier)
+                        .state = v,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlineActionButton(
+                  label: from == null
+                      ? 'From'
+                      : Dates.dayLabel(from),
+                  fontSize: 13,
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.tryParse(from ?? Dates.today()) ??
+                          DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (picked != null) {
+                      ref.read(investigationFromProvider.notifier).state =
+                          Dates.iso(picked);
+                    }
+                  },
+                ),
+                const SizedBox(width: 6),
+                OutlineActionButton(
+                  label: to == null ? 'To' : Dates.dayLabel(to),
+                  fontSize: 13,
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.tryParse(to ?? Dates.today()) ??
+                          DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (picked != null) {
+                      ref.read(investigationToProvider.notifier).state =
+                          Dates.iso(picked);
+                    }
+                  },
+                ),
+                if (from != null || to != null || selectedType != null) ...<Widget>[
+                  TextButton(
+                    onPressed: () {
+                      ref.read(investigationFromProvider.notifier).state = null;
+                      ref.read(investigationToProvider.notifier).state = null;
+                      ref.read(investigationBusTypeProvider.notifier).state =
+                          null;
+                    },
+                    child: Text(
+                      'Clear',
+                      style: AppText.sans(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: T.green,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
             Row(
               children: <Widget>[
                 Expanded(

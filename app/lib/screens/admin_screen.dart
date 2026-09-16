@@ -5,14 +5,16 @@ import '../state/session.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/sub_tabs.dart';
+import 'admin/audit_pane.dart';
+import 'admin/project_reports_pane.dart';
 import 'admin/sites_pane.dart';
+import 'admin/summary_pane.dart';
 import 'admin/users_pane.dart';
 
 /// Platform administration.
 ///
-/// Super admins govern the whole estate — onboarding sites and creating any
-/// user, including other super admins. Managers reach only the user pane, and
-/// only for staff on their own sites.
+/// Super admins get Summary, project reports, Sites, Users and Audit.
+/// Managers reach only the user pane, and only for staff on their own sites.
 class AdminScreen extends ConsumerStatefulWidget {
   const AdminScreen({super.key});
 
@@ -33,14 +35,22 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       );
     }
 
-    // Only a super admin onboards sites, so managers see the users pane alone.
-    final showSites = session.governsAllSites;
-    if (!showSites) {
+    // Only a super admin onboards sites and sees estate KPIs / audit.
+    final showEstate = session.governsAllSites;
+    if (!showEstate) {
       return const FadeUp(
         key: ValueKey<String>('admin-users'),
         child: UsersPane(),
       );
     }
+
+    const labels = <String>[
+      'Summary',
+      'Reports',
+      'Sites',
+      'Users',
+      'Audit',
+    ];
 
     return FadeUp(
       key: ValueKey<String>('admin-$_pane'),
@@ -48,12 +58,18 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           SubTabs(
-            labels: const <String>['Sites', 'Users'],
+            labels: labels,
             selectedIndex: _pane,
             onChanged: (i) => setState(() => _pane = i),
           ),
           const SizedBox(height: 20),
-          if (_pane == 0) const SitesPane() else const UsersPane(),
+          switch (_pane) {
+            0 => const AdminSummaryPane(),
+            1 => const AdminProjectReportsPane(),
+            2 => const SitesPane(),
+            3 => const UsersPane(),
+            _ => const AdminAuditPane(),
+          },
         ],
       ),
     );

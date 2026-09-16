@@ -316,6 +316,9 @@ def _investigation_out(entry, investigation) -> InvestigationOut:
         entry_id=entry.id,
         registration_no=entry.vehicle.registration_no if entry.vehicle else "",
         model=(entry.vehicle.model if entry.vehicle else "") or "",
+        bus_type=(
+            entry.vehicle.checklist_variant if entry.vehicle else None
+        ),
         odometer_km=entry.vehicle.odometer_km if entry.vehicle else None,
         driver_id=detail.driver_id if detail else None,
         defect_type=(
@@ -355,15 +358,35 @@ async def investigations_for_day(
     user: CurrentUser,
     session: SessionDep,
     date: Annotated[str | None, Query()] = None,
+    from_date: Annotated[str | None, Query()] = None,
+    to_date: Annotated[str | None, Query()] = None,
+    bus_type: Annotated[str | None, Query()] = None,
 ) -> InvestigationList:
-    """Every breakdown that day, with its investigation where one exists."""
+    """Every breakdown that day (or custom range), optionally by bus type."""
     site_code = assert_site_permission(user, code, "em_report:read")
     day = _parse_day(date, today_ist())
-    pairs = await investigations.for_day(session, site_code, day)
+    start = _parse_day(from_date, day) if from_date else day
+    end = _parse_day(to_date, day) if to_date else day
+    if end < start:
+        start, end = end, start
+
+    if start == end:
+        pairs = await investigations.for_day(session, site_code, start)
+    else:
+        pairs = await investigations.for_range(session, site_code, start, end)
+
     items = [_investigation_out(e, i) for e, i in pairs]
+    if bus_type:
+        wanted = bus_type.strip()
+        # "9M Non-AC" is the same sheet as "9M".
+        aliases = {wanted, wanted.replace(" Non-AC", ""), wanted.replace("Non-AC", "").strip()}
+        if "9M" in wanted.upper():
+            aliases.add("9M")
+        items = [i for i in items if (i.bus_type or "") in aliases]
+
     return InvestigationList(
         site_code=site_code,
-        report_date=day,
+        report_date=start if start == end else start,
         items=items,
         outstanding=sum(1 for i in items if not i.is_complete),
         nearest_date=(

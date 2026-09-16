@@ -548,3 +548,57 @@ async def test_sync_catalogue_is_manager_only(client: AsyncClient) -> None:
         "/sites/MBMT/checklists/sync-catalogue", headers=supervisor
     )
     assert r.status_code == 403
+
+
+async def test_docking_checklist_resolves_by_bus_type_and_km(
+    client: AsyncClient,
+) -> None:
+    """P.M sheets are per bus type × KM; D.I stays variant-only."""
+    from app.db import SessionLocal as _S
+    from app.services import checklists as service
+
+    ids = await _work_types()
+    async with SessionLocal() as session:
+        pm = WorkType(code="P.M", name="Docking", is_inspection=True)
+        session.add(pm)
+        await session.commit()
+        ids["P.M"] = pm.id
+
+    h = await auth_headers(client)
+
+    # Two KM sheets for the same bus type.
+    for km, label in ((60_000, "60k tyre check"), (80_000, "80k oil replace")):
+        r = await client.put(
+            f"/sites/MBMT/checklists/{ids['P.M']}",
+            headers=h,
+            json={
+                "name": f"Docking 9M @ {km}",
+                "variant": "9M",
+                "milestone_km": km,
+                "items": [
+                    {
+                        "section": "General",
+                        "label": label,
+                        "response_type": "ok_not_ok",
+                        "is_required": True,
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["milestone_km"] == km
+
+    await _set_variant("MH40LY1894", "9M")
+
+    async with _S() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+        )
+        at_60 = await service.template_for(
+            session, "MBMT", ids["P.M"], vehicle, milestone_km=60_000
+        )
+        at_80 = await service.template_for(
+            session, "MBMT", ids["P.M"], vehicle, milestone_km=80_000
+        )
+        assert at_60 is not None and any("60k" in i.label for i in at_60.items)
+        assert at_80 is not None and any("80k" in i.label for i in at_80.items)

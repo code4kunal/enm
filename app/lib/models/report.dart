@@ -247,6 +247,7 @@ class Investigation {
     required this.registrationNo,
     required this.entryDate,
     this.model = '',
+    this.busType,
     this.odometerKm,
     this.driverId,
     this.defectType = '',
@@ -269,6 +270,7 @@ class Investigation {
   final String entryId;
   final String registrationNo;
   final String model;
+  final String? busType;
   final int? odometerKm;
   final String? driverId;
   final String defectType;
@@ -298,6 +300,7 @@ class Investigation {
         entryId: json['entry_id'] as String,
         registrationNo: json['registration_no'] as String? ?? '',
         model: json['model'] as String? ?? '',
+        busType: json['bus_type'] as String?,
         odometerKm: (json['odometer_km'] as num?)?.round(),
         driverId: json['driver_id'] as String?,
         defectType: json['defect_type'] as String? ?? '',

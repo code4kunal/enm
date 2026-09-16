@@ -117,6 +117,17 @@ def site_out(
 
 
 def vehicle_out(vehicle: Vehicle) -> VehicleOut:
+    age: int | None = None
+    if vehicle.registration_date is not None:
+        today = date_t.today()
+        age = today.year - vehicle.registration_date.year
+        if (today.month, today.day) < (
+            vehicle.registration_date.month,
+            vehicle.registration_date.day,
+        ):
+            age -= 1
+        if age < 0:
+            age = 0
     return VehicleOut(
         id=vehicle.id,
         registration_no=vehicle.registration_no,
@@ -131,6 +142,10 @@ def vehicle_out(vehicle: Vehicle) -> VehicleOut:
         last_service_km=vehicle.last_service_km,
         last_service_on=vehicle.last_service_on,
         last_service_code=vehicle.last_service_code,
+        registration_date=vehicle.registration_date,
+        fitness_renewal_date=vehicle.fitness_renewal_date,
+        insurance_renewal_date=vehicle.insurance_renewal_date,
+        vehicle_age_years=age,
     )
 
 

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories.dart';
 import '../../models/report.dart';
-import '../../models/site.dart';
 import '../../state/providers.dart';
 import '../../state/reports.dart';
 import '../../state/session.dart';
@@ -17,6 +16,13 @@ import '../../widgets/report_download.dart';
 import '../../widgets/sub_tabs.dart';
 import 'units_pane.dart';
 
+/// Standard Bus Type values — same ladder as fleet / checklists.
+const List<String> _kHistoryBusTypes = <String>[
+  '9M',
+  '12M AC',
+  '12M Non-AC',
+];
+
 /// One bus's history card: every unit down the side, thirteen months across.
 ///
 /// Every unit is a row whether or not it was ever touched, because the empty
@@ -27,98 +33,152 @@ class HistoryPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final fleet = (ref.watch(siteVehiclesProvider).valueOrNull ?? <Vehicle>[])
-        .where((v) => v.isActive)
-        .toList();
+    final fleetAsync = ref.watch(siteVehiclesProvider);
     final vehicleId = ref.watch(historyVehicleProvider);
     final month = ref.watch(historyMonthProvider);
     final search = ref.watch(historySearchProvider);
-    final needle = search.trim().toLowerCase();
-    final matches = needle.isEmpty
-        ? fleet
-        : fleet
-            .where((v) => v.registrationNo.toLowerCase().contains(needle))
-            .toList();
+    final busType = ref.watch(historyBusTypeProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Row(
+    return fleetAsync.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => EmptyState(message: e.toString()),
+      data: (all) {
+        final fleet = all.where((v) => v.isActive).toList();
+        final needle = search.trim().toLowerCase();
+        var matches = needle.isEmpty
+            ? fleet
+            : fleet
+                .where((v) => v.registrationNo.toLowerCase().contains(needle))
+                .toList();
+        if (busType != null && busType.isNotEmpty) {
+          matches = matches
+              .where((v) => (v.checklistVariant ?? '') == busType)
+              .toList();
+        }
+        // Always offer the catalogue types; also surface any variants already
+        // on the fleet (e.g. legacy spellings) so nothing is filtered away.
+        final busTypes = <String>{
+          ..._kHistoryBusTypes,
+          for (final v in fleet)
+            if ((v.checklistVariant ?? '').isNotEmpty) v.checklistVariant!,
+        }.toList()
+          ..sort();
+
+        final selectedReg = matches
+            .where((v) => v.id == vehicleId)
+            .map((v) => v.registrationNo)
+            .firstOrNull;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Expanded(
-              flex: 2,
-              child: TextField(
-                onChanged: (v) =>
-                    ref.read(historySearchProvider.notifier).state = v,
-                style: AppText.mono(size: 16, weight: FontWeight.w600),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: 'Search a bus…',
-                  prefixIcon: Icon(Icons.search, color: T.secondary, size: 20),
-                  filled: true,
-                  fillColor: T.card,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: T.controlShape,
-                    borderSide: BorderSide(color: T.inputBorder, width: 1.5),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: T.controlShape,
-                    borderSide: BorderSide(color: T.inputBorder, width: 1.5),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    onChanged: (v) =>
+                        ref.read(historySearchProvider.notifier).state = v,
+                    style: AppText.mono(size: 16, weight: FontWeight.w600),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Search a bus…',
+                      prefixIcon:
+                          Icon(Icons.search, color: T.secondary, size: 20),
+                      filled: true,
+                      fillColor: T.card,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: T.controlShape,
+                        borderSide:
+                            BorderSide(color: T.inputBorder, width: 1.5),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: T.controlShape,
+                        borderSide:
+                            BorderSide(color: T.inputBorder, width: 1.5),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: AppSelect(
+                    value: busType,
+                    options: busTypes,
+                    placeholder: 'Bus Type (all)',
+                    emptyHint: 'No bus types',
+                    onChanged: (v) {
+                      ref.read(historyBusTypeProvider.notifier).state = v;
+                      ref.read(historyVehicleProvider.notifier).state = '';
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: AppSelect(
+                    value: selectedReg,
+                    options: matches.map((v) => v.registrationNo).toList(),
+                    placeholder: fleet.isEmpty
+                        ? 'No buses on this site'
+                        : '${matches.length} bus${matches.length == 1 ? '' : 'es'}',
+                    emptyHint: busType == null || busType.isEmpty
+                        ? 'No active buses'
+                        : 'No buses of this type',
+                    mono: true,
+                    onChanged: (reg) {
+                      if (reg == null || reg.isEmpty) {
+                        ref.read(historyVehicleProvider.notifier).state = '';
+                        return;
+                      }
+                      ref.read(historyVehicleProvider.notifier).state = matches
+                          .firstWhere((v) => v.registrationNo == reg)
+                          .id;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlineActionButton(
+                  label: '‹',
+                  fontSize: 14,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  onPressed: () => ref
+                      .read(historyMonthProvider.notifier)
+                      .state = Dates.shiftMonth(month, -1),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  Dates.monthLabel('$month-01'),
+                  style: AppText.sans(size: 14, weight: FontWeight.w700),
+                ),
+                const SizedBox(width: 6),
+                OutlineActionButton(
+                  label: '›',
+                  fontSize: 14,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  onPressed: () => ref
+                      .read(historyMonthProvider.notifier)
+                      .state = Dates.shiftMonth(month, 1),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
-              child: AppSelect(
-                value: matches
-                    .where((v) => v.id == vehicleId)
-                    .map((v) => v.registrationNo)
-                    .firstOrNull,
-                options: matches.map((v) => v.registrationNo).toList(),
-                placeholder: '${matches.length} bus${matches.length == 1 ? '' : 'es'}',
-                mono: true,
-                onChanged: (reg) => ref
-                    .read(historyVehicleProvider.notifier)
-                    .state = matches.firstWhere((v) => v.registrationNo == reg).id,
-              ),
-            ),
-            const SizedBox(width: 10),
-            OutlineActionButton(
-              label: '‹',
-              fontSize: 14,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              onPressed: () => ref
-                  .read(historyMonthProvider.notifier)
-                  .state = Dates.shiftMonth(month, -1),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              Dates.monthLabel('$month-01'),
-              style: AppText.sans(size: 14, weight: FontWeight.w700),
-            ),
-            const SizedBox(width: 6),
-            OutlineActionButton(
-              label: '›',
-              fontSize: 14,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              onPressed: () => ref
-                  .read(historyMonthProvider.notifier)
-                  .state = Dates.shiftMonth(month, 1),
-            ),
+            const SizedBox(height: 16),
+            if (vehicleId.isEmpty)
+              const EmptyState(
+                message: 'Pick a bus — a history card is one bus at a time.',
+              )
+            else
+              const _Card(),
+            const SizedBox(height: 32),
           ],
-        ),
-        const SizedBox(height: 16),
-        if (vehicleId.isEmpty)
-          const EmptyState(
-            message: 'Pick a bus — a history card is one bus at a time.',
-          )
-        else
-          const _Card(),
-        const SizedBox(height: 32),
-      ],
+        );
+      },
     );
   }
 }

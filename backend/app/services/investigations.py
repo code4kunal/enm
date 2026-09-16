@@ -199,6 +199,45 @@ async def for_day(
     return [(e, found.get(e.id)) for e in entries]
 
 
+async def for_range(
+    session: AsyncSession, site_code: str, start: date_t, end: date_t
+) -> list[tuple[Entry, BreakdownInvestigation | None]]:
+    """Every breakdown between start and end inclusive."""
+    entries = list(
+        (
+            await session.scalars(
+                select(Entry)
+                .join(BreakdownEntry, BreakdownEntry.entry_id == Entry.id)
+                .where(
+                    Entry.site_code == site_code,
+                    Entry.entry_date >= start,
+                    Entry.entry_date <= end,
+                    Entry.register == Register.breakdown,
+                )
+                .order_by(Entry.entry_date, Entry.entry_time, Entry.created_at)
+            )
+        )
+        .unique()
+        .all()
+    )
+    if not entries:
+        return []
+
+    found = {
+        i.entry_id: i
+        for i in (
+            await session.scalars(
+                select(BreakdownInvestigation).where(
+                    BreakdownInvestigation.entry_id.in_([e.id for e in entries])
+                )
+            )
+        )
+        .unique()
+        .all()
+    }
+    return [(e, found.get(e.id)) for e in entries]
+
+
 # --- off-road cases ---------------------------------------------------------
 
 

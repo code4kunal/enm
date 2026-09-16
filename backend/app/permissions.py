@@ -141,6 +141,11 @@ USER = register_resource(
     "em_user",
     description="E&M user administration",
 )
+AUDIT = register_resource(
+    "em_audit",
+    description="E&M user-wise audit trail",
+    actions=("read",),
+)
 
 
 def all_permission_dicts() -> list[dict[str, str]]:
@@ -197,9 +202,10 @@ _SUPERVISOR = (
 _EXECUTIVE = _reads(SITE, VEHICLE, MASTER, ENTRY, INSPECTION, SCHEDULE, REPORT)
 
 DEFAULT_ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
-    # Platform-level: onboards sites, mints users, reaches every site.
-    Role.super_admin: _ALL,
-    # Site-level admin: everything on its own sites except onboarding new ones.
+    # Platform-level: onboards sites, mints users, reaches every site, reads audit.
+    Role.super_admin: _ALL | _names(AUDIT),
+    # Site-level admin: everything on its own sites except onboarding new ones
+    # and the estate audit trail.
     Role.manager: _ALL - frozenset({"em_site:write", "em_site:delete"}),
     Role.supervisor: _SUPERVISOR,
     Role.executive: _EXECUTIVE,

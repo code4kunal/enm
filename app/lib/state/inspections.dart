@@ -6,6 +6,7 @@ import '../models/checklist.dart';
 import 'providers.dart';
 import '../utils/dates.dart';
 import 'entries.dart';
+import 'reports.dart';
 import 'schedule.dart';
 import 'session.dart';
 
@@ -22,30 +23,55 @@ final checklistsProvider = FutureProvider<List<Checklist>>((ref) {
   return ref.watch(checklistRepositoryProvider).fetchChecklists(site);
 });
 
-/// One checklist by its work type, for the form to render.
 /// Which checklist a given bus takes for a given inspection.
 ///
 /// A work type can have more than one: MBMT's daily inspection is three
 /// sheets, because a 9M, an air-conditioned 12M and a non-AC 12M are not
-/// checked for the same things. The bus's own variant wins; a site running a
-/// single checklist never sets one and always lands on the unscoped fallback.
-final checklistForProvider =
-    Provider.family<Checklist?, ({int workTypeId, String? variant})>((ref, q) {
+/// checked for the same things. Docking (P.M) further splits by KM rung —
+/// pass [milestoneKm] when the booked slot has one.
+final checklistForProvider = Provider.family<
+    Checklist?,
+    ({int workTypeId, String? variant, int? milestoneKm})>((ref, q) {
   final all = ref.watch(checklistsProvider).valueOrNull ?? const <Checklist>[];
   final mine = all.where((c) => c.workTypeId == q.workTypeId);
 
-  if (q.variant != null && q.variant!.isNotEmpty) {
+  Checklist? pick({String? variant, int? km, required bool allowEmpty}) {
     for (final c in mine) {
-      if (c.variant == q.variant && !c.isEmpty) return c;
+      final variantOk = variant == null
+          ? (c.variant == null || c.variant!.isEmpty)
+          : c.variant == variant;
+      if (!variantOk) continue;
+      if (km != null && c.milestoneKm != km) continue;
+      if (km == null && c.milestoneKm != null) continue;
+      if (!allowEmpty && c.isEmpty) continue;
+      return c;
     }
+    return null;
   }
-  for (final c in mine) {
-    if ((c.variant == null || c.variant!.isEmpty) && !c.isEmpty) return c;
+
+  if (q.variant != null && q.variant!.isNotEmpty) {
+    if (q.milestoneKm != null) {
+      final byKm = pick(variant: q.variant, km: q.milestoneKm, allowEmpty: false);
+      if (byKm != null) return byKm;
+      // Explicit KM request: do not fall back to a different rung / supersheet.
+      final emptyKm = pick(variant: q.variant, km: q.milestoneKm, allowEmpty: true);
+      return emptyKm;
+    }
+    final byVariant = pick(variant: q.variant, km: null, allowEmpty: false);
+    if (byVariant != null) return byVariant;
   }
-  // Fallback to any populated variant checklist rather than showing an empty form
+  if (q.milestoneKm != null) {
+    // Variant unknown — still try the KM sheet for any variant of this work type.
+    for (final c in mine) {
+      if (c.milestoneKm == q.milestoneKm && !c.isEmpty) return c;
+    }
+    return null;
+  }
+  final unscoped = pick(variant: null, km: null, allowEmpty: false);
+  if (unscoped != null) return unscoped;
+
   final populated = mine.where((c) => !c.isEmpty);
   if (populated.isNotEmpty) return populated.first;
-
   return mine.isEmpty ? null : mine.first;
 });
 
@@ -82,10 +108,11 @@ final variantCountProvider = Provider.family<int, int>((ref, workTypeId) {
 /// particular bus — the site's master data editor.
 final checklistProvider = Provider.family<Checklist?, int>((ref, workTypeId) {
   return ref.watch(
-    checklistForProvider((workTypeId: workTypeId, variant: null)),
+    checklistForProvider(
+      (workTypeId: workTypeId, variant: null, milestoneKm: null),
+    ),
   );
 });
-
 /// Inspections already recorded today, for the Home feed.
 final todaysInspectionsProvider =
     FutureProvider<List<InspectionEntry>>((ref) {
@@ -121,6 +148,7 @@ class InspectionController {
     String? supervisor,
     int? odometerKm,
     String? remarks,
+    int? milestoneKm,
     required List<InspectionResult> results,
   }) async {
     final entry = await _repo.recordInspection(
@@ -133,13 +161,20 @@ class InspectionController {
       supervisor: supervisor,
       odometerKm: odometerKm,
       remarks: remarks,
+      milestoneKm: milestoneKm,
       results: results,
     );
     // A sweep discharges a booking and can move the odometer, so the calendar
-    // and the fleet are both stale now.
+    // and the fleet are both stale now — and Registers → Inspections must
+    // pick up the new row without a site switch.
     _ref.invalidate(todaysInspectionsProvider);
+    _ref.invalidate(siteInspectionsProvider);
     _ref.invalidate(calendarProvider);
     _ref.invalidate(siteVehiclesProvider);
+    // DI / 10-day / docking lines on the DMR + inspection charts.
+    _ref.invalidate(dmrDayProvider);
+    _ref.invalidate(dmrMonthProvider);
+    _ref.invalidate(controlChartProvider);
     return entry;
   }
 }
@@ -176,8 +211,9 @@ final filteredInspectionsProvider =
         DateMode.today => e.inspectedOn == Dates.today(),
         DateMode.week => e.inspectedOn.compareTo(Dates.today(-6)) >= 0 &&
             e.inspectedOn.compareTo(Dates.today()) <= 0,
-        DateMode.month =>
-          e.inspectedOn.startsWith(Dates.currentMonthPrefix()),
+        DateMode.month => e.inspectedOn.startsWith(
+            f.month.isNotEmpty ? f.month : Dates.currentMonthPrefix(),
+          ),
         DateMode.custom => (f.from.isEmpty ||
                 e.inspectedOn.compareTo(f.from) >= 0) &&
             (f.to.isEmpty || e.inspectedOn.compareTo(f.to) <= 0),

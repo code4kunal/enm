@@ -165,12 +165,10 @@ siteops-platform is the identity authority. It issues every token, owns the
 one permission table the whole estate shares, and an administrator grants
 E&M's permissions there — on the same role screen as every other service's.
 
-- **The catalogue** lives in `app/permissions.py`: ten resources, every name
-  prefixed `em_` because the platform's table is shared and already holds an
-  `inspection`, a `schedule`, a `reports` and a `vehicle` belonging to other
-  products. On startup E&M POSTs the catalogue to
-  `/access-control/permissions/sync` (`app/services/permission_sync.py`),
-  which is idempotent and never fatal.
+- **The catalogue** lives in `app/permissions.py`: resources prefixed `em_`
+  (including `em_audit:read` for the estate audit trail). On startup E&M POSTs
+  the catalogue to `/access-control/permissions/sync`
+  (`app/services/permission_sync.py`), which is idempotent and never fatal.
 - **Enforcement** is `assert_site_permission(user, site, "em_entry:write")`
   and the `require_permission(...)` dependency. Both halves are checked on
   every scoped call: can this caller reach the site, and do they hold the
@@ -189,7 +187,8 @@ E&M's permissions there — on the same role screen as every other service's.
 - Entry edit / photo: the creator with `em_entry:write`, or anyone holding
   `em_entry:delete` on that site.
 - Entry edits and user activate/deactivate/reset write to `audit_logs` with
-  before/after payloads.
+  before/after payloads. Super admins read the trail at `GET /admin/audit`
+  (CSV: `GET /admin/audit/export`). Estate KPIs: `GET /admin/summary`.
 
 A platform token is trusted only after its HS256 signature verifies against
 `SITEOPS_JWT_SECRET`; a token E&M itself signed at `/auth/login` carries the

@@ -210,8 +210,8 @@ class UnitField extends StatelessWidget {
   }
 }
 
-/// Dropdown matching the input styling. [placeholder] is the empty option.
-class AppSelect extends StatelessWidget {
+/// Dropdown matching the input styling. Type to filter; opens on focus/tap.
+class AppSelect extends StatefulWidget {
   const AppSelect({
     super.key,
     required this.value,
@@ -226,67 +226,371 @@ class AppSelect extends StatelessWidget {
   final List<String> options;
   final ValueChanged<String?> onChanged;
   final String placeholder;
-  /// Shown instead of [placeholder] when [options] is empty.
   final String emptyHint;
   final bool mono;
 
   @override
-  Widget build(BuildContext context) {
-    // A value no longer present in the master list (e.g. a bus retired from
-    // the fleet) must not crash the dropdown — fall back to no selection.
-    final current =
-        (value != null && value!.isNotEmpty && options.contains(value))
-            ? value
-            : null;
+  State<AppSelect> createState() => _AppSelectState();
+}
 
-    final style = mono
+class _AppSelectState extends State<AppSelect> {
+  final LayerLink _link = LayerLink();
+  final FocusNode _focus = FocusNode();
+  final OverlayPortalController _portal = OverlayPortalController();
+  late final TextEditingController _controller;
+  final GlobalKey _fieldKey = GlobalKey();
+
+  String? get _selected {
+    final v = widget.value;
+    if (v == null || v.isEmpty) return null;
+    return widget.options.contains(v) ? v : null;
+  }
+
+  List<String> get _filtered {
+    final needle = _controller.text.trim().toLowerCase();
+    if (needle.isEmpty) return widget.options;
+    // Keep the selected value visible while the field still shows it.
+    if (_selected != null && needle == _selected!.toLowerCase()) {
+      return widget.options;
+    }
+    return widget.options
+        .where((o) => o.toLowerCase().contains(needle))
+        .toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _selected ?? '');
+    _focus.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppSelect oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus) {
+      final next = _selected ?? '';
+      if (_controller.text != next) {
+        _controller.text = next;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (_focus.hasFocus) {
+      _open();
+    } else {
+      // Let option onTapDown land before we tear the overlay down.
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || _focus.hasFocus) return;
+        _close();
+        final cur = _selected ?? '';
+        if (_controller.text != cur) {
+          _controller.text = cur;
+        }
+      });
+    }
+  }
+
+  void _open() {
+    if (widget.options.isEmpty) return;
+    if (!_portal.isShowing) _portal.show();
+    setState(() {});
+  }
+
+  void _close() {
+    if (_portal.isShowing) _portal.hide();
+  }
+
+  void _pick(String? option) {
+    widget.onChanged(option);
+    _controller.text = option ?? '';
+    _focus.unfocus();
+    _close();
+  }
+
+  Size _fieldSize() {
+    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? const Size(240, T.minTouchTarget);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = widget.options.isEmpty;
+    final style = widget.mono
         ? AppText.mono(size: 16, weight: FontWeight.w600)
         : AppText.input;
 
-    final empty = options.isEmpty;
-    final hintText = empty ? emptyHint : placeholder;
-
-    // A plain DropdownButton inside an InputDecorator rather than a
-    // DropdownButtonFormField: the latter only takes an *initial* value, and
-    // this control has to stay fully driven by [value].
     return FocusRing(
-      child: Container(
-        constraints: const BoxConstraints(minHeight: T.minTouchTarget),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        decoration: BoxDecoration(
-          color: T.card,
-          borderRadius: T.controlShape,
-          border: Border.all(color: T.inputBorder, width: 1.5),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: current,
-            isExpanded: true,
-            icon: Icon(
-              Icons.expand_more,
-              color: empty ? T.muted : T.secondary,
-              size: 22,
-            ),
-            style: style,
-            dropdownColor: T.card,
+      child: CompositedTransformTarget(
+        link: _link,
+        child: Container(
+          key: _fieldKey,
+          constraints: const BoxConstraints(minHeight: T.minTouchTarget),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: T.card,
             borderRadius: T.controlShape,
-            hint: Text(
-              hintText,
-              style: AppText.sans(size: 16, color: T.muted),
-            ),
-            items: <DropdownMenuItem<String>>[
-              for (final o in options)
-                DropdownMenuItem<String>(
-                  value: o,
-                  child: Text(o, style: style, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            // Empty menus look "broken" (click does nothing useful) — disable
-            // so the hint is the signal rather than a dead control.
-            onChanged: empty ? null : onChanged,
+            border: Border.all(color: T.inputBorder, width: 1.5),
           ),
+          child: empty
+              ? Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                  child: Text(
+                    widget.emptyHint,
+                    style: AppText.sans(size: 16, color: T.muted),
+                  ),
+                )
+              : OverlayPortal(
+                  controller: _portal,
+                  overlayChildBuilder: (context) {
+                    final size = _fieldSize();
+                    final list = _filtered;
+                    return CompositedTransformFollower(
+                      link: _link,
+                      showWhenUnlinked: false,
+                      offset: Offset(0, size.height + 4),
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 6,
+                          color: T.card,
+                          borderRadius: T.controlShape,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: 240,
+                              minWidth: size.width,
+                              maxWidth: size.width.clamp(200, 480),
+                            ),
+                            child: list.isEmpty
+                                ? Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(
+                                      'No matches',
+                                      style: AppText.sans(
+                                        size: 14,
+                                        color: T.muted,
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    itemCount: list.length,
+                                    itemBuilder: (_, i) {
+                                      final o = list[i];
+                                      final selected = o == _selected;
+                                      return InkWell(
+                                        onTapDown: (_) => _pick(o),
+                                        child: Container(
+                                          color: selected
+                                              ? T.greenTint
+                                              : Colors.transparent,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 12,
+                                          ),
+                                          child: Text(
+                                            o,
+                                            style: style,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    style: style,
+                    onTap: _open,
+                    onChanged: (text) {
+                      if (text.trim().isEmpty && _selected != null) {
+                        widget.onChanged(null);
+                      }
+                      _open();
+                      setState(() {});
+                    },
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: widget.placeholder,
+                      hintStyle: AppText.sans(size: 16, color: T.muted),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _portal.isShowing
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: T.secondary,
+                          size: 22,
+                        ),
+                        onPressed: () {
+                          if (_portal.isShowing) {
+                            _focus.unfocus();
+                            _close();
+                          } else {
+                            _focus.requestFocus();
+                            _open();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
         ),
       ),
+    );
+  }
+}
+
+/// Multi-select searchable list — used for Done By (SiteOps staff).
+class AppMultiSelect extends StatefulWidget {
+  const AppMultiSelect({
+    super.key,
+    required this.values,
+    required this.options,
+    required this.onChanged,
+    this.placeholder = 'Search and select…',
+    this.emptyHint = 'No options loaded',
+  });
+
+  final List<String> values;
+  final List<String> options;
+  final ValueChanged<List<String>> onChanged;
+  final String placeholder;
+  final String emptyHint;
+
+  @override
+  State<AppMultiSelect> createState() => _AppMultiSelectState();
+}
+
+class _AppMultiSelectState extends State<AppMultiSelect> {
+  final TextEditingController _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  List<String> get _filtered {
+    final needle = _query.text.trim().toLowerCase();
+    final pool = widget.options
+        .where((o) => !widget.values.contains(o))
+        .toList();
+    if (needle.isEmpty) return pool;
+    return pool.where((o) => o.toLowerCase().contains(needle)).toList();
+  }
+
+  void _toggle(String name) {
+    final next = List<String>.from(widget.values);
+    if (next.contains(name)) {
+      next.remove(name);
+    } else {
+      next.add(name);
+    }
+    widget.onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = widget.options.isEmpty;
+    final filtered = _filtered;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (widget.values.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final v in widget.values)
+                  InputChip(
+                    label: Text(v, style: AppText.sans(size: 13)),
+                    onDeleted: () => _toggle(v),
+                    backgroundColor: T.greenTint,
+                    deleteIconColor: T.greenInk,
+                  ),
+              ],
+            ),
+          ),
+        FocusRing(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: T.minTouchTarget),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            decoration: BoxDecoration(
+              color: T.card,
+              borderRadius: T.controlShape,
+              border: Border.all(color: T.inputBorder, width: 1.5),
+            ),
+            child: TextField(
+              controller: _query,
+              enabled: !empty,
+              style: AppText.input,
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                hintText: empty ? widget.emptyHint : widget.placeholder,
+                hintStyle: AppText.sans(size: 16, color: T.muted),
+                suffixIcon: const Icon(Icons.search, color: T.secondary, size: 20),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ),
+        if (_query.text.isNotEmpty || filtered.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 6),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 180),
+            decoration: BoxDecoration(
+              color: T.card,
+              borderRadius: T.controlShape,
+              border: Border.all(color: T.inputBorder, width: 1),
+            ),
+            child: filtered.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      'No matches',
+                      style: AppText.sans(size: 14, color: T.muted),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length.clamp(0, 40),
+                    itemBuilder: (_, i) {
+                      final o = filtered[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(o, style: AppText.input),
+                        onTap: () {
+                          _toggle(o);
+                          _query.clear();
+                          setState(() {});
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ],
     );
   }
 }

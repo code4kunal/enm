@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api import (
     admin,
+    admin_estate,
     auth,
     checklists,
     entries,
@@ -25,6 +26,7 @@ api_router.include_router(inspections.router)
 api_router.include_router(checklists.router)
 api_router.include_router(reports.router)
 api_router.include_router(entries.router)
+api_router.include_router(admin_estate.router)
 api_router.include_router(admin.router)
 api_router.include_router(notifications.router)
 api_router.include_router(siteops.router)

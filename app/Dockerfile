@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # --- build Flutter web bundle -----------------------------------------------
 FROM ghcr.io/cirruslabs/flutter:stable AS build
 

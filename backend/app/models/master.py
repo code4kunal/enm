@@ -119,6 +119,10 @@ class Vehicle(Base):
     last_service_code: Mapped[str] = mapped_column(
         String(50), nullable=False, default="", server_default=""
     )
+    #: Compliance dates — filled from SiteOps when present, else manual ENM.
+    registration_date: Mapped[date_t | None] = mapped_column(Date, nullable=True)
+    fitness_renewal_date: Mapped[date_t | None] = mapped_column(Date, nullable=True)
+    insurance_renewal_date: Mapped[date_t | None] = mapped_column(Date, nullable=True)
 
     site: Mapped[Site] = relationship(back_populates="vehicles")
 

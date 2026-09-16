@@ -20,13 +20,14 @@ class _Vehicle {
     required this.status, required this.isActive, required this.isFitnessExpired,
     required this.fitnessExpiry, required this.sites, required this.manufactureYear,
     required this.dateOfReg, required this.rtoLoc, required this.financierName,
-    required this.fitnessCertNo,
+    required this.fitnessCertNo, required this.insuranceRenewalDate,
   });
 
   final String id, vehicleNo, code, ttNo, vehicleTypeName, vehicleTypeId;
   final String make, model, fuel, variant, engineNo, chassisNo, macId;
   final String capacity, acNac, lastOdo, status, fitnessExpiry;
   final String manufactureYear, dateOfReg, rtoLoc, financierName, fitnessCertNo;
+  final String insuranceRenewalDate;
   final bool isActive, isFitnessExpired;
   final List<Map<String, dynamic>> sites;
 
@@ -60,6 +61,11 @@ class _Vehicle {
       rtoLoc: j['rto_loc']?.toString() ?? '',
       financierName: j['financier_name']?.toString() ?? '',
       fitnessCertNo: j['fitness_cert_no']?.toString() ?? '',
+      insuranceRenewalDate: (j['insurance_renewal_date'] ??
+              j['insurance_expiry_date'] ??
+              j['insurance_expiry'] ??
+              '')
+          .toString(),
       sites: sitesList,
     );
   }
@@ -195,6 +201,9 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
       
       'fitness_cert_no': TextEditingController(text: existing?.fitnessCertNo ?? ''),
       'fitness_expiry_date': TextEditingController(text: existing?.fitnessExpiry ?? ''),
+      'insurance_renewal_date': TextEditingController(
+        text: existing?.insuranceRenewalDate ?? '',
+      ),
     };
     
     String? selectedVehicleType = existing?.vehicleTypeId.isNotEmpty == true ? existing?.vehicleTypeId : null;
@@ -453,15 +462,20 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
                         children: [
                           Expanded(child: fld('fitness_cert_no', 'Fitness Certificate No', hint: 'Cert ID No')),
                           const SizedBox(width: 16),
-                          Expanded(child: fld('fitness_expiry_date', 'Fitness Expiry Date', hint: 'YYYY-MM-DD')),
+                          Expanded(child: fld('fitness_expiry_date', 'Fitness Expiry / Renewal', hint: 'YYYY-MM-DD')),
                         ],
                       ),
                       Row(
                         children: [
+                          Expanded(child: fld('insurance_renewal_date', 'Insurance Renewal Date', hint: 'YYYY-MM-DD')),
+                          const SizedBox(width: 16),
                           Expanded(child: ddl('Status', sanitizeDropdown(selectedStatus, allowedStatus), [
                             for (final s in ['Active', 'Inactive', 'Maintenance', 'Retired']) DropdownMenuItem(value: s, child: Text(s))
                           ], (v) => selectedStatus = v)),
-                          const SizedBox(width: 16),
+                        ],
+                      ),
+                      Row(
+                        children: [
                           Expanded(child: Padding(
                             padding: const EdgeInsets.only(bottom: 14),
                             child: Row(
@@ -528,6 +542,7 @@ class _VehicleMasterScreenState extends ConsumerState<VehicleMasterScreen> {
                             if (ctrls['financier_name']!.text.trim().isNotEmpty) 'financier_name': ctrls['financier_name']!.text.trim(),
                             if (ctrls['fitness_cert_no']!.text.trim().isNotEmpty) 'fitness_cert_no': ctrls['fitness_cert_no']!.text.trim(),
                             if (ctrls['fitness_expiry_date']!.text.trim().isNotEmpty) 'fitness_expiry_date': ctrls['fitness_expiry_date']!.text.trim(),
+                            if (ctrls['insurance_renewal_date']!.text.trim().isNotEmpty) 'insurance_renewal_date': ctrls['insurance_renewal_date']!.text.trim(),
                             if (selectedAcNac != null) 'ac_nac': selectedAcNac,
                             if (selectedFuel != null) 'fuel': selectedFuel,
                             if (selectedYear != null) 'manufacture_year': int.parse(selectedYear!),

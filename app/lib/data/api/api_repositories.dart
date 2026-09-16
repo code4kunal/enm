@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../models/admin_estate.dart';
 import '../../models/app_user.dart';
 import '../../models/entry.dart';
 import '../../models/checklist.dart';
@@ -389,6 +390,10 @@ class ApiVehicleRepository implements VehicleRepository {
     String make = '',
     String model = '',
     double? batteryCapacityKwh,
+    String? checklistVariant,
+    String? registrationDate,
+    String? fitnessRenewalDate,
+    String? insuranceRenewalDate,
   }) async {
     final json = await _api.post(
       '/sites/$siteCode/vehicles',
@@ -397,6 +402,10 @@ class ApiVehicleRepository implements VehicleRepository {
         'make': make,
         'model': model,
         'battery_capacity_kwh': batteryCapacityKwh,
+        'checklist_variant': checklistVariant,
+        'registration_date': registrationDate,
+        'fitness_renewal_date': fitnessRenewalDate,
+        'insurance_renewal_date': insuranceRenewalDate,
       },
     );
     return Vehicle.fromJson(json as Map<String, dynamic>);
@@ -808,6 +817,77 @@ class ApiUserRepository implements UserRepository {
       );
 }
 
+class ApiAdminEstateRepository implements AdminEstateRepository {
+  ApiAdminEstateRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<AdminSummary> fetchSummary({
+    String period = 'month',
+    String? dateFrom,
+    String? dateTo,
+    String? month,
+  }) async {
+    final json = await _api.get(
+      '/admin/summary',
+      query: <String, String>{
+        'period': period,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'date_from': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'date_to': dateTo,
+        if (month != null && month.isNotEmpty) 'month': month,
+      },
+    );
+    return AdminSummary.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<AuditLogPage> fetchAudit({
+    int page = 1,
+    int pageSize = 50,
+    String? actorId,
+    String? action,
+    String? objectType,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await _api.get(
+      '/admin/audit',
+      query: <String, String>{
+        'page': '$page',
+        'page_size': '$pageSize',
+        if (actorId != null && actorId.isNotEmpty) 'actor_id': actorId,
+        if (action != null && action.isNotEmpty) 'action': action,
+        if (objectType != null && objectType.isNotEmpty) 'object_type': objectType,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'date_from': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'date_to': dateTo,
+      },
+    );
+    return AuditLogPage.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<int>> exportAuditCsv({
+    String? actorId,
+    String? action,
+    String? objectType,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final bytes = await _api.download(
+      '/admin/audit/export',
+      query: <String, String>{
+        if (actorId != null && actorId.isNotEmpty) 'actor_id': actorId,
+        if (action != null && action.isNotEmpty) 'action': action,
+        if (objectType != null && objectType.isNotEmpty) 'object_type': objectType,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'date_from': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'date_to': dateTo,
+      },
+    );
+    return bytes;
+  }
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────
 
 class ApiAuthRepository implements AuthRepository {
@@ -1030,6 +1110,8 @@ class ApiChecklistRepository implements ChecklistRepository {
       '/sites/$siteCode/checklists/${checklist.workTypeId}',
       body: <String, dynamic>{
         'name': checklist.name,
+        if (checklist.variant != null) 'variant': checklist.variant,
+        if (checklist.milestoneKm != null) 'milestone_km': checklist.milestoneKm,
         'items': checklist.items.map((i) => i.toJson()).toList(),
       },
     );
@@ -1047,6 +1129,7 @@ class ApiChecklistRepository implements ChecklistRepository {
     String? supervisor,
     int? odometerKm,
     String? remarks,
+    int? milestoneKm,
     required List<InspectionResult> results,
   }) async {
     final json = await _api.post(
@@ -1060,6 +1143,7 @@ class ApiChecklistRepository implements ChecklistRepository {
         if (supervisor != null && supervisor.isNotEmpty) 'supervisor': supervisor,
         if (odometerKm != null) 'odometer_km': odometerKm,
         if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+        if (milestoneKm != null) 'milestone_km': milestoneKm,
         'results': results.map((r) => r.toJson()).toList(),
       },
     );
@@ -1074,6 +1158,7 @@ class ApiChecklistRepository implements ChecklistRepository {
       itemsOf(await _api.get(
         '/sites/$siteCode/inspections',
         query: <String, String>{
+          'page_size': '200',
           if (workTypeId != null) 'work_type_id': '$workTypeId',
         },
       )).map(InspectionEntry.fromJson).toList();
@@ -1204,10 +1289,18 @@ class ApiReportRepository implements ReportRepository {
   Future<InvestigationDay> fetchInvestigations({
     required String siteCode,
     required String date,
+    String? fromDate,
+    String? toDate,
+    String? busType,
   }) async {
     final json = await _api.get(
       '/sites/$siteCode/reports/investigations',
-      query: <String, String>{'date': date},
+      query: <String, String>{
+        'date': date,
+        if (fromDate != null && fromDate.isNotEmpty) 'from_date': fromDate,
+        if (toDate != null && toDate.isNotEmpty) 'to_date': toDate,
+        if (busType != null && busType.isNotEmpty) 'bus_type': busType,
+      },
     );
     return InvestigationDay.fromJson(json as Map<String, dynamic>);
   }

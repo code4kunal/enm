@@ -1,6 +1,6 @@
 """The Daily Maintenance Report.
 
-Thirty-one parameters down the page, one column per day — the shape the depot
+Thirty-three parameters down the page, one column per day — the shape the depot
 already sends on. Most lines are derived from the registers; eleven are not
 observable anywhere in the system and are entered once a day.
 
@@ -68,26 +68,28 @@ PARAMETERS: list[Parameter] = [
     Parameter(17, "Daily breakdowns (AC)", "breakdowns_ac"),
     Parameter(18, "Daily breakdowns (ITS)", "breakdowns_its"),
     Parameter(19, "Loss of Kms due to breakdowns", "loss_km", decimal=True),
-    Parameter(20, "Daily driver complaints", "driver_complaints"),
-    Parameter(21, "Daily maintenance attended buses (DI)", "daily_inspections"),
-    Parameter(22, "Periodic PM schedule attended buses (10 days)", "periodic_pm"),
-    Parameter(23, "Docking attended buses", "dockings"),
+    Parameter(20, "Daily breakdowns — KM loss", "breakdowns_km_loss"),
+    Parameter(21, "Daily breakdowns — No KM loss", "breakdowns_no_km_loss"),
+    Parameter(22, "Daily driver complaints", "driver_complaints"),
+    Parameter(23, "Daily maintenance attended buses (DI)", "daily_inspections"),
+    Parameter(24, "Periodic PM schedule attended buses (10 days)", "periodic_pm"),
+    Parameter(25, "Docking attended buses", "dockings"),
     Parameter(
-        24, "Buses attended for high energy consumption (kWh/km)",
+        26, "Buses attended for high energy consumption (kWh/km)",
         "high_energy_consumption", derived=False,
     ),
-    Parameter(25, "Coolant consumption (topping)", "coolant_litres", decimal=True),
-    Parameter(26, "Nos of buses attended for deep cleaning", "deep_cleaning", derived=False),
-    Parameter(27, "Nos of buses washed & cleaned", "washed_cleaned", derived=False),
+    Parameter(27, "Coolant consumption (topping)", "coolant_litres", decimal=True),
+    Parameter(28, "Nos of buses attended for deep cleaning", "deep_cleaning", derived=False),
+    Parameter(29, "Nos of buses washed & cleaned", "washed_cleaned", derived=False),
     Parameter(
-        28, "Cases of accidents / incidents within depot premises",
+        30, "Cases of accidents / incidents within depot premises",
         "depot_accidents", derived=False,
     ),
-    Parameter(29, "Nos of tyres scrapped", "tyres_scrapped", derived=False),
+    Parameter(31, "Nos of tyres scrapped", "tyres_scrapped", derived=False),
     # Derived since fitted units are recorded: an HV pack coming off the bus
     # is the event this line counts, and it is now written down.
-    Parameter(30, "Nos of HV batteries replaced", "hv_batteries_replaced"),
-    Parameter(31, "Nos of buses reported for body damages", "body_damages", derived=False),
+    Parameter(32, "Nos of HV batteries replaced", "hv_batteries_replaced"),
+    Parameter(33, "Nos of buses reported for body damages", "body_damages", derived=False),
 ]
 
 DERIVED_KEYS = tuple(p.key for p in PARAMETERS if p.derived)
@@ -180,6 +182,35 @@ async def _count_inspections(
     )
 
 
+async def _count_periodic_pm(
+    session: AsyncSession, site_code: str, day: date_t
+) -> int:
+    """Buses attended for 10-day / periodic PM.
+
+    Distinct vehicles that either completed a 10 DAYS SERVICE inspection or
+    were written on the PM Schedule register that day — both are how the
+    depot records that work.
+    """
+    insp = select(InspectionEntry.vehicle_id.label("vid")).join(
+        WorkType, WorkType.id == InspectionEntry.work_type_id
+    ).where(
+        InspectionEntry.site_code == site_code,
+        InspectionEntry.inspected_on == day,
+        func.upper(WorkType.code) == "10 DAYS SERVICE",
+    )
+    reg = select(Entry.bus_id.label("vid")).where(
+        Entry.site_code == site_code,
+        Entry.entry_date == day,
+        Entry.register == Register.pm_schedule,
+    )
+    return int(
+        await session.scalar(
+            select(func.count()).select_from(insp.union(reg).subquery())
+        )
+        or 0
+    )
+
+
 async def derive(
     session: AsyncSession, site_code: str, day: date_t
 ) -> dict[str, object]:
@@ -215,6 +246,30 @@ async def derive(
         .join(BreakdownEntry, BreakdownEntry.entry_id == Entry.id)
         .where(Entry.site_code == site_code, Entry.entry_date == day)
     )
+    bd_km_loss = await session.scalar(
+        select(func.count())
+        .select_from(Entry)
+        .join(BreakdownEntry, BreakdownEntry.entry_id == Entry.id)
+        .where(
+            Entry.site_code == site_code,
+            Entry.entry_date == day,
+            BreakdownEntry.loss_km.is_not(None),
+            BreakdownEntry.loss_km > 0,
+        )
+    )
+    bd_no_km_loss = await session.scalar(
+        select(func.count())
+        .select_from(Entry)
+        .join(BreakdownEntry, BreakdownEntry.entry_id == Entry.id)
+        .where(
+            Entry.site_code == site_code,
+            Entry.entry_date == day,
+            or_(
+                BreakdownEntry.loss_km.is_(None),
+                BreakdownEntry.loss_km <= 0,
+            ),
+        )
+    )
     coolant = await session.scalar(
         select(
             func.coalesce(
@@ -248,13 +303,13 @@ async def derive(
         "breakdowns_ac": breakdown_split.get(DefectCategory.ac, 0),
         "breakdowns_its": breakdown_split.get(DefectCategory.its, 0),
         "loss_km": Decimal(loss_km or 0),
+        "breakdowns_km_loss": int(bd_km_loss or 0),
+        "breakdowns_no_km_loss": int(bd_no_km_loss or 0),
         "driver_complaints": by_register.get(Register.driver_complaint, 0),
         "daily_inspections": await _count_inspections(
             session, site_code, day, ("D.I", "DI")
         ),
-        "periodic_pm": await _count_inspections(
-            session, site_code, day, ("10 DAYS SERVICE",)
-        ),
+        "periodic_pm": await _count_periodic_pm(session, site_code, day),
         "dockings": await _count_inspections(session, site_code, day, ("P.M", "PM")),
         "coolant_litres": Decimal(coolant or 0),
         "hv_batteries_replaced": await units.hv_batteries_replaced(
@@ -342,8 +397,14 @@ async def save_entered(
 
 
 async def snapshot_all_sites() -> int:
-    """The nightly freeze, run after the schedule generator."""
+    """Nightly freeze of *yesterday's* report for every active site.
+
+    Today's sheet stays live so afternoon register / inspection fills still
+    move the derived lines. Yesterday is sealed once the operational day is
+    over (this job runs shortly after the evening schedule generator).
+    """
     import logging
+    from datetime import timedelta
 
     from app.models.master import Site
     from app.services.common import today_ist
@@ -351,7 +412,7 @@ async def snapshot_all_sites() -> int:
     logger = logging.getLogger("enm.dmr")
     from app.db import SessionLocal
 
-    day = today_ist()
+    day = today_ist() - timedelta(days=1)
     frozen = 0
     async with SessionLocal() as session:
         codes = list(
@@ -368,5 +429,5 @@ async def snapshot_all_sites() -> int:
                 frozen += 1
             except Exception:  # noqa: BLE001 - one site must not stop the rest
                 await session.rollback()
-                logger.exception("DMR snapshot failed for %s", code)
+                logger.exception("DMR snapshot failed for %s on %s", code, day)
     return frozen

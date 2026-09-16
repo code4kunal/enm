@@ -11,6 +11,11 @@ import 'session.dart';
 /// not been explained.
 final reportDateProvider = StateProvider<String>((ref) => Dates.today());
 
+/// Optional custom range for breakdown investigations (`yyyy-MM-dd`).
+final investigationFromProvider = StateProvider<String?>((ref) => null);
+final investigationToProvider = StateProvider<String?>((ref) => null);
+final investigationBusTypeProvider = StateProvider<String?>((ref) => null);
+
 /// The month the DMR grid is showing, as `yyyy-MM`.
 final reportMonthProvider = StateProvider<String>(
   (ref) => Dates.today().substring(0, 7),
@@ -46,12 +51,19 @@ final offRoadProvider = FutureProvider<List<OffRoadCase>>((ref) {
 final investigationsProvider = FutureProvider<InvestigationDay>((ref) {
   final site = ref.watch(sessionProvider.select((s) => s.site));
   final date = ref.watch(reportDateProvider);
+  final from = ref.watch(investigationFromProvider);
+  final to = ref.watch(investigationToProvider);
+  final busType = ref.watch(investigationBusTypeProvider);
   if (site.isEmpty) {
     return Future<InvestigationDay>.value(InvestigationDay.empty);
   }
-  return ref
-      .watch(reportRepositoryProvider)
-      .fetchInvestigations(siteCode: site, date: date);
+  return ref.watch(reportRepositoryProvider).fetchInvestigations(
+        siteCode: site,
+        date: date,
+        fromDate: from,
+        toDate: to,
+        busType: busType,
+      );
 });
 
 /// Breakdowns that day with nothing written against them yet — the badge on
@@ -106,6 +118,8 @@ final historyVehicleProvider = StateProvider<String>((ref) => '');
 
 /// Free-text filter over the bus picker — a site's fleet can run to hundreds.
 final historySearchProvider = StateProvider<String>((ref) => '');
+final historyBusTypeProvider = StateProvider<String?>((ref) => null);
+
 
 /// The month the history card runs to, as `yyyy-MM`.
 final historyMonthProvider = StateProvider<String>(

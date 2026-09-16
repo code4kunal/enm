@@ -47,6 +47,9 @@ class ChecklistOut(BaseModel):
     #: Which buses take this one. Null is the site's unscoped checklist, used
     #: by any bus that names no variant.
     variant: str | None = None
+    #: Docking (P.M) only — odometer rung this sheet is for. Null for D.I /
+    #: 10-day and for a legacy all-rung docking sheet.
+    milestone_km: int | None = None
     is_active: bool = True
     items: list[ChecklistItemIO] = Field(default_factory=list)
     updated_at: ISTDateTime | None = None
@@ -70,6 +73,7 @@ class ChecklistCatalogueSyncResult(BaseModel):
 class ChecklistUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
     variant: str | None = Field(default=None, max_length=40)
+    milestone_km: int | None = Field(default=None, ge=0, le=10_000_000)
     is_active: bool | None = None
     items: list[ChecklistItemIO] = Field(default_factory=list)
 
@@ -95,9 +99,10 @@ class InspectionCreate(BaseModel):
     work_type_id: int
     inspected_on: date_t
     entry_time: HHMM | None = None
-    done_by: str | None = Field(default=None, max_length=255)
+    done_by: str | None = Field(default=None, max_length=1000)
     supervisor: str | None = Field(default=None, max_length=255)
     odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)
+    milestone_km: int | None = Field(default=None, ge=0, le=10_000_000)
     remarks: str | None = None
     results: list[ResultIn] = Field(default_factory=list)
 
@@ -115,6 +120,7 @@ class InspectionOut(BaseModel):
     done_by: str | None = None
     supervisor: str | None = None
     odometer_km: int | None = None
+    milestone_km: int | None = None
     remarks: str | None = None
     slot_id: str | None = None
     #: Lines that came back not OK — what a supervisor actually reads.

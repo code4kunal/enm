@@ -127,6 +127,11 @@ class VehicleOut(BaseModel):
     last_service_km: int | None = None
     last_service_on: date_t | None = None
     last_service_code: str = ""
+    registration_date: date_t | None = None
+    fitness_renewal_date: date_t | None = None
+    insurance_renewal_date: date_t | None = None
+    #: Whole years since registration_date; null when that date is missing.
+    vehicle_age_years: int | None = None
 
 
 class VehicleList(BaseModel):
@@ -138,6 +143,10 @@ class VehicleCreate(BaseModel):
     make: str = Field(default="", max_length=64)
     model: str = Field(default="", max_length=64)
     battery_capacity_kwh: Decimal | None = Field(default=None, ge=0, le=99999)
+    registration_date: date_t | None = None
+    fitness_renewal_date: date_t | None = None
+    insurance_renewal_date: date_t | None = None
+    checklist_variant: str | None = Field(default=None, max_length=40)
 
     @field_validator("registration_no")
     @classmethod
@@ -151,6 +160,10 @@ class VehicleUpdate(BaseModel):
     model: str | None = Field(default=None, max_length=64)
     battery_capacity_kwh: Decimal | None = Field(default=None, ge=0, le=99999)
     is_active: bool | None = None
+    registration_date: date_t | None = None
+    fitness_renewal_date: date_t | None = None
+    insurance_renewal_date: date_t | None = None
+    checklist_variant: str | None = Field(default=None, max_length=40)
 
     @field_validator("registration_no")
     @classmethod

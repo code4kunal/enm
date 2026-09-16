@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/docking_km.dart';
 import '../data/registers.dart';
+import '../models/checklist.dart';
 import '../models/entry.dart';
 import '../models/report.dart';
 import '../router.dart';
 import '../state/entries.dart';
+import '../state/inspections.dart';
 import '../state/providers.dart';
 import '../state/reports.dart';
 import '../state/session.dart';
@@ -14,15 +17,13 @@ import '../state/toast.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/csv_export.dart';
+import '../utils/dates.dart';
 import '../widgets/buttons.dart';
 import '../widgets/chips.dart';
 import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
-import '../models/checklist.dart';
-import '../utils/dates.dart';
-import '../state/inspections.dart';
 import '../widgets/sub_tabs.dart';
 
 class RegistersScreen extends ConsumerStatefulWidget {
@@ -245,27 +246,58 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
               ),
             const SizedBox(height: 32),
           ] else ...<Widget>[
-          Text(
-            '${results.length} ${results.length == 1 ? 'entry' : 'entries'} · $siteName',
-            style: AppText.sans(size: 13, color: T.secondary),
-          ),
-          const SizedBox(height: 10),
-
-          if (results.isEmpty)
-            const EmptyState(message: 'No matching entries.')
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                for (final e in results) ...<Widget>[
-                  _ResultRow(
-                    entry: e,
-                    units: unitsByEntry.where((u) => u.entryId == e.id),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ],
+            Text(
+              '${results.length} ${results.length == 1 ? 'entry' : 'entries'}'
+              '${filters.registerId == 'all' && inspections.isNotEmpty ? ' · ${inspections.length} inspection${inspections.length == 1 ? '' : 's'}' : ''}'
+              ' · $siteName',
+              style: AppText.sans(size: 13, color: T.secondary),
             ),
+            const SizedBox(height: 10),
+
+            if (results.isEmpty &&
+                !(filters.registerId == 'all' && inspections.isNotEmpty))
+              const EmptyState(message: 'No matching entries.')
+            else ...<Widget>[
+              if (results.isNotEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    for (final e in results) ...<Widget>[
+                      _ResultRow(
+                        entry: e,
+                        units: unitsByEntry.where((u) => u.entryId == e.id),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                ),
+              // All registers also lists inspections — docking / D.I / 10-day
+              // completions are what the depot did that day, even though they
+              // are not paper-register rows.
+              if (filters.registerId == 'all' && inspections.isNotEmpty) ...<Widget>[
+                if (results.isNotEmpty) const SizedBox(height: 18),
+                Text(
+                  'INSPECTIONS',
+                  style: AppText.sans(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: T.muted,
+                    letterSpacing: 0.08 * 12,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    for (final i in inspections) ...<Widget>[
+                      _InspectionRow(entry: i),
+                      const SizedBox(height: 10),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+            const SizedBox(height: 32),
           ],
         ],
       ),
@@ -299,6 +331,14 @@ class _InspectionRow extends ConsumerWidget {
                 background: T.subtleFill,
                 foreground: T.secondary,
               ),
+              if (entry.milestoneKm != null) ...<Widget>[
+                const SizedBox(width: 6),
+                TagBadge(
+                  label: formatDockingKm(entry.milestoneKm!),
+                  background: T.indigoTint,
+                  foreground: T.indigo,
+                ),
+              ],
               const SizedBox(width: 8),
               Text(busName, style: AppText.mono(size: 13.5)),
               const SizedBox(width: 8),

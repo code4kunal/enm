@@ -109,6 +109,10 @@ class Vehicle {
     this.lastServiceKm,
     this.lastServiceOn,
     this.lastServiceCode = '',
+    this.registrationDate,
+    this.fitnessRenewalDate,
+    this.insuranceRenewalDate,
+    this.vehicleAgeYears,
   });
 
   final String id;
@@ -145,7 +149,22 @@ class Vehicle {
   /// Which [ServicePlan] was last carried out.
   final String lastServiceCode;
 
+  /// `yyyy-MM-dd` — SiteOps when present, else manual ENM.
+  final String? registrationDate;
+  final String? fitnessRenewalDate;
+  final String? insuranceRenewalDate;
+
+  /// Derived on the server from [registrationDate].
+  final int? vehicleAgeYears;
+
   bool get hasOdometer => odometerUpdatedAt != null;
+
+  /// Display label for Bus Type — `9M` covers “9M Non-AC”.
+  String get busTypeLabel {
+    final v = checklistVariant?.trim();
+    if (v == null || v.isEmpty) return '—';
+    return v;
+  }
 
   String get displayLabel {
     final spec = <String>[
@@ -165,12 +184,17 @@ class Vehicle {
     bool? isActive,
     String? make,
     String? model,
+    String? checklistVariant,
     double? batteryCapacityKwh,
     int? odometerKm,
     String? odometerUpdatedAt,
     int? lastServiceKm,
     String? lastServiceOn,
     String? lastServiceCode,
+    String? registrationDate,
+    String? fitnessRenewalDate,
+    String? insuranceRenewalDate,
+    int? vehicleAgeYears,
   }) {
     return Vehicle(
       id: id,
@@ -179,12 +203,17 @@ class Vehicle {
       isActive: isActive ?? this.isActive,
       make: make ?? this.make,
       model: model ?? this.model,
+      checklistVariant: checklistVariant ?? this.checklistVariant,
       batteryCapacityKwh: batteryCapacityKwh ?? this.batteryCapacityKwh,
       odometerKm: odometerKm ?? this.odometerKm,
       odometerUpdatedAt: odometerUpdatedAt ?? this.odometerUpdatedAt,
       lastServiceKm: lastServiceKm ?? this.lastServiceKm,
       lastServiceOn: lastServiceOn ?? this.lastServiceOn,
       lastServiceCode: lastServiceCode ?? this.lastServiceCode,
+      registrationDate: registrationDate ?? this.registrationDate,
+      fitnessRenewalDate: fitnessRenewalDate ?? this.fitnessRenewalDate,
+      insuranceRenewalDate: insuranceRenewalDate ?? this.insuranceRenewalDate,
+      vehicleAgeYears: vehicleAgeYears ?? this.vehicleAgeYears,
     );
   }
 
@@ -195,11 +224,15 @@ class Vehicle {
         'is_active': isActive,
         'make': make,
         'model': model,
+        'checklist_variant': checklistVariant,
         'battery_capacity_kwh': batteryCapacityKwh,
         'odometer_km': odometerKm,
         'last_service_km': lastServiceKm,
         'last_service_on': lastServiceOn,
         'last_service_code': lastServiceCode,
+        'registration_date': registrationDate,
+        'fitness_renewal_date': fitnessRenewalDate,
+        'insurance_renewal_date': insuranceRenewalDate,
       };
 
   factory Vehicle.fromJson(Map<String, dynamic> json) {
@@ -218,17 +251,21 @@ class Vehicle {
       registrationNo: rawReg.isNotEmpty ? rawReg : idStr,
       siteCode: (json['site_code'] ?? json['site_id'] ?? '').toString(),
       isActive: json['is_active'] as bool? ?? true,
-        make: (json['make'] ?? '').toString(),
-        model: (json['model'] ?? '').toString(),
-        checklistVariant: json['checklist_variant']?.toString(),
-        batteryCapacityKwh: (json['battery_capacity_kwh'] as num?)?.toDouble(),
-        odometerKm:
-            ((json['odometer_km'] ?? json['last_odo']) as num?)?.round() ?? 0,
-        odometerUpdatedAt: json['odometer_updated_at']?.toString(),
-        lastServiceKm: (json['last_service_km'] as num?)?.round(),
-        lastServiceOn: json['last_service_on']?.toString(),
-        lastServiceCode: (json['last_service_code'] ?? '').toString(),
-      );
+      make: (json['make'] ?? '').toString(),
+      model: (json['model'] ?? '').toString(),
+      checklistVariant: json['checklist_variant']?.toString(),
+      batteryCapacityKwh: (json['battery_capacity_kwh'] as num?)?.toDouble(),
+      odometerKm:
+          ((json['odometer_km'] ?? json['last_odo']) as num?)?.round() ?? 0,
+      odometerUpdatedAt: json['odometer_updated_at']?.toString(),
+      lastServiceKm: (json['last_service_km'] as num?)?.round(),
+      lastServiceOn: json['last_service_on']?.toString(),
+      lastServiceCode: (json['last_service_code'] ?? '').toString(),
+      registrationDate: json['registration_date']?.toString(),
+      fitnessRenewalDate: json['fitness_renewal_date']?.toString(),
+      insuranceRenewalDate: json['insurance_renewal_date']?.toString(),
+      vehicleAgeYears: (json['vehicle_age_years'] as num?)?.round(),
+    );
   }
 }
 

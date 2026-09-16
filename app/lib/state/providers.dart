@@ -51,6 +51,10 @@ final userRepositoryProvider = Provider<UserRepository>(
   (ref) => ApiUserRepository(ref.watch(apiClientProvider)),
 );
 
+final adminEstateRepositoryProvider = Provider<AdminEstateRepository>(
+  (ref) => ApiAdminEstateRepository(ref.watch(apiClientProvider)),
+);
+
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => ApiAuthRepository(ref.watch(apiClientProvider)),
 );

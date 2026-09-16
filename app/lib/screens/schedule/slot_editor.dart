@@ -277,6 +277,17 @@ class _SlotCreatorSheetState extends ConsumerState<_SlotCreatorSheet> {
                   .id;
             }),
           ),
+          if (_vehicleId != null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              'Bus Type: ${active.where((v) => v.id == _vehicleId).map((v) => v.busTypeLabel).firstOrNull ?? '—'}',
+              style: AppText.sans(
+                size: 13.5,
+                weight: FontWeight.w600,
+                color: T.secondary,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           const FieldLabel(label: 'Inspection'),
           const SizedBox(height: 6),

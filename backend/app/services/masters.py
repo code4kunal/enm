@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date as date_t
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,21 @@ from app.services import siteops
 def normalize_registration_no(raw: str) -> str:
     """Registration numbers are stored uppercase with no whitespace."""
     return "".join(raw.split()).upper()
+
+
+def _parse_siteops_date(raw: object | None) -> date_t | None:
+    """SiteOps sends dates as ISO strings or dd-mm-yyyy; ignore junk."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or text.lower() in {"none", "null", "n/a", "-"}:
+        return None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _checklist_variant_from_ac_nac(ac_nac: str | None) -> str | None:
@@ -119,6 +136,19 @@ async def sync_vehicles_from_siteops(
         variant = _checklist_variant_from_ac_nac(row.get("ac_nac"))
         make = str(row.get("make") or "")
         model = str(row.get("model") or "")
+        reg_date = _parse_siteops_date(
+            row.get("date_of_reg") or row.get("registration_date")
+        )
+        fitness = _parse_siteops_date(
+            row.get("fitness_expiry_date")
+            or row.get("fitness_renewal_date")
+            or row.get("fitness_expiry")
+        )
+        insurance = _parse_siteops_date(
+            row.get("insurance_expiry_date")
+            or row.get("insurance_renewal_date")
+            or row.get("insurance_expiry")
+        )
 
         found = existing.get(registration_no)
         if found is not None:
@@ -138,6 +168,17 @@ async def sync_vehicles_from_siteops(
                     result.variant_backfilled += 1
                 found.checklist_variant = variant
                 changed = True
+            # SiteOps wins when it has a value; leave manual ENM dates alone
+            # when SiteOps sends nothing.
+            if reg_date is not None and found.registration_date != reg_date:
+                found.registration_date = reg_date
+                changed = True
+            if fitness is not None and found.fitness_renewal_date != fitness:
+                found.fitness_renewal_date = fitness
+                changed = True
+            if insurance is not None and found.insurance_renewal_date != insurance:
+                found.insurance_renewal_date = insurance
+                changed = True
             if not found.is_active:
                 found.is_active = True
                 result.reactivated += 1
@@ -154,6 +195,9 @@ async def sync_vehicles_from_siteops(
             make=make,
             model=model,
             checklist_variant=variant,
+            registration_date=reg_date,
+            fitness_renewal_date=fitness,
+            insurance_renewal_date=insurance,
         )
         session.add(vehicle)
         existing[registration_no] = vehicle

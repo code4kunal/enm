@@ -85,8 +85,8 @@ async def lifespan(_app: FastAPI):
             max_instances=1,
             coalesce=True,
         )
-        # Freeze the day's report a few minutes after the schedule run, so the
-        # numbers reported are the ones the day actually ended with.
+        # Freeze yesterday's report after the evening schedule run so today's
+        # sheet keeps updating from late register / inspection fills.
         scheduler.add_job(
             snapshot_all_sites,
             CronTrigger(

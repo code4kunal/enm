@@ -84,6 +84,8 @@ class DmrDay(Base):
     breakdowns_ac: Mapped[int | None] = mapped_column(Integer, nullable=True)
     breakdowns_its: Mapped[int | None] = mapped_column(Integer, nullable=True)
     loss_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    breakdowns_km_loss: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    breakdowns_no_km_loss: Mapped[int | None] = mapped_column(Integer, nullable=True)
     driver_complaints: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_inspections: Mapped[int | None] = mapped_column(Integer, nullable=True)
     periodic_pm: Mapped[int | None] = mapped_column(Integer, nullable=True)

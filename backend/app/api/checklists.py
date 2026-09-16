@@ -37,6 +37,7 @@ def _checklist_out(template: ChecklistTemplate) -> ChecklistOut:
         work_type_name=work_type.name if work_type else "",
         name=template.name,
         variant=template.variant,
+        milestone_km=template.milestone_km,
         is_active=template.is_active,
         items=[
             ChecklistItemIO(
@@ -72,6 +73,7 @@ def _inspection_out(inspection: InspectionEntry) -> InspectionOut:
         done_by=inspection.done_by,
         supervisor=inspection.supervisor,
         odometer_km=inspection.odometer_km,
+        milestone_km=inspection.milestone_km,
         remarks=inspection.remarks,
         slot_id=inspection.slot_id,
         failed_count=len(inspection.failed),
@@ -171,7 +173,11 @@ async def replace_checklist(
         raise NotFound("Inspection type not found")
 
     template = await checklists.ensure_template(
-        session, site_code, work_type, variant=payload.variant
+        session,
+        site_code,
+        work_type,
+        variant=payload.variant,
+        milestone_km=payload.milestone_km,
     )
     if payload.name is not None:
         template.name = payload.name
@@ -244,6 +250,7 @@ async def record_inspection(
         supervisor=payload.supervisor,
         odometer_km=payload.odometer_km,
         remarks=payload.remarks,
+        milestone_km=payload.milestone_km,
         results=[
             (r.item_id, r.result, r.value, r.remark) for r in payload.results
         ],

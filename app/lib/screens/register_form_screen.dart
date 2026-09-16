@@ -324,6 +324,8 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
     final technicianStaff = ref.watch(technicianStaffProvider).valueOrNull ?? const <String>[];
     final supervisorStaff = ref.watch(supervisorStaffProvider).valueOrNull ?? const <String>[];
     final mechanicStaff = ref.watch(mechanicStaffProvider).valueOrNull ?? const <String>[];
+    final fleet =
+        ref.watch(siteVehiclesProvider).valueOrNull ?? const <Vehicle>[];
     final siteLabel = ref.watch(siteDisplayNameProvider);
     final isMobile = MediaQuery.sizeOf(context).width < T.mobileBreakpoint;
 
@@ -434,6 +436,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                 child: _FieldGrid(
                   register: register,
                   master: master,
+                  fleet: fleet,
                   technicianStaff: technicianStaff,
                   supervisorStaff: supervisorStaff,
                   mechanicStaff: mechanicStaff,
@@ -680,6 +683,7 @@ class _FieldGrid extends StatelessWidget {
   const _FieldGrid({
     required this.register,
     required this.master,
+    required this.fleet,
     required this.technicianStaff,
     required this.supervisorStaff,
     required this.mechanicStaff,
@@ -696,6 +700,7 @@ class _FieldGrid extends StatelessWidget {
 
   final RegisterDef register;
   final MasterData master;
+  final List<Vehicle> fleet;
   final List<String> technicianStaff;
   final List<String> supervisorStaff;
   final List<String> mechanicStaff;
@@ -741,6 +746,7 @@ class _FieldGrid extends StatelessWidget {
                   registerId: register.id,
                   def: f,
                   master: master,
+                  fleet: fleet,
                   technicianStaff: technicianStaff,
                   supervisorStaff: supervisorStaff,
                   mechanicStaff: mechanicStaff,
@@ -771,6 +777,7 @@ class _Field extends StatelessWidget {
     required this.registerId,
     required this.def,
     required this.master,
+    required this.fleet,
     required this.technicianStaff,
     required this.supervisorStaff,
     required this.mechanicStaff,
@@ -784,6 +791,7 @@ class _Field extends StatelessWidget {
   final String registerId;
   final FieldDef def;
   final MasterData master;
+  final List<Vehicle> fleet;
   final List<String> technicianStaff;
   final List<String> supervisorStaff;
   final List<String> mechanicStaff;
@@ -863,13 +871,35 @@ class _Field extends StatelessWidget {
         );
 
       case FieldType.bus:
-        return AppSelect(
-          value: value,
-          options: master.vehicles,
-          mono: true,
-          placeholder: 'Select bus…',
-          emptyHint: 'No buses at this site — open Vehicle Master or Sync fleet',
-          onChanged: (v) => onSet(def.key, v ?? ''),
+        final busType = fleet
+            .where((v) => v.registrationNo == value)
+            .map((v) => v.busTypeLabel)
+            .firstOrNull;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            AppSelect(
+              value: value,
+              options: master.vehicles,
+              mono: true,
+              placeholder: 'Select bus…',
+              emptyHint:
+                  'No buses at this site — open Vehicle Master or Sync fleet',
+              onChanged: (v) => onSet(def.key, v ?? ''),
+            ),
+            if (value.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'Bus Type: ${busType ?? '—'}',
+                style: AppText.sans(
+                  size: 13.5,
+                  weight: FontWeight.w600,
+                  color: T.secondary,
+                ),
+              ),
+            ],
+          ],
         );
 
       case FieldType.select:

@@ -289,6 +289,10 @@ async def create_vehicle(
         make=payload.make.strip(),
         model=payload.model.strip(),
         battery_capacity_kwh=payload.battery_capacity_kwh,
+        registration_date=payload.registration_date,
+        fitness_renewal_date=payload.fitness_renewal_date,
+        insurance_renewal_date=payload.insurance_renewal_date,
+        checklist_variant=payload.checklist_variant,
     )
     session.add(vehicle)
     await session.flush()
@@ -431,6 +435,14 @@ async def update_vehicle(
         vehicle.battery_capacity_kwh = payload.battery_capacity_kwh
     if payload.is_active is not None:
         vehicle.is_active = payload.is_active
+    if "registration_date" in payload.model_fields_set:
+        vehicle.registration_date = payload.registration_date
+    if "fitness_renewal_date" in payload.model_fields_set:
+        vehicle.fitness_renewal_date = payload.fitness_renewal_date
+    if "insurance_renewal_date" in payload.model_fields_set:
+        vehicle.insurance_renewal_date = payload.insurance_renewal_date
+    if "checklist_variant" in payload.model_fields_set:
+        vehicle.checklist_variant = payload.checklist_variant
 
     await audit.record(
         session,

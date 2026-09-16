@@ -82,7 +82,7 @@ async def test_the_report_has_every_line_in_order(client: AsyncClient) -> None:
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert [x["number"] for x in body["lines"]] == list(range(1, 32))
+    assert [x["number"] for x in body["lines"]] == list(range(1, 34))
     assert line(body, 1)["label"] == "Total fleet"
     assert line(body, 1)["derived"] is True
     # Nothing observes these, so they are asked for rather than invented.
@@ -159,7 +159,7 @@ async def test_the_entered_lines_are_stored_and_read_back(
     body = r.json()
     assert value(body, 2) == 48
     assert value(body, 3) == 6
-    assert value(body, 29) == 2
+    assert value(body, 31) == 2
     assert body["notes"] == "Two spare"
 
     again = (
@@ -521,6 +521,6 @@ async def test_reports_are_site_scoped(client: AsyncClient) -> None:
 
 async def test_the_parameter_list_is_the_one_spec(client: AsyncClient) -> None:
     """The API, the export and the UI all read the same list."""
-    assert len(dmr.PARAMETERS) == 31
-    assert len(dmr.DERIVED_KEYS) + len(dmr.ENTERED_KEYS) == 31
-    assert len({p.key for p in dmr.PARAMETERS}) == 31
+    assert len(dmr.PARAMETERS) == 33
+    assert len(dmr.DERIVED_KEYS) + len(dmr.ENTERED_KEYS) == 33
+    assert len({p.key for p in dmr.PARAMETERS}) == 33

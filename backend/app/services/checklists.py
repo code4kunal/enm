@@ -49,6 +49,7 @@ async def get_template(
     site_code: str,
     work_type_id: int,
     variant: str | None = None,
+    milestone_km: int | None = None,
 ) -> ChecklistTemplate | None:
     return await session.scalar(
         select(ChecklistTemplate).where(
@@ -57,6 +58,9 @@ async def get_template(
             ChecklistTemplate.variant.is_(None)
             if variant is None
             else ChecklistTemplate.variant == variant,
+            ChecklistTemplate.milestone_km.is_(None)
+            if milestone_km is None
+            else ChecklistTemplate.milestone_km == milestone_km,
         )
     )
 
@@ -66,15 +70,21 @@ async def template_for(
     site_code: str,
     work_type_id: int,
     vehicle: Vehicle | None,
+    milestone_km: int | None = None,
 ) -> ChecklistTemplate | None:
     """The checklist this bus takes for this inspection.
 
-    Its own variant first, then the unscoped one. A site that runs a single
-    checklist never sets a variant and always lands on the fallback; a site
-    like MBMT, whose 9M and 12M buses are inspected differently, gets the sheet
-    that matches the bus in front of the mechanic.
+    Bus type (`checklist_variant`) first. For docking (P.M), when a KM rung is
+    known, prefer the sheet for that mark, then the legacy all-rung sheet for
+    the same variant, then the unscoped fallback.
     """
     variant = vehicle.checklist_variant if vehicle else None
+    if variant and milestone_km is not None:
+        scoped_km = await get_template(
+            session, site_code, work_type_id, variant, milestone_km
+        )
+        if scoped_km is not None and scoped_km.items:
+            return scoped_km
     if variant:
         scoped = await get_template(session, site_code, work_type_id, variant)
         if scoped is not None:
@@ -85,7 +95,11 @@ async def template_for(
 async def variants_of(
     session: AsyncSession, site_code: str, work_type_id: int
 ) -> list[ChecklistTemplate]:
-    """Every variant-scoped checklist for this inspection, in name order."""
+    """Every variant-scoped checklist for this inspection.
+
+    Includes docking KM sheets (variant + milestone_km). Ordered by variant,
+    then KM so the admin form can group them.
+    """
     rows = await session.scalars(
         select(ChecklistTemplate)
         .where(
@@ -93,7 +107,10 @@ async def variants_of(
             ChecklistTemplate.work_type_id == work_type_id,
             ChecklistTemplate.variant.is_not(None),
         )
-        .order_by(ChecklistTemplate.variant)
+        .order_by(
+            ChecklistTemplate.variant,
+            ChecklistTemplate.milestone_km.nullsfirst(),
+        )
     )
     return list(rows.unique().all())
 
@@ -101,21 +118,13 @@ async def variants_of(
 async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
     """Give a newly onboarded site the standard inspection checklists.
 
-    Migrations 0014 (D.I. / 10-day, `checklists_v1`), 0015 (P.M. docking 9M,
-    `checklists_v2`) and 0016 (P.M. docking 12M AC/Non-AC, `checklists_v3`)
-    put these in the database for every site that existed when each ran. A
-    site created afterwards is past all three, so it needs the same
-    catalogue applied here or its mechanics open an empty form — this must
-    stay in sync with every seed module a migration has ever applied, not
-    just the first one.
+    Migrations 0014–0016 seeded D.I / 10-day / docking supersheets. Docking KM
+    sheets (`checklists_docking_km`) are applied here as well so new sites get
+    Bus Type × KM forms without a one-off script.
 
-    Filtered by the site's `operating_categories` (default bus). Seed modules
-    are frozen history; category tagging is applied here so truck seeds can
-    plug in later without rewriting v1–v3.
-
-    Never overwrites: a template that already has lines belongs to the depot,
-    whether it edited ours or wrote its own.
+    Never overwrites: a template that already has lines belongs to the depot.
     """
+    from app.seeds.checklists_docking_km import CHECKLISTS as CHECKLISTS_DOCKING_KM
     from app.seeds.checklists_v1 import CHECKLISTS as CHECKLISTS_V1
     from app.seeds.checklists_v2 import CHECKLISTS as CHECKLISTS_V2
     from app.seeds.checklists_v3 import CHECKLISTS as CHECKLISTS_V3
@@ -124,12 +133,11 @@ async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
     config = await site_config_svc.get_or_create(session, site_code)
     categories = set(config.operating_categories or ["bus"])
 
-    # Existing seed modules are bus catalogues. A future truck module tags
-    # entries with category="truck"; until then truck-only sites get nothing
-    # from these three.
     CHECKLISTS = [
         {**entry, "category": entry.get("category", "bus")}
-        for entry in (CHECKLISTS_V1 + CHECKLISTS_V2 + CHECKLISTS_V3)
+        for entry in (
+            CHECKLISTS_V1 + CHECKLISTS_V2 + CHECKLISTS_V3 + CHECKLISTS_DOCKING_KM
+        )
     ]
     CHECKLISTS = [e for e in CHECKLISTS if e["category"] in categories]
 
@@ -147,7 +155,11 @@ async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
         if work_type is None:
             continue
         template = await ensure_template(
-            session, site_code, work_type, variant=entry["variant"]
+            session,
+            site_code,
+            work_type,
+            variant=entry["variant"],
+            milestone_km=entry.get("milestone_km"),
         )
         if template.items:
             continue
@@ -156,7 +168,7 @@ async def apply_catalogue(session: AsyncSession, site_code: str) -> int:
             template.items.append(
                 ChecklistItem(
                     section=item["section"] or "",
-                    label=item["label"],
+                    label=item["label"][:255],
                     sort_order=item["sort_order"],
                     response_type=ResponseType(item["response_type"]),
                     is_required=item["is_required"],
@@ -173,25 +185,23 @@ async def ensure_template(
     site_code: str,
     work_type: WorkType,
     variant: str | None = None,
+    milestone_km: int | None = None,
 ) -> ChecklistTemplate:
     """A site always has a template per inspection type, even an empty one.
 
     Empty is a legitimate state and says so on the form — better than pretending
     a checklist exists by inventing lines the depot never wrote.
     """
-    template = await get_template(session, site_code, work_type.id, variant)
+    template = await get_template(
+        session, site_code, work_type.id, variant, milestone_km
+    )
     if template is None:
         template = ChecklistTemplate(
             site_code=site_code,
             variant=variant,
-            # Assigned as the object, not the id: a freshly added row would
-            # otherwise lazy-load `work_type` during serialization, outside the
-            # async context that is allowed to do IO.
+            milestone_km=milestone_km,
             work_type=work_type,
             name=work_type.name,
-            # Both collections initialised explicitly. A freshly added row
-            # would otherwise lazy-load them during serialization, outside the
-            # async context that is allowed to do IO.
             items=[],
         )
         session.add(template)
@@ -273,6 +283,7 @@ async def record_inspection(
     remarks: str | None,
     results: list[tuple[str, CheckResult, str | None, str | None]],
     actor: User,
+    milestone_km: int | None = None,
 ) -> InspectionEntry:
     """Write one inspection and discharge the booking it answers.
 
@@ -307,13 +318,38 @@ async def record_inspection(
             {"inspected_on": "duplicate"},
         )
 
-    # The bus's own variant, not the site's variant-less placeholder. Omitting
-    # it resolved a template with no items, so every real answer came back
-    # "unknown item" and only an empty inspection could be filed — a record
-    # that a sweep happened and no record of what was checked.
-    template = await ensure_template(
-        session, site_code, work_type, variant=vehicle.checklist_variant
+    # Prefer the docking rung's sheet when a booked slot carries one; otherwise
+    # the bus variant alone (D.I / 10-day, or a manual P.M without a plan).
+    # Client-supplied milestone_km wins when the mechanic picks the KM sheet
+    # explicitly on the form (no booking, or override).
+    open_slot = await session.scalar(
+        select(InspectionSlot)
+        .where(
+            InspectionSlot.site_code == site_code,
+            InspectionSlot.vehicle_id == vehicle.id,
+            InspectionSlot.work_type_id == work_type.id,
+            InspectionSlot.status.in_([SlotStatus.scheduled, SlotStatus.missed]),
+        )
+        .order_by(InspectionSlot.scheduled_on.desc())
+        .limit(1)
     )
+    slot_km = (
+        open_slot.service_plan.milestone_km
+        if open_slot is not None and open_slot.service_plan is not None
+        else None
+    )
+    resolved_km = milestone_km if milestone_km is not None else slot_km
+    template = await template_for(
+        session, site_code, work_type.id, vehicle, milestone_km=resolved_km
+    )
+    if template is None:
+        template = await ensure_template(
+            session,
+            site_code,
+            work_type,
+            variant=vehicle.checklist_variant,
+            milestone_km=resolved_km,
+        )
     by_id = {item.id: item for item in template.items if item.is_active}
 
     missing = [
@@ -338,6 +374,7 @@ async def record_inspection(
         done_by=done_by,
         supervisor=supervisor,
         odometer_km=odometer_km,
+        milestone_km=resolved_km,
         remarks=remarks,
         created_by=actor,
         # Initialised explicitly: a freshly added row would otherwise
@@ -367,22 +404,14 @@ async def record_inspection(
             source=f"inspection {work_type.code}",
         )
 
-    slot = await session.scalar(
-        select(InspectionSlot)
-        .where(
-            InspectionSlot.site_code == site_code,
-            InspectionSlot.vehicle_id == vehicle.id,
-            InspectionSlot.work_type_id == work_type.id,
-            InspectionSlot.status.in_([SlotStatus.scheduled, SlotStatus.missed]),
-        )
-        .order_by(InspectionSlot.scheduled_on.desc())
-        .limit(1)
-    )
+    slot = open_slot
     if slot is not None:
         slot.status = SlotStatus.done
         slot.completed_on = inspected_on
         slot.updated_at = datetime.now(UTC)
         inspection.slot_id = slot.id
+        if slot.service_plan_id is not None:
+            inspection.service_plan_id = slot.service_plan_id
 
     await session.flush()
     return inspection

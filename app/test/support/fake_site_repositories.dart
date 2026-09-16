@@ -108,6 +108,10 @@ class FakeVehicleRepository implements VehicleRepository {
     String make = '',
     String model = '',
     double? batteryCapacityKwh,
+    String? checklistVariant,
+    String? registrationDate,
+    String? fitnessRenewalDate,
+    String? insuranceRenewalDate,
   }) async {
     await Future<void>.delayed(_latency);
     final reg = Vehicle.normalise(registrationNo);
@@ -125,6 +129,10 @@ class FakeVehicleRepository implements VehicleRepository {
       make: make.trim(),
       model: model.trim(),
       batteryCapacityKwh: batteryCapacityKwh,
+      checklistVariant: checklistVariant,
+      registrationDate: registrationDate,
+      fitnessRenewalDate: fitnessRenewalDate,
+      insuranceRenewalDate: insuranceRenewalDate,
     );
     _store.vehicles.add(vehicle);
     return vehicle;

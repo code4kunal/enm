@@ -7,6 +7,7 @@ import '../data/registers.dart';
 import '../models/entry.dart';
 import '../utils/dates.dart';
 import 'providers.dart';
+import 'reports.dart';
 import 'session.dart';
 
 /// Period selector on the Registers view.
@@ -122,6 +123,11 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
 
     final created = await ref.read(entryRepositoryProvider).createEntry(draft);
     _replaceAll((list) => <RegisterEntry>[created, ...list]);
+    // DMR / charts / investigations read these registers.
+    ref.invalidate(dmrDayProvider);
+    ref.invalidate(dmrMonthProvider);
+    ref.invalidate(controlChartProvider);
+    ref.invalidate(investigationsProvider);
     return created;
   }
 
@@ -144,6 +150,10 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     _replaceAll(
       (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
     );
+    ref.invalidate(dmrDayProvider);
+    ref.invalidate(dmrMonthProvider);
+    ref.invalidate(controlChartProvider);
+    ref.invalidate(investigationsProvider);
     return saved;
   }
 
