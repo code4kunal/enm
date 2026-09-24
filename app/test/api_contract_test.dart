@@ -100,6 +100,27 @@ void main() {
       expect(created.data['bcs'], '1.5');
     });
 
+    test('a resolved breakdown parses as EntryStatus.resolved, not done',
+        () async {
+      final mock = MockClient((http.Request request) async {
+        final body = jsonDecode(fixture('entry_create')) as Map<String, dynamic>;
+        body['status'] = 'resolved';
+        return http.Response(
+          jsonEncode(body), 200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final entry = await ApiEntryRepository(client).createEntry(
+        const RegisterEntry(
+          id: '', registerId: 'breakdown', date: '2026-08-13', time: '09:29',
+          site: 'MBMT', enteredBy: '', data: <String, String>{'bus': 'MH40LY1894'},
+        ),
+      );
+      expect(entry.status, EntryStatus.resolved);
+    });
+
     test('the create body uses the API field names', () async {
       late Map<String, dynamic> sent;
       final mock = MockClient((http.Request request) async {

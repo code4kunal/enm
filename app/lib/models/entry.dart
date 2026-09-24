@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-/// Lifecycle of a register entry. Only breakdown entries are ever [open];
-/// every other register writes [done] on save.
-enum EntryStatus { open, done }
+/// Lifecycle of a register entry. Only breakdown entries are ever [open] or
+/// [resolved]; every other register writes [done] on save.
+enum EntryStatus { open, done, resolved }
 
 /// One row of one physical register, digitised.
 ///

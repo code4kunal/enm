@@ -662,7 +662,7 @@ class ApiEntryRepository implements EntryRepository {
 
   @override
   Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
-    if (status != EntryStatus.done) {
+    if (status != EntryStatus.resolved) {
       throw const ApiException('Only resolving a breakdown is supported');
     }
     final json = await _api.post('/entries/$entryId/resolve');
@@ -717,11 +717,11 @@ RegisterEntry _entryFromWire(Map<String, dynamic> json) {
             ? (createdBy['name'] as String? ?? '')
             : (createdBy?.toString() ?? '')),
     data: data,
-    // The API distinguishes done from resolved; the tracker only cares
-    // whether a breakdown is still open.
-    status: (json['status'] as String?) == 'open'
-        ? EntryStatus.open
-        : EntryStatus.done,
+    status: switch (json['status'] as String?) {
+      'open' => EntryStatus.open,
+      'resolved' => EntryStatus.resolved,
+      _ => EntryStatus.done,
+    },
     photoUrl: json['photo_url'] as String?,
     linkedSessions: (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])
         .map((s) => s as Map<String, dynamic>)

@@ -165,7 +165,7 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
   Future<void> resolveBreakdown(String entryId) async {
     final saved = await ref
         .read(entryRepositoryProvider)
-        .setStatus(entryId, EntryStatus.done);
+        .setStatus(entryId, EntryStatus.resolved);
     _replaceAll(
       (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
     );
