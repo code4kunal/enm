@@ -94,25 +94,36 @@ def _search_text(
 # --- write path ------------------------------------------------------------
 
 
-async def _resolve_ticket(session: AsyncSession, ticket_id: str | None) -> Ticket | None:
+async def _resolve_ticket(
+    session: AsyncSession, ticket_id: str | None, *, existing_ticket_id: str | None = None
+) -> Ticket | None:
     if not ticket_id:
         return None
     ticket = await session.get(Ticket, ticket_id)
     if ticket is None:
         raise ValidationError("ticket_id: not found", {"ticket_id": "not found"})
-    if ticket.status is TicketStatus.completed:
+    # A completed ticket can't be newly attached to — but an edit that
+    # resubmits an entry's own already-completed ticket unchanged (the
+    # GET-then-PUT-the-whole-form-back contract) isn't a new attachment.
+    if ticket.status is TicketStatus.completed and ticket_id != existing_ticket_id:
         raise Conflict("This ticket is already completed")
     return ticket
 
 
 async def _build_detail(
-    session: AsyncSession, register: Register, data: Any
+    session: AsyncSession,
+    register: Register,
+    data: Any,
+    *,
+    existing_ticket_id: str | None = None,
 ) -> tuple[Any, list[Any]]:
     """Return (detail_row, searchable_values) for the register subtype table."""
     if register is Register.work_done:
         src = await resolve_defect_source(session, data.defect_source)
         typ = await resolve_defect_type(session, data.defect_type)
-        ticket = await _resolve_ticket(session, data.ticket_id)
+        ticket = await _resolve_ticket(
+            session, data.ticket_id, existing_ticket_id=existing_ticket_id
+        )
         row = WorkDoneEntry(
             shift=data.shift,
             reported_defects=data.reported_defects,
@@ -215,7 +226,7 @@ async def _apply_ticket_side_effects(
     ticket = await session.get(Ticket, detail.ticket_id)
     now = _now_ist()
     mark_attended(ticket, now)
-    if detail.completes_ticket:
+    if detail.completes_ticket and ticket.status is not TicketStatus.completed:
         completed_at = (
             datetime.combine(entry.entry_date, detail.completion_time, tzinfo=IST)
             if detail.completion_time
@@ -286,12 +297,15 @@ async def update_entry(
     entry.vehicle = vehicle
 
     old_detail = entry.detail
+    old_ticket_id = getattr(old_detail, "ticket_id", None)
     if old_detail is not None:
         await session.delete(old_detail)
         await session.flush()
         setattr(entry, entry.register.value, None)
 
-    detail, searchable = await _build_detail(session, entry.register, data)
+    detail, searchable = await _build_detail(
+        session, entry.register, data, existing_ticket_id=old_ticket_id
+    )
     setattr(entry, entry.register.value, detail)
     entry.search_text = _search_text(entry, vehicle, entry.created_by, searchable)
     entry.updated_at = datetime.now(UTC)

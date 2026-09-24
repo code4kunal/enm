@@ -158,6 +158,49 @@ async def test_work_done_completing_a_breakdown_ticket_mirrors_resolved_fields(
     assert still_open.json() == []
 
 
+async def test_editing_a_work_done_entry_after_it_completed_its_ticket_is_not_a_conflict(
+    client: AsyncClient,
+) -> None:
+    """The edit form is GET-then-PUT-the-whole-form-back.
+
+    `serialize_data` echoes `completes_ticket: true` once it's set, so an
+    unrelated edit resubmits it too. That must not re-trigger completion —
+    the ticket is already completed, and re-submitting the same completed
+    state is not the same thing as trying to complete it a second time.
+    """
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown"},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "16:00"
+    created = await client.post("/entries", json=payload, headers=h)
+    assert created.status_code == 201, created.text
+    entry = created.json()
+
+    # Simulate the real round trip: GET the entry back, tweak one unrelated
+    # field, PUT the whole form — completes_ticket/ticket_id ride along
+    # unchanged, exactly as the edit form would send them.
+    fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
+    data = dict(fetched["data"])
+    assert data["completes_ticket"] is True
+    data["attended_details"] = "Confirmed fix held on next inspection"
+    r = await client.put(
+        f"/entries/{entry['id']}",
+        json={"date": fetched["date"], "data": data},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["attended_details"] == "Confirmed fix held on next inspection"
+
+
 async def test_resolve_endpoint_still_works_and_completes_the_ticket(
     client: AsyncClient,
 ) -> None:
