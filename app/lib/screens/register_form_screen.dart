@@ -721,6 +721,13 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
   String? _registerFilter;
   String _query = '';
   String _pickedTitle = '';
+  final TextEditingController _queryController = TextEditingController();
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -791,7 +798,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
             ),
             const SizedBox(height: 8),
             AppTextField(
-              controller: TextEditingController(text: _query),
+              controller: _queryController,
               placeholder: 'Search by title or ID…',
               onChanged: (v) => setState(() => _query = v),
             ),
@@ -803,6 +810,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                     widget.onSet('ticketId', r.ticketId);
                     _pickedTitle = r.title;
                     _query = '';
+                    _queryController.clear();
                   }),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
