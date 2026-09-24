@@ -17,13 +17,15 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column(
+        "work_done_entries", sa.Column("ticket_id", sa.String(32), nullable=True)
+    )
+    op.create_foreign_key(
+        "fk_work_done_entries_ticket_id_tickets",
         "work_done_entries",
-        sa.Column(
-            "ticket_id",
-            sa.String(32),
-            sa.ForeignKey("tickets.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+        "tickets",
+        ["ticket_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     op.create_index(
         "ix_work_done_entries_ticket_id", "work_done_entries", ["ticket_id"]
@@ -31,7 +33,7 @@ def upgrade() -> None:
     op.add_column(
         "work_done_entries",
         sa.Column(
-            "completes_ticket", sa.Boolean(), nullable=False, server_default="false"
+            "completes_ticket", sa.Boolean(), nullable=False, server_default=sa.text("false")
         ),
     )
     op.add_column(
@@ -43,4 +45,7 @@ def downgrade() -> None:
     op.drop_column("work_done_entries", "completion_time")
     op.drop_column("work_done_entries", "completes_ticket")
     op.drop_index("ix_work_done_entries_ticket_id", table_name="work_done_entries")
+    op.drop_constraint(
+        "fk_work_done_entries_ticket_id_tickets", "work_done_entries", type_="foreignkey"
+    )
     op.drop_column("work_done_entries", "ticket_id")
