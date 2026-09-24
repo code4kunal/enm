@@ -1,7 +1,10 @@
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/ticket.dart';
 import 'package:transvolt_em/data/repositories.dart';
+import 'package:transvolt_em/data/registers.dart';
+import 'package:transvolt_em/state/entries.dart' show entrySummary;
 import 'fake_store.dart';
 import 'seed.dart';
 import 'package:transvolt_em/data/auth/ms_sso.dart';
@@ -204,6 +207,52 @@ class FakeEntryRepository implements EntryRepository {
     final i = _store.entries.indexWhere((e) => e.id == entryId);
     if (i == -1) throw ApiException('Entry $entryId not found');
     _store.entries[i] = _store.entries[i].withPhotoUrl(null);
+  }
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+/// A simplification: the fake store has no separate ticket concept, so the
+/// source entry's own id stands in for the ticket id. Good enough for
+/// widget/provider tests that only need a plausible round trip, not real
+/// ticket semantics.
+class FakeTicketRepository implements TicketRepository {
+  FakeTicketRepository(this._store);
+
+  final FakeStore _store;
+
+  @override
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final needle = (q ?? '').toLowerCase();
+    return _store.entries
+        .where((e) => e.site == site)
+        .where((e) => e.isOpen || e.registerId != kBreakdownRegisterId)
+        .where((e) => register == null || e.registerId == register)
+        .where((e) => needle.isEmpty || entrySummary(e).toLowerCase().contains(needle))
+        .map(
+          (e) => TicketSearchResult(
+            ticketId: e.id,
+            title: '${entrySummary(e)} · ${e.busNumber}',
+            entryDate: e.date,
+            status: 'open',
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Future<RegisterEntry> raiseTicket(String entryId) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == entryId);
+    if (i == -1) throw ApiException('Entry $entryId not found');
+    final updated = _store.entries[i].copyWith(status: EntryStatus.open);
+    _store.entries[i] = updated;
+    return updated;
   }
 }
 

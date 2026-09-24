@@ -9,6 +9,7 @@ import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
+import '../models/ticket.dart';
 import '../models/site_config.dart';
 import '../models/checklist.dart';
 import '../models/inspection.dart';
@@ -612,6 +613,21 @@ abstract interface class EntryRepository {
 
   /// Clears whatever photo the entry has, if any.
   Future<void> removePhoto(String entryId);
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+/// Search for an open ticket to link a Work Done session to, and raise a new
+/// ticket on a source entry that doesn't have one yet (breakdowns get theirs
+/// automatically and never need [raiseTicket]).
+abstract interface class TicketRepository {
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  });
+
+  Future<RegisterEntry> raiseTicket(String entryId);
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────

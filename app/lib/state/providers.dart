@@ -47,6 +47,10 @@ final entryRepositoryProvider = Provider<EntryRepository>(
   (ref) => ApiEntryRepository(ref.watch(apiClientProvider)),
 );
 
+final ticketRepositoryProvider = Provider<TicketRepository>(
+  (ref) => ApiTicketRepository(ref.watch(apiClientProvider)),
+);
+
 final userRepositoryProvider = Provider<UserRepository>(
   (ref) => ApiUserRepository(ref.watch(apiClientProvider)),
 );

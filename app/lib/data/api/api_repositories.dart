@@ -10,6 +10,7 @@ import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
+import '../../models/ticket.dart';
 import '../repositories.dart';
 import 'api_client.dart';
 import 'field_map.dart';
@@ -614,7 +615,7 @@ class ApiEntryRepository implements EntryRepository {
         if (dateTo != null) 'date_to': dateTo,
       },
     );
-    return itemsOf(json).map(_fromWire).toList();
+    return itemsOf(json).map(_entryFromWire).toList();
   }
 
   @override
@@ -626,7 +627,7 @@ class ApiEntryRepository implements EntryRepository {
       'entry_time': entry.time,
       'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
     });
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
@@ -638,7 +639,7 @@ class ApiEntryRepository implements EntryRepository {
         'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
       },
     );
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
@@ -647,7 +648,7 @@ class ApiEntryRepository implements EntryRepository {
       throw const ApiException('Only resolving a breakdown is supported');
     }
     final json = await _api.post('/entries/$entryId/resolve');
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
@@ -668,41 +669,75 @@ class ApiEntryRepository implements EntryRepository {
   @override
   Future<void> removePhoto(String entryId) =>
       _api.delete('/entries/$entryId/photo');
+}
 
-  RegisterEntry _fromWire(Map<String, dynamic> json) {
-    final createdBy = json['created_by'];
-    final registerId = _registerFromWire[json['register'] as String] ?? 'work';
+/// Shared by [ApiEntryRepository] and [ApiTicketRepository]: the API's data
+/// object uses each register's own column names; translate it back into the
+/// keys the form and the register definitions use.
+RegisterEntry _entryFromWire(Map<String, dynamic> json) {
+  final createdBy = json['created_by'];
+  final registerId = _registerFromWire[json['register'] as String] ?? 'work';
 
-    // The API's data object uses each register's own column names; translate
-    // it back into the keys the form and the register definitions use.
-    final data = RegisterFieldMap.fromWire(
-      registerId,
-      json['data'] as Map<String, dynamic>? ?? <String, dynamic>{},
+  final data = RegisterFieldMap.fromWire(
+    registerId,
+    json['data'] as Map<String, dynamic>? ?? <String, dynamic>{},
+  );
+  final busNo = json['bus_no'] as String?;
+  if (busNo != null && !data.containsKey('bus')) data['bus'] = busNo;
+
+  return RegisterEntry(
+    id: json['id'] as String,
+    registerId: registerId,
+    date: json['date'] as String,
+    time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
+    site: json['site'] as String,
+    // Who did the work, per the register — not the account that typed it.
+    // The server resolves it and falls back to the author itself.
+    enteredBy: (json['entered_by'] as String?)?.trim().isNotEmpty ?? false
+        ? json['entered_by'] as String
+        : (createdBy is Map<String, dynamic>
+            ? (createdBy['name'] as String? ?? '')
+            : (createdBy?.toString() ?? '')),
+    data: data,
+    // The API distinguishes done from resolved; the tracker only cares
+    // whether a breakdown is still open.
+    status: (json['status'] as String?) == 'open'
+        ? EntryStatus.open
+        : EntryStatus.done,
+    photoUrl: json['photo_url'] as String?,
+  );
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+class ApiTicketRepository implements TicketRepository {
+  ApiTicketRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  }) async {
+    final json = await _api.get(
+      '/tickets/search',
+      query: <String, String>{
+        'site': site,
+        if (register != null) 'register': register,
+        if (q != null && q.isNotEmpty) 'q': q,
+      },
     );
-    final busNo = json['bus_no'] as String?;
-    if (busNo != null && !data.containsKey('bus')) data['bus'] = busNo;
+    return (json as List<dynamic>)
+        .map((j) => TicketSearchResult.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
 
-    return RegisterEntry(
-      id: json['id'] as String,
-      registerId: registerId,
-      date: json['date'] as String,
-      time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
-      site: json['site'] as String,
-      // Who did the work, per the register — not the account that typed it.
-      // The server resolves it and falls back to the author itself.
-      enteredBy: (json['entered_by'] as String?)?.trim().isNotEmpty ?? false
-          ? json['entered_by'] as String
-          : (createdBy is Map<String, dynamic>
-              ? (createdBy['name'] as String? ?? '')
-              : (createdBy?.toString() ?? '')),
-      data: data,
-      // The API distinguishes done from resolved; the tracker only cares
-      // whether a breakdown is still open.
-      status: (json['status'] as String?) == 'open'
-          ? EntryStatus.open
-          : EntryStatus.done,
-      photoUrl: json['photo_url'] as String?,
-    );
+  @override
+  Future<RegisterEntry> raiseTicket(String entryId) async {
+    final json = await _api.post('/entries/$entryId/raise_ticket');
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 }
 

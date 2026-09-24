@@ -11,6 +11,7 @@ import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/ticket.dart';
 
 /// Contract tests against responses captured from a running backend.
 ///
@@ -394,6 +395,32 @@ void main() {
       await ApiAuthRepository(client)
           .signInWithCredentials(userId: ' kunal ', password: 'x');
       expect(sent['user_id'], 'KUNAL');
+    });
+  });
+
+  group('ticket search', () {
+    test('a ticket search result parses onto TicketSearchResult', () async {
+      final mock = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<dynamic>[
+            <String, dynamic>{
+              'ticket_id': 't1',
+              'title': 'HV contactor tripped · MH40LY1895',
+              'entry_date': '2026-09-24',
+              'status': 'open',
+            },
+          ]),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client =
+          ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final List<TicketSearchResult> results =
+          await ApiTicketRepository(client).search(site: 'MBMT');
+      expect(results, hasLength(1));
+      expect(results.first.title, contains('MH40LY1895'));
     });
   });
 }
