@@ -70,6 +70,24 @@ def coolant() -> dict:
     }
 
 
+def work_done() -> dict:
+    return {
+        "register": "work_done",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {
+            "shift": "A",
+            "bus_no": "MH40LY1894",
+            "reported_defects": "Brake pressure dropping",
+            "defect_source": "Driver report",
+            "defect_type": "Brakes & air system",
+            "attended_details": "Replaced air dryer cartridge",
+            "spare_parts_used": "Air dryer cartridge x1",
+            "employee": "S. Pawar",
+        },
+    }
+
+
 async def test_raise_ticket_on_coolant_opens_it_and_is_idempotent_guarded(
     client: AsyncClient,
 ) -> None:
@@ -86,11 +104,22 @@ async def test_raise_ticket_on_coolant_opens_it_and_is_idempotent_guarded(
     assert again.status_code == 409
 
 
-async def test_raise_ticket_rejects_breakdown_and_work_done(
+async def test_raise_ticket_rejects_breakdown(
     client: AsyncClient,
 ) -> None:
     h = await auth_headers(client)
     created = await client.post("/entries", json=breakdown(), headers=h)
+    entry_id = created.json()["id"]
+
+    r = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
+    assert r.status_code == 409
+
+
+async def test_raise_ticket_rejects_work_done(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=work_done(), headers=h)
     entry_id = created.json()["id"]
 
     r = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
