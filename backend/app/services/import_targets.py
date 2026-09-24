@@ -54,9 +54,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "route": "route",
         "loc": "location",
         "complaint": "complaint",
-        "t_bd": "breakdown_time",
-        "t_mech": "mechanic_reported_time",
-        "t_att": "attended_time",
+        "t_mech": "reported_time",
         "loss": "loss_km",
         "attended": "attended_details",
         "supervisor": "supervisor",
@@ -76,9 +74,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
 
 #: Values the API expects as numbers rather than strings.
 NUMERIC_WIRE_KEYS = frozenset({"bcs_litres", "tcs_litres", "loss_km"})
-TIME_WIRE_KEYS = frozenset(
-    {"breakdown_time", "mechanic_reported_time", "attended_time"}
-)
+TIME_WIRE_KEYS = frozenset({"reported_time"})
 
 #: Register field definitions, in the order the paper register reads.
 _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
@@ -118,9 +114,7 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("route", "Route"),
         TargetField("loc", "Location of Breakdown"),
         TargetField("complaint", "Complaint Reported by the Driver", required=True),
-        TargetField("t_bd", "B/Down Time"),
-        TargetField("t_mech", "Mechanic Reported Time"),
-        TargetField("t_att", "Bus Attended Time"),
+        TargetField("t_mech", "Reported Time", required=True),
         TargetField("loss", "Loss KM"),
         TargetField("attended", "Bus Attended Details"),
         TargetField("remarks", "Remarks"),
@@ -183,9 +177,7 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
         "driver": "driver",
         "route": "route",
         "loc": "loc",
-        "t_bd": "t_bd",
         "t_mech": "t_mech",
-        "t_att": "t_att",
         "loss": "loss",
         "action": "attended",
         "remarks": "remarks",

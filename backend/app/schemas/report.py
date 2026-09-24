@@ -75,8 +75,7 @@ class InvestigationOut(BaseModel):
     defect_type: str = ""
     breakdown_reason: str = ""
     location: str | None = None
-    breakdown_time: HHMM | None = None
-    mechanic_reported_time: HHMM | None = None
+    reported_time: HHMM | None = None
     attended_time: HHMM | None = None
     loss_km: DecimalOut = None
     attended_details: str | None = None

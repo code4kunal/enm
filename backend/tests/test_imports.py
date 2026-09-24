@@ -316,9 +316,9 @@ async def test_backfilled_breakdowns_land_resolved(client: AsyncClient) -> None:
         client,
         h,
         target="breakdown",
-        body="Date,Bus,Complaint\n2024-03-04,MH40LY1895,No traction\n",
+        body="Date,Bus,Complaint,Time\n2024-03-04,MH40LY1895,No traction,09:10\n",
         mappings=_mappings(
-            {"date": "Date", "bus": "Bus", "complaint": "Complaint"}
+            {"date": "Date", "bus": "Bus", "complaint": "Complaint", "t_mech": "Time"}
         ),
     )
     await _commit(client, h, r.json()["token"])
@@ -430,18 +430,19 @@ SNAG_MAP = {
     "complaint": "DRIVER COMPLAINT",
     "action": "ACTION TAKEN",
     "employee": "ATTEND BY",
+    "t_mech": "TIME",
 }
 
 SNAG_SHEET = (
-    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY\n"
-    "2026-08-01,MH40LY1894,B.D,No traction,Contactor replaced,Tushar\n"
-    "2026-08-01,MH40LY1895,D.C,AC not cooling,Gas topped,Nilesh\n"
-    "2026-08-02,MH40LY1894,Depot,Routine check,Cleaned,Tushar\n"
+    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY,TIME\n"
+    "2026-08-01,MH40LY1894,B.D,No traction,Contactor replaced,Tushar,09:15\n"
+    "2026-08-01,MH40LY1895,D.C,AC not cooling,Gas topped,Nilesh,\n"
+    "2026-08-02,MH40LY1894,Depot,Routine check,Cleaned,Tushar,\n"
     # The real sheet fills this column on inspection rows too — "DAILY
     # INSPECTION" or similar. A blank one is rejected, which is worth
     # knowing: the preview requires a complaint on every row, including the
     # ones TYPE OF WORK routes to an inspection rather than a register.
-    "2026-08-02,MH40LY1895,D.I,DAILY INSPECTION,Checked and cleared,Tushar\n"
+    "2026-08-02,MH40LY1895,D.I,DAILY INSPECTION,Checked and cleared,Tushar,\n"
 )
 
 
@@ -521,8 +522,8 @@ async def test_the_route_column_reaches_the_breakdown_register(
     await _snag_work_types()
 
     sheet = (
-        "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ROUTE,LOCATION\n"
-        "2026-08-01,MH40LY1894,B.D,No traction,7,Kashimira signal\n"
+        "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ROUTE,LOCATION,TIME\n"
+        "2026-08-01,MH40LY1894,B.D,No traction,7,Kashimira signal,09:15\n"
     )
     preview = await _preview(
         client,
@@ -537,6 +538,7 @@ async def test_the_route_column_reaches_the_breakdown_register(
                 "complaint": "DRIVER COMPLAINT",
                 "route": "ROUTE",
                 "loc": "LOCATION",
+                "t_mech": "TIME",
             }
         ),
     )
@@ -588,7 +590,11 @@ async def test_a_re_import_never_touches_hand_entered_work(
             "register": "breakdown",
             "site": "MBMT",
             "date": "2026-08-01",
-            "data": {"bus_no": "MH40LY1894", "complaint": "No traction"},
+            "data": {
+                "bus_no": "MH40LY1894",
+                "complaint": "No traction",
+                "reported_time": "09:30",
+            },
         },
         headers=h,
     )

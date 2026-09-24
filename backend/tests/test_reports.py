@@ -55,7 +55,11 @@ async def _categorise(name: str, category: DefectCategory) -> None:
 async def _breakdown(
     client: AsyncClient, headers: dict, *, defect_type: str | None = None, loss: float = 0
 ):
-    data = {"bus_no": "MH40LY1894", "complaint": "No traction"}
+    data = {
+        "bus_no": "MH40LY1894",
+        "complaint": "No traction",
+        "reported_time": "09:00",
+    }
     if defect_type:
         data["defect_type"] = defect_type
     if loss:

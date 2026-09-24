@@ -37,8 +37,7 @@ def breakdown() -> dict:
             "route": "7",
             "location": "Kashimira signal",
             "complaint": "HV contactor tripped, bus immobile",
-            "breakdown_time": "14:20",
-            "mechanic_reported_time": "14:45",
+            "reported_time": "14:45",
             "loss_km": 18.5,
         },
     }
@@ -107,7 +106,7 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert created.status_code == 201
     entry = created.json()
     assert entry["status"] == "open"
-    assert entry["data"]["breakdown_time"] == "14:20"
+    assert entry["data"]["reported_time"] == "14:45"
     assert entry["data"]["loss_km"] == 18.5
     # The route the bus was running when it failed. Read and thrown away until
     # `breakdown_entries` had a column for it.
@@ -122,6 +121,15 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert again.json()["error"]["code"] == "CONFLICT"
 
 
+async def test_breakdown_requires_reported_time(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    del payload["data"]["reported_time"]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400
+    assert r.json()["error"]["fields"].get("reported_time") == "required"
+
+
 async def test_a_breakdown_can_be_written_back_unchanged(
     client: AsyncClient,
 ) -> None:
@@ -131,6 +139,9 @@ async def test_a_breakdown_can_be_written_back_unchanged(
     `resolved_at` rides along in the serialised `data` (read-only — set by
     resolving the ticket, never by the form), so `BreakdownData` accepts and
     ignores it rather than 400ing on a key the client never set itself.
+    `attended_time` is also read-only (server-computed via `mark_attended`)
+    but, unlike `resolved_at`, isn't accepted at all — a real edit form has
+    to strip it before writing back, same as this test does.
     """
     h = await auth_headers(client)
     created = await client.post("/entries", json=breakdown(), headers=h)
@@ -138,13 +149,15 @@ async def test_a_breakdown_can_be_written_back_unchanged(
     entry = created.json()
     assert entry["data"]["resolved_at"] is None
 
+    data = dict(entry["data"])
+    del data["attended_time"]
     echoed = await client.put(
         f"/entries/{entry['id']}",
         json={
             "register": "breakdown",
             "site": "MBMT",
             "date": entry["date"],
-            "data": entry["data"],
+            "data": data,
         },
         headers=h,
     )
@@ -164,13 +177,15 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
     assert fetched["status"] == "resolved"
     assert fetched["data"]["resolved_at"] is not None
 
+    data = dict(fetched["data"])
+    del data["attended_time"]
     again = await client.put(
         f"/entries/{entry['id']}",
         json={
             "register": "breakdown",
             "site": "MBMT",
             "date": fetched["date"],
-            "data": fetched["data"],
+            "data": data,
         },
         headers=h,
     )

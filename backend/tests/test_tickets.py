@@ -17,7 +17,7 @@ def breakdown() -> dict:
         "data": {
             "bus_no": "MH40LY1895",
             "complaint": "HV contactor tripped, bus immobile",
-            "mechanic_reported_time": "14:45",
+            "reported_time": "14:45",
         },
     }
 

@@ -81,9 +81,7 @@ class BreakdownData(_DataBase):
     route: OptText = None
     location: OptText = None
     complaint: Req = Field(min_length=1)
-    breakdown_time: HHMM | None = None
-    mechanic_reported_time: HHMM | None = None
-    attended_time: HHMM | None = None
+    reported_time: HHMM
     loss_km: Decimal | None = Field(default=None, ge=0, le=999999)
     attended_details: OptText = None
     remarks: OptText = None
