@@ -67,14 +67,6 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'Part name & qty, or NIL',
       ),
       FieldDef(
-        key: 'employee',
-        label: 'Attended By',
-        type: FieldType.select,
-        optionsFrom: MasterList.staff,
-        master: true,
-        width: FieldWidth.half,
-      ),
-      FieldDef(
         key: 'supervisor',
         label: 'Supervisor (Floor)',
         type: FieldType.select,

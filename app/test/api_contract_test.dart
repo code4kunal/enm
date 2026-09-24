@@ -149,7 +149,6 @@ void main() {
           'defectType': 'AC & HVAC',
           'attended': 'Fixed',
           'spares': 'Fuse',
-          'employee': 'R. Sharma',
         },
         'complaint': <String, String>{
           'bus': 'MH1',
@@ -203,6 +202,38 @@ void main() {
         <String, dynamic>{'bcs_litres': 2.0},
       );
       expect(back['bcs'], '2');
+    });
+
+    test('work done ticket-link keys round-trip, including the attendee list', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{
+        'ticketId': 't1',
+        'completesTicket': 'true',
+        'completionTime': '16:00',
+        'attendeeUserIds': 'u1,u2',
+      });
+      expect(wire['ticket_id'], 't1');
+      expect(wire['completes_ticket'], true);
+      expect(wire['completion_time'], '16:00');
+      expect(wire['attendee_user_ids'], <String>['u1', 'u2']);
+
+      final back = RegisterFieldMap.fromWire('work', <String, dynamic>{
+        'ticket_id': 't1',
+        'completes_ticket': true,
+        'completion_time': '16:00',
+        'attendees': <dynamic>[
+          <String, dynamic>{'user_id': 'u1', 'name': 'A'},
+          <String, dynamic>{'user_id': 'u2', 'name': 'B'},
+        ],
+      });
+      expect(back['ticketId'], 't1');
+      expect(back['completesTicket'], 'true');
+      expect(back['completionTime'], '16:00');
+      expect(back['attendeeUserIds'], 'u1,u2');
+    });
+
+    test('employee is no longer a work-done field-map key', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{'employee': 'X'});
+      expect(wire.containsKey('employee'), isFalse);
     });
   });
 
