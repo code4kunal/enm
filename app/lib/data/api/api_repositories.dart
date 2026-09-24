@@ -717,6 +717,9 @@ RegisterEntry _entryFromWire(Map<String, dynamic> json) {
         ? EntryStatus.open
         : EntryStatus.done,
     photoUrl: json['photo_url'] as String?,
+    linkedSessions: (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])
+        .map((s) => s as Map<String, dynamic>)
+        .toList(),
   );
 }
 

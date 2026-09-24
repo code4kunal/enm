@@ -242,22 +242,17 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'As reported over phone / app',
       ),
       FieldDef(
-        key: 't_bd',
-        label: 'B/Down Time',
+        key: 't_reported',
+        label: 'Reported Time',
         type: FieldType.time,
-        width: FieldWidth.third,
-      ),
-      FieldDef(
-        key: 't_mech',
-        label: 'Mechanic Reported Time',
-        type: FieldType.time,
-        width: FieldWidth.third,
+        required: true,
+        width: FieldWidth.half,
       ),
       FieldDef(
         key: 't_att',
         label: 'Bus Attended Time',
         type: FieldType.time,
-        width: FieldWidth.third,
+        width: FieldWidth.half,
       ),
       FieldDef(
         key: 'loss',

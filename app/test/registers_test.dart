@@ -49,12 +49,12 @@ void main() {
     expect(r.field('bcs')?.type, FieldType.number);
   });
 
-  test('Breakdown Report carries all three time stamps plus Loss KM', () {
+  test('Breakdown Report carries both time stamps plus Loss KM', () {
     final r = requireRegister('breakdown');
-    for (final key in <String>['t_bd', 't_mech', 't_att']) {
+    for (final key in <String>['t_reported', 't_att']) {
       expect(r.field(key)?.type, FieldType.time, reason: key);
-      // The triplet shares one row on desktop.
-      expect(r.field(key)?.width, FieldWidth.third, reason: key);
+      // The pair shares one row on desktop.
+      expect(r.field(key)?.width, FieldWidth.half, reason: key);
     }
     expect(r.field('loss')?.unit, 'km');
   });

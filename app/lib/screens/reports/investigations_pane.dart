@@ -190,9 +190,9 @@ class _InvestigationCard extends ConsumerWidget {
           Row(
             children: <Widget>[
               Text(item.registrationNo, style: AppText.mono(size: 14)),
-              if (item.breakdownTime != null) ...<Widget>[
+              if (item.reportedTime != null) ...<Widget>[
                 const SizedBox(width: 8),
-                Text(item.breakdownTime!, style: AppText.meta),
+                Text(item.reportedTime!, style: AppText.meta),
               ],
               const Spacer(),
               if (item.defectType.isNotEmpty)
