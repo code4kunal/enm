@@ -49,14 +49,19 @@ void main() {
     expect(r.field('bcs')?.type, FieldType.number);
   });
 
-  test('Breakdown Report carries both time stamps plus Loss KM', () {
+  test('Breakdown Report asks for the reported time plus Loss KM', () {
     final r = requireRegister('breakdown');
-    for (final key in <String>['t_reported', 't_att']) {
-      expect(r.field(key)?.type, FieldType.time, reason: key);
-      // The pair shares one row on desktop.
-      expect(r.field(key)?.width, FieldWidth.half, reason: key);
-    }
+    expect(r.field('t_reported')?.type, FieldType.time);
+    expect(r.field('t_reported')?.width, FieldWidth.half);
     expect(r.field('loss')?.unit, 'km');
+  });
+
+  test('Breakdown Report does not offer the server-computed attended time', () {
+    // `t_att` is stamped when the first Work Done session is logged against
+    // the breakdown's ticket, the same way `resolved_at` is stamped by
+    // resolving it. The API accepts and ignores it, so an editable control
+    // here would only collect a value the server throws away.
+    expect(requireRegister('breakdown').field('t_att'), isNull);
   });
 
   test('every register requires Date and Bus No', () {

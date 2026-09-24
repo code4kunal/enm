@@ -241,6 +241,73 @@ async def test_breakdown_get_lists_its_linked_work_done_sessions(
     assert sessions[0]["completes_ticket"] is False
 
 
+async def _ticket_for(client: AsyncClient, h: dict, entry_id: str, site: str = "MBMT") -> str:
+    r = await client.get(
+        "/tickets/search", params={"site": site, "q": entry_id}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    results = r.json()
+    assert len(results) == 1, results
+    return results[0]["ticket_id"]
+
+
+async def test_an_attended_breakdown_still_round_trips_through_the_edit_form(
+    client: AsyncClient,
+) -> None:
+    """C1: the round trip only broke once the ticket had been attended.
+
+    Before a Work Done session exists, `attended_time` serialises as null and
+    the edit form's GET-then-PUT-the-whole-form-back is harmless. Once one
+    does, the server echoes a real `HH:mm` and the form writes it straight
+    back — so `BreakdownData` has to accept the key, and go on ignoring it.
+    """
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    assert bd.json()["data"]["attended_time"] is None
+
+    wd = work_done()
+    wd["data"]["ticket_id"] = await _ticket_for(client, h, bd_id)
+    assert (await client.post("/entries", json=wd, headers=h)).status_code == 201
+
+    fetched = (await client.get(f"/entries/{bd_id}", headers=h)).json()
+    stamped = fetched["data"]["attended_time"]
+    assert stamped is not None
+
+    # Verbatim: exactly what the form holds, nothing stripped.
+    data = dict(fetched["data"])
+    data["remarks"] = "Towed in at 18:00"
+    echoed = await client.put(
+        f"/entries/{bd_id}",
+        json={
+            "register": "breakdown",
+            "site": "MBMT",
+            "date": fetched["date"],
+            "data": data,
+        },
+        headers=h,
+    )
+    assert echoed.status_code == 200, echoed.text
+    assert echoed.json()["data"]["remarks"] == "Towed in at 18:00"
+    # Inert on write: the ticket owns it, so a PUT can neither clear nor move
+    # it — not even by sending a different value.
+    assert echoed.json()["data"]["attended_time"] == stamped
+
+    data["attended_time"] = "03:00"
+    forged = await client.put(
+        f"/entries/{bd_id}",
+        json={
+            "register": "breakdown",
+            "site": "MBMT",
+            "date": fetched["date"],
+            "data": data,
+        },
+        headers=h,
+    )
+    assert forged.status_code == 200, forged.text
+    assert forged.json()["data"]["attended_time"] == stamped
+
+
 async def test_non_ticketable_register_get_has_no_linked_sessions(
     client: AsyncClient,
 ) -> None:

@@ -474,6 +474,89 @@ void main() {
       expect(results, hasLength(1));
       expect(results.first.title, contains('MH40LY1895'));
     });
+
+  });
+
+  group('breakdown edit round trip', () {
+    /// Everything `BreakdownData` on the server accepts as input. Anything
+    /// else in a PUT body is a 400: the schema is `extra="forbid"`.
+    const accepted = <String>{
+      'bus_no',
+      'defect_type',
+      'driver_id',
+      'route',
+      'location',
+      'complaint',
+      'reported_time',
+      'loss_km',
+      'attended_details',
+      'remarks',
+      'supervisor',
+      'attended_time',
+      'resolved_at',
+    };
+
+    test('an attended breakdown writes back exactly what the server sent',
+        () async {
+      // The edit form is GET-then-PUT-the-whole-form-back. Once a Work Done
+      // session has attended the ticket the server echoes a real
+      // `attended_time`, and `_fromWire` puts it in the form's data — so the
+      // PUT carries it whether or not any control is bound to it.
+      final fetched = <String, dynamic>{
+        'id': 'e1',
+        'register': 'breakdown',
+        'site': 'MBMT',
+        'date': '2026-09-24',
+        'entry_time': '06:50',
+        'status': 'resolved',
+        'created_by': <String, dynamic>{'id': 'u1', 'name': 'R. Sharma'},
+        'data': <String, dynamic>{
+          'bus_no': 'MH40LY1895',
+          'defect_type': 'Electrical / HV',
+          'driver_id': 'DRV221',
+          'route': '7',
+          'location': 'Kashimira signal',
+          'complaint': 'HV contactor tripped',
+          'reported_time': '06:50',
+          'attended_time': '07:35',
+          'loss_km': 18.5,
+          'attended_details': 'Contactor replaced',
+          'remarks': null,
+          'supervisor': 'S. Pawar',
+          'resolved_at': '2026-09-24T08:10:00+05:30',
+        },
+      };
+
+      Map<String, dynamic>? put;
+      final mock = MockClient((http.Request request) async {
+        if (request.method == 'PUT') {
+          put = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return http.Response(
+          jsonEncode(fetched),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final repo = ApiEntryRepository(
+        ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock),
+      );
+
+      final entry = await repo.fetchEntry('e1');
+      expect(entry.data['t_att'], '07:35', reason: 'still shown to the user');
+
+      await repo.updateEntry(entry);
+      final data = (put!['data'] as Map<String, dynamic>);
+      // The assertion that would have caught it: every key the form writes
+      // back has to be one the server's schema accepts.
+      expect(
+        data.keys.toSet().difference(accepted),
+        isEmpty,
+        reason: 'PUT sent a key BreakdownData forbids',
+      );
+      expect(data['attended_time'], '07:35');
+      expect(data['reported_time'], '06:50');
+    });
   });
 
   group('staff directory', () {

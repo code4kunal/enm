@@ -248,12 +248,12 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         required: true,
         width: FieldWidth.half,
       ),
-      FieldDef(
-        key: 't_att',
-        label: 'Bus Attended Time',
-        type: FieldType.time,
-        width: FieldWidth.half,
-      ),
+      // No `t_att` (Bus Attended Time) field: it is server-computed, stamped
+      // when the first Work Done session is logged against this breakdown's
+      // ticket, exactly like `resolved_at`. It still arrives in the entry's
+      // `data` and the Breakdowns screen shows it — there is simply nothing
+      // for the form to edit, and an editable control here only offered a
+      // value the server would throw away.
       FieldDef(
         key: 'loss',
         label: 'Loss KM',

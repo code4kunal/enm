@@ -136,12 +136,11 @@ async def test_a_breakdown_can_be_written_back_unchanged(
     """What GET returns, PUT has to accept.
 
     An edit form reads an entry, changes one field and writes it back.
-    `resolved_at` rides along in the serialised `data` (read-only — set by
-    resolving the ticket, never by the form), so `BreakdownData` accepts and
-    ignores it rather than 400ing on a key the client never set itself.
-    `attended_time` is also read-only (server-computed via `mark_attended`)
-    but, unlike `resolved_at`, isn't accepted at all — a real edit form has
-    to strip it before writing back, same as this test does.
+    `resolved_at` and `attended_time` ride along in the serialised `data`
+    (read-only — set by resolving or attending the ticket, never by the form),
+    so `BreakdownData` accepts and ignores both rather than 400ing on keys the
+    client never set itself. The form writes the whole `data` object back
+    verbatim, so nothing may need stripping.
     """
     h = await auth_headers(client)
     created = await client.post("/entries", json=breakdown(), headers=h)
@@ -150,7 +149,6 @@ async def test_a_breakdown_can_be_written_back_unchanged(
     assert entry["data"]["resolved_at"] is None
 
     data = dict(entry["data"])
-    del data["attended_time"]
     echoed = await client.put(
         f"/entries/{entry['id']}",
         json={
@@ -178,7 +176,6 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
     assert fetched["data"]["resolved_at"] is not None
 
     data = dict(fetched["data"])
-    del data["attended_time"]
     again = await client.put(
         f"/entries/{entry['id']}",
         json={
@@ -190,6 +187,11 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
         headers=h,
     )
     assert again.status_code == 200, again.text
+    # Accepted-and-ignored must not mean lost: the edit rebuilds the detail
+    # row from the form, and the server-owned stamps have to survive it or a
+    # resolved breakdown quietly forgets when it was resolved.
+    assert again.json()["status"] == "resolved"
+    assert again.json()["data"]["resolved_at"] == fetched["data"]["resolved_at"]
 
 
 async def test_resolve_notifies_supervisors_on_open(client: AsyncClient) -> None:
