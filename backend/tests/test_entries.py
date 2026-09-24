@@ -384,6 +384,30 @@ async def test_work_done_attendees_round_trip_by_user_id(client: AsyncClient) ->
     assert attendees == [{"user_id": my_id, "name": me.json()["name"]}]
 
 
+async def test_work_done_attendees_preserve_submission_order(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    mgr = await client.get("/auth/me", headers=h)
+    mgr_id, mgr_name = mgr.json()["id"], mgr.json()["name"]
+
+    sup_h = await auth_headers(client, "TV4102")
+    sup = await client.get("/auth/me", headers=sup_h)
+    sup_id, sup_name = sup.json()["id"], sup.json()["name"]
+
+    # Submitted supervisor-first, manager-second — an `IN (...)` fetch alone
+    # would come back in whatever order Postgres feels like, so this ordering
+    # is only preserved if the service explicitly re-sorts to match input.
+    payload = work_done()
+    payload["data"]["attendee_user_ids"] = [sup_id, mgr_id]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["attendees"] == [
+        {"user_id": sup_id, "name": sup_name},
+        {"user_id": mgr_id, "name": mgr_name},
+    ]
+
+
 async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)

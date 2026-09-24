@@ -118,14 +118,23 @@ async def _resolve_attendees(session: AsyncSession, user_ids: list[str]) -> list
     users = (
         await session.scalars(select(User).where(User.id.in_(user_ids)))
     ).all()
-    found = {u.id for u in users}
-    missing = [uid for uid in user_ids if uid not in found]
+    by_id = {u.id: u for u in users}
+    missing = [uid for uid in user_ids if uid not in by_id]
     if missing:
         raise ValidationError(
             f"attendee_user_ids: unknown user {missing[0]}",
             {"attendee_user_ids": "unknown user"},
         )
-    return list(users)
+    # `IN (...)` gives no ordering guarantee — rebuild in submission order
+    # (deduped, first occurrence wins) since `reporter_name` treats the first
+    # attendee as the primary one.
+    seen: set[str] = set()
+    ordered: list[User] = []
+    for uid in user_ids:
+        if uid not in seen:
+            seen.add(uid)
+            ordered.append(by_id[uid])
+    return ordered
 
 
 async def _set_attendees(
