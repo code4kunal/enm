@@ -22,7 +22,7 @@ from app.models.entry import BreakdownEntry, Entry
 from app.models.enums import AuditAction, EntryStatus, Register
 from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
-from app.services import audit, notifications, storage
+from app.services import audit, notifications, storage, tickets as tickets_svc
 from app.services import entries as svc
 from app.services.common import today_ist
 from app.services.sites import (
@@ -147,6 +147,7 @@ async def create_entry(
         after=svc.audit_snapshot(entry),
     )
     if payload.register is Register.breakdown:
+        await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
         await notifications.notify_breakdown_opened(session, entry)
     result = svc.serialize_entry(entry)
     await session.commit()

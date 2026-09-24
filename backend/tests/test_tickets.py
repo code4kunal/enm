@@ -22,14 +22,23 @@ def breakdown() -> dict:
     }
 
 
-async def test_breakdown_creation_does_not_yet_expose_a_ticket_field(
+async def test_breakdown_creation_auto_creates_its_ticket(
     client: AsyncClient,
 ) -> None:
-    """Placeholder confirming the migration lands cleanly; Task 2 wires the
-    actual auto-ticket-creation behavior this test file will grow to cover."""
     h = await auth_headers(client)
-    r = await client.post("/entries", json=breakdown(), headers=h)
-    assert r.status_code == 201, r.text
+    created = await client.post("/entries", json=breakdown(), headers=h)
+    assert created.status_code == 201
+
+    r = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": "contactor"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["status"] == "open"
+    assert "MH40LY1895" in results[0]["title"]
 
 
 async def test_ticket_search_finds_open_breakdown_by_title_text(
@@ -39,15 +48,14 @@ async def test_ticket_search_finds_open_breakdown_by_title_text(
     created = await client.post("/entries", json=breakdown(), headers=h)
     assert created.status_code == 201
 
-    # No ticket exists yet — Task 3 wires auto-creation. For now this proves
-    # the search endpoint itself round-trips when a ticket exists, so seed one
-    # directly through the not-yet-existent raise endpoint's future shape is
-    # out of reach here; instead assert the endpoint 200s with an empty list,
-    # which is the correct behavior before any ticket exists.
+    # Task 3 auto-creates a ticket when a breakdown is reported.
     r = await client.get(
         "/tickets/search",
         params={"site": "MBMT", "register": "breakdown", "q": "contactor"},
         headers=h,
     )
     assert r.status_code == 200, r.text
-    assert r.json() == []
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["status"] == "open"
+    assert "HV contactor" in results[0]["title"]
