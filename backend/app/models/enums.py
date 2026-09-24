@@ -160,6 +160,7 @@ class AuditAction(StrEnum):
     entry_resolved = "entry_resolved"
     entry_photo_set = "entry_photo_set"
     entry_photo_deleted = "entry_photo_deleted"
+    ticket_raised = "ticket_raised"
     user_created = "user_created"
     user_updated = "user_updated"
     user_activated = "user_activated"

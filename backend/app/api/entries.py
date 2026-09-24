@@ -318,6 +318,39 @@ async def resolve_breakdown(
     return EntryOut(**result)
 
 
+@router.post("/{entry_id}/raise_ticket", response_model=EntryOut)
+async def raise_ticket(
+    entry_id: str, user: CurrentUser, session: SessionDep
+) -> EntryOut:
+    entry = await _load(session, entry_id)
+    assert_site_permission(user, entry.site_code, "em_entry:write")
+    if entry.register not in (
+        Register.coolant,
+        Register.driver_complaint,
+        Register.pm_schedule,
+    ):
+        raise Conflict(
+            "Only coolant, driver complaint, and PM/docking entries can raise "
+            "a ticket here — breakdowns raise theirs automatically"
+        )
+
+    await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
+    entry.status = EntryStatus.open
+    entry.updated_at = datetime.now(UTC)
+
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.ticket_raised,
+        object_type="entry",
+        object_id=entry.id,
+        after=svc.audit_snapshot(entry, extra={"status": "open"}),
+    )
+    result = svc.serialize_entry(entry)
+    await session.commit()
+    return EntryOut(**result)
+
+
 @router.post("/{entry_id}/photo", response_model=PhotoOut)
 async def upload_photo(
     entry_id: str,

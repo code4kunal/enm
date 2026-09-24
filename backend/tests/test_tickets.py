@@ -59,3 +59,39 @@ async def test_ticket_search_finds_open_breakdown_by_title_text(
     assert len(results) == 1
     assert results[0]["status"] == "open"
     assert "HV contactor" in results[0]["title"]
+
+
+def coolant() -> dict:
+    return {
+        "register": "coolant",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {"bus_no": "MH40LY1894", "bcs_litres": 2.5},
+    }
+
+
+async def test_raise_ticket_on_coolant_opens_it_and_is_idempotent_guarded(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=coolant(), headers=h)
+    entry_id = created.json()["id"]
+    assert created.json()["status"] == "done"
+
+    raised = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
+    assert raised.status_code == 200, raised.text
+    assert raised.json()["status"] == "open"
+
+    again = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
+    assert again.status_code == 409
+
+
+async def test_raise_ticket_rejects_breakdown_and_work_done(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=breakdown(), headers=h)
+    entry_id = created.json()["id"]
+
+    r = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
+    assert r.status_code == 409
