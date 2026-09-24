@@ -157,6 +157,11 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     return saved;
   }
 
+  Future<void> raiseTicket(String entryId) async {
+    final saved = await ref.read(ticketRepositoryProvider).raiseTicket(entryId);
+    _replaceAll((list) => list.map((e) => e.id == saved.id ? saved : e).toList());
+  }
+
   Future<void> resolveBreakdown(String entryId) async {
     final saved = await ref
         .read(entryRepositoryProvider)

@@ -533,6 +533,20 @@ class _ResultRow extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
               ),
+              if (<String>['coolant', 'complaint', 'pm'].contains(entry.registerId) &&
+                  !entry.isOpen) ...<Widget>[
+                const SizedBox(width: 8),
+                OutlineActionButton(
+                  label: 'Raise ticket',
+                  onPressed: () async {
+                    await ref.read(entriesProvider.notifier).raiseTicket(entry.id);
+                    ref.read(toastProvider.notifier).show('Ticket raised');
+                  },
+                  fontSize: 12.5,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 7),
