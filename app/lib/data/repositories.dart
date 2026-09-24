@@ -601,6 +601,11 @@ abstract interface class EntryRepository {
     String? dateTo,
   });
 
+  /// One entry with its full detail, including [RegisterEntry.linkedSessions]
+  /// — the list fetch above never carries that field, since the server only
+  /// computes it on the single-entry response.
+  Future<RegisterEntry> fetchEntry(String id);
+
   Future<RegisterEntry> createEntry(RegisterEntry entry);
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);

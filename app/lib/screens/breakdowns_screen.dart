@@ -75,6 +75,14 @@ class _BreakdownCard extends ConsumerWidget {
     final open = entry.isOpen;
     final d = entry.data;
     final busName = ref.watch(vehicleNameProvider(entry.busNumber));
+    // The list fetch backing [entry] never carries linkedSessions — only the
+    // single-entry response does — so this card fetches its own detail. A
+    // breakdown tracker is a short, filtered list, so one fetch per card is
+    // proportionate (unlike the paginated Registers list, which would need a
+    // bulk endpoint the way fitted units already do).
+    final linkedSessions =
+        ref.watch(entryDetailProvider(entry.id)).valueOrNull?.linkedSessions ??
+            const <Map<String, dynamic>>[];
 
     Future<void> resolve() async {
       await ref.read(entriesProvider.notifier).resolveBreakdown(entry.id);
@@ -147,7 +155,7 @@ class _BreakdownCard extends ConsumerWidget {
               _Metric(label: 'Loss KM', value: '${d['loss'] ?? '0'} km'),
             ],
           ),
-          if (entry.linkedSessions.isNotEmpty) ...<Widget>[
+          if (linkedSessions.isNotEmpty) ...<Widget>[
             const SizedBox(height: 12),
             const Divider(height: 1, color: T.border),
             const SizedBox(height: 10),
@@ -156,7 +164,7 @@ class _BreakdownCard extends ConsumerWidget {
               style: AppText.sans(size: 10, color: T.muted),
             ),
             const SizedBox(height: 6),
-            for (final session in entry.linkedSessions)
+            for (final session in linkedSessions)
               InkWell(
                 onTap: () => context.go(
                   Routes.editEntry(session['entry_id'] as String),

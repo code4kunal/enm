@@ -631,6 +631,12 @@ class ApiEntryRepository implements EntryRepository {
   }
 
   @override
+  Future<RegisterEntry> fetchEntry(String id) async {
+    final json = await _api.get('/entries/$id');
+    return _entryFromWire(json as Map<String, dynamic>);
+  }
+
+  @override
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     final json = await _api.post('/entries', body: <String, dynamic>{
       'register': _registerToWire[entry.registerId],

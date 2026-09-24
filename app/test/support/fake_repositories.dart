@@ -158,6 +158,14 @@ class FakeEntryRepository implements EntryRepository {
   }
 
   @override
+  Future<RegisterEntry> fetchEntry(String id) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == id);
+    if (i == -1) throw ApiException('Entry $id not found');
+    return _store.entries[i];
+  }
+
+  @override
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     await Future<void>.delayed(_latency);
     // Mirrors the server's rule: a dropdown value must exist on its master list.

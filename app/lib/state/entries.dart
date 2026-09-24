@@ -229,6 +229,15 @@ final entriesProvider =
   EntriesController.new,
 );
 
+/// One entry with its full detail — [RegisterEntry.linkedSessions] included,
+/// which the bulk [entriesProvider] fetch never carries (the server only
+/// computes it on the single-entry response). Used by the Breakdowns screen,
+/// whose cards are few enough that one fetch per card is proportionate.
+final entryDetailProvider =
+    FutureProvider.family<RegisterEntry, String>((ref, entryId) {
+  return ref.watch(entryRepositoryProvider).fetchEntry(entryId);
+});
+
 // ─── Derived views ────────────────────────────────────────────────────────
 
 /// Entries captured today, for the Home feed.
