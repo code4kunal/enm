@@ -11,6 +11,7 @@ import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
 
 /// Contract tests against responses captured from a running backend.
@@ -421,6 +422,34 @@ void main() {
           await ApiTicketRepository(client).search(site: 'MBMT');
       expect(results, hasLength(1));
       expect(results.first.title, contains('MH40LY1895'));
+    });
+  });
+
+  group('staff directory', () {
+    test('staff directory keeps the id the backend returns', () async {
+      final mock = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'items': <dynamic>[
+              <String, dynamic>{
+                'id': 'u1',
+                'name': 'S. Pawar',
+                'user_id': 'TV4022',
+                'role': 'executive',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final staff = await ApiMasterDataRepository(client)
+          .staffDirectory(siteCode: 'MBMT');
+      expect(staff, hasLength(1));
+      expect(staff.first.id, 'u1');
+      expect(staff.first.name, 'S. Pawar');
     });
   });
 }

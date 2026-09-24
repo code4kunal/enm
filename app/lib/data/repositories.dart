@@ -9,6 +9,7 @@ import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
+import '../models/staff.dart';
 import '../models/ticket.dart';
 import '../models/site_config.dart';
 import '../models/checklist.dart';
@@ -186,6 +187,10 @@ abstract interface class MasterDataRepository {
 
   /// Active staff at a site, for the "attended by" and "supervisor" pickers.
   Future<List<String>> staff({required String siteCode});
+
+  /// The site's staff, with ids — for the Work Done attending-mechanics
+  /// multi-select, which needs an FK to post, not just a display name.
+  Future<List<StaffMember>> staffDirectory({required String siteCode});
 
   /// Active technicians for Daily Work Done's "Attended By" picker.
   Future<List<String>> technicianStaff({required String siteName, String? siteId});

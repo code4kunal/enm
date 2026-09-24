@@ -10,6 +10,7 @@ import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
+import '../../models/staff.dart';
 import '../../models/ticket.dart';
 import '../repositories.dart';
 import 'api_client.dart';
@@ -136,6 +137,17 @@ class ApiMasterDataRepository implements MasterDataRepository {
       query: <String, String>{'site': siteCode},
     );
     return itemsOf(json).map((j) => j['name'] as String).toList();
+  }
+
+  @override
+  Future<List<StaffMember>> staffDirectory({required String siteCode}) async {
+    final json = await _api.get(
+      '/master/staff',
+      query: <String, String>{'site': siteCode},
+    );
+    return itemsOf(json)
+        .map((j) => StaffMember.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   @override

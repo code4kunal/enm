@@ -1,6 +1,7 @@
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/data/registers.dart';
@@ -52,6 +53,15 @@ class FakeMasterDataRepository implements MasterDataRepository {
           .where((u) => u.active && u.canAccess(siteCode))
           .map((u) => u.name)
           .toList();
+
+  @override
+  Future<List<StaffMember>> staffDirectory({required String siteCode}) async {
+    await Future<void>.delayed(_latency);
+    return _store.users
+        .where((u) => u.active && u.canAccess(siteCode))
+        .map((u) => StaffMember(id: u.id, name: u.name))
+        .toList();
+  }
 
   @override
   Future<List<String>> technicianStaff({required String siteName, String? siteId}) async =>
