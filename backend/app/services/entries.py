@@ -34,7 +34,7 @@ from app.services.masters import (
     resolve_defect_type,
     resolve_vehicle,
 )
-from app.services.tickets import complete_ticket, mark_attended
+from app.services.tickets import TICKETABLE_REGISTERS, complete_ticket, mark_attended
 
 IST = ZoneInfo(settings.timezone)
 
@@ -541,6 +541,45 @@ def serialize_entry(entry: Entry) -> dict[str, Any]:
         "photo_url": entry.photo_url,
         "data": serialize_data(entry),
     }
+
+
+async def load_linked_sessions(
+    session: AsyncSession, entry: Entry
+) -> list[dict[str, Any]] | None:
+    """Every Work Done session logged against `entry`'s ticket, oldest first.
+
+    `None` for registers that can never carry a ticket (including work_done
+    itself); `[]` for a ticketable entry that hasn't had one raised yet.
+    """
+    if entry.register not in TICKETABLE_REGISTERS:
+        return None
+    ticket = await session.scalar(select(Ticket).where(Ticket.source_entry_id == entry.id))
+    if ticket is None:
+        return []
+    rows = (
+        await session.scalars(
+            select(WorkDoneEntry)
+            .join(Entry, Entry.id == WorkDoneEntry.entry_id)
+            .where(WorkDoneEntry.ticket_id == ticket.id)
+            .order_by(Entry.entry_date, Entry.created_at)
+        )
+    ).unique().all()
+    out = []
+    for wd in rows:
+        wd_entry = await session.get(Entry, wd.entry_id)
+        out.append(
+            {
+                "entry_id": wd.entry_id,
+                "entry_date": wd_entry.entry_date.isoformat(),
+                "shift": wd.shift.value if wd.shift else None,
+                "reported_defects": wd.reported_defects,
+                "attendees": [
+                    {"user_id": a.user_id, "name": a.user.name} for a in wd.attendees
+                ],
+                "completes_ticket": wd.completes_ticket,
+            }
+        )
+    return out
 
 
 DETAIL_COLUMNS = {

@@ -250,7 +250,9 @@ async def get_entry(
 ) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_permission(user, entry.site_code, "em_entry:read")
-    return EntryOut(**svc.serialize_entry(entry))
+    result = svc.serialize_entry(entry)
+    result["linked_sessions"] = await svc.load_linked_sessions(session, entry)
+    return EntryOut(**result)
 
 
 @router.put("/{entry_id}", response_model=EntryOut)

@@ -210,3 +210,46 @@ async def test_resolve_endpoint_still_works_and_completes_the_ticket(
     assert resolved.status_code == 200
     again = await client.post(f"/entries/{bd_id}/resolve", headers=h)
     assert again.status_code == 409
+
+
+async def test_breakdown_get_lists_its_linked_work_done_sessions(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    me = await client.get("/auth/me", headers=h)
+    my_id = me.json()["id"]
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    ticket_id = (
+        await client.get(
+            "/tickets/search",
+            params={"site": "MBMT", "register": "breakdown", "q": bd_id},
+            headers=h,
+        )
+    ).json()[0]["ticket_id"]
+
+    wd = work_done()
+    wd["data"]["ticket_id"] = ticket_id
+    wd["data"]["attendee_user_ids"] = [my_id]
+    await client.post("/entries", json=wd, headers=h)
+
+    bd_after = await client.get(f"/entries/{bd_id}", headers=h)
+    sessions = bd_after.json()["linked_sessions"]
+    assert len(sessions) == 1
+    assert sessions[0]["shift"] == "A"
+    assert sessions[0]["attendees"] == [{"user_id": my_id, "name": me.json()["name"]}]
+    assert sessions[0]["completes_ticket"] is False
+
+
+async def test_non_ticketable_register_get_has_no_linked_sessions(
+    client: AsyncClient,
+) -> None:
+    # work_done is the one register that can never itself carry a ticket
+    # (breakdown/coolant/driver_complaint/pm_schedule all can, per
+    # TICKETABLE_REGISTERS) — it's the true "null" case, unlike coolant,
+    # which is ticketable and would report `[]` once created without a
+    # ticket having been raised against it yet.
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=work_done(), headers=h)
+    got = await client.get(f"/entries/{created.json()['id']}", headers=h)
+    assert got.json()["linked_sessions"] is None

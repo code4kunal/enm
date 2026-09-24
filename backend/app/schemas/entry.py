@@ -149,6 +149,11 @@ class EntryOut(BaseModel):
     status: EntryStatus
     photo_url: str | None
     data: dict[str, Any]
+    #: Work Done sessions logged against this entry's ticket. Populated only
+    #: for entries that can have a ticket (breakdown, coolant, driver
+    #: complaint, PM/docking); null everywhere else, including work_done
+    #: entries themselves.
+    linked_sessions: list[dict[str, Any]] | None = None
 
 
 class PhotoOut(BaseModel):
