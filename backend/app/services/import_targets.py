@@ -54,7 +54,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "route": "route",
         "loc": "location",
         "complaint": "complaint",
-        "t_mech": "reported_time",
+        "t_reported": "reported_time",
         "loss": "loss_km",
         "attended": "attended_details",
         "supervisor": "supervisor",
@@ -114,7 +114,7 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("route", "Route"),
         TargetField("loc", "Location of Breakdown"),
         TargetField("complaint", "Complaint Reported by the Driver", required=True),
-        TargetField("t_mech", "Reported Time", required=True),
+        TargetField("t_reported", "Reported Time", required=True),
         TargetField("loss", "Loss KM"),
         TargetField("attended", "Bus Attended Details"),
         TargetField("remarks", "Remarks"),
@@ -177,7 +177,12 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
         "driver": "driver",
         "route": "route",
         "loc": "loc",
-        "t_mech": "t_mech",
+        # The breakdown register's "reported time" is when the driver called
+        # it in — the sheet's REPORTING TIME (`t_bd`), not MECH. ATTEND TIME
+        # (`t_mech`, which is when someone got there; the ticket stamps that
+        # itself now) and not COMPLAINT RESOLVING TIME (`t_att`, which
+        # completing the ticket stamps).
+        "t_bd": "t_reported",
         "loss": "loss",
         "action": "attended",
         "remarks": "remarks",

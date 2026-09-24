@@ -318,7 +318,12 @@ async def test_backfilled_breakdowns_land_resolved(client: AsyncClient) -> None:
         target="breakdown",
         body="Date,Bus,Complaint,Time\n2024-03-04,MH40LY1895,No traction,09:10\n",
         mappings=_mappings(
-            {"date": "Date", "bus": "Bus", "complaint": "Complaint", "t_mech": "Time"}
+            {
+                "date": "Date",
+                "bus": "Bus",
+                "complaint": "Complaint",
+                "t_reported": "Time",
+            }
         ),
     )
     await _commit(client, h, r.json()["token"])
@@ -430,11 +435,12 @@ SNAG_MAP = {
     "complaint": "DRIVER COMPLAINT",
     "action": "ACTION TAKEN",
     "employee": "ATTEND BY",
-    "t_mech": "TIME",
+    "t_bd": "REPORTING TIME",
 }
 
 SNAG_SHEET = (
-    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY,TIME\n"
+    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,ATTEND BY,"
+    "REPORTING TIME\n"
     "2026-08-01,MH40LY1894,B.D,No traction,Contactor replaced,Tushar,09:15\n"
     "2026-08-01,MH40LY1895,D.C,AC not cooling,Gas topped,Nilesh,\n"
     "2026-08-02,MH40LY1894,Depot,Routine check,Cleaned,Tushar,\n"
@@ -443,6 +449,15 @@ SNAG_SHEET = (
     # knowing: the preview requires a complaint on every row, including the
     # ones TYPE OF WORK routes to an inspection rather than a register.
     "2026-08-02,MH40LY1895,D.I,DAILY INSPECTION,Checked and cleared,Tushar,\n"
+)
+
+#: The same sheet with both time columns filled — the pair this suite used to
+#: conflate. REPORTING TIME is when the driver called it in; MECH. ATTEND TIME
+#: is when someone reached the bus, which is the ticket's job to stamp.
+SNAG_SHEET_BOTH_TIMES = (
+    "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,REPORTING TIME,"
+    "MECH. ATTEND TIME\n"
+    "2026-08-01,MH40LY1894,B.D,No traction,09:15,10:40\n"
 )
 
 
@@ -538,7 +553,7 @@ async def test_the_route_column_reaches_the_breakdown_register(
                 "complaint": "DRIVER COMPLAINT",
                 "route": "ROUTE",
                 "loc": "LOCATION",
-                "t_mech": "TIME",
+                "t_bd": "TIME",
             }
         ),
     )
@@ -550,6 +565,91 @@ async def test_the_route_column_reaches_the_breakdown_register(
     assert len(breakdowns) == 1
     assert breakdowns[0]["data"]["route"] == "7"
     assert breakdowns[0]["data"]["location"] == "Kashimira signal"
+
+
+async def test_breakdown_reported_time_comes_from_reporting_time_not_attend_time(
+    client: AsyncClient,
+) -> None:
+    """The two time columns are not interchangeable.
+
+    The sheet carries REPORTING TIME (the driver's call) and MECH. ATTEND TIME
+    (the mechanic's arrival) side by side. `reported_time` on the breakdown
+    register is the first of those — it is the clock "Time taken" is measured
+    from. Bind both columns and assert which one landed, because a mapping
+    that reads the wrong one still imports cleanly and just quietly reports
+    the wrong number forever.
+    """
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    preview = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=SNAG_SHEET_BOTH_TIMES,
+        mappings=_mappings(
+            {
+                "date": "DATE",
+                "bus": "VEHICLE NO",
+                "work_type": "TYPE OF WORK",
+                "complaint": "DRIVER COMPLAINT",
+                "t_bd": "REPORTING TIME",
+                "t_mech": "MECH. ATTEND TIME",
+            }
+        ),
+    )
+    assert preview.status_code == 200, preview.text
+    assert (await _commit(client, h, preview.json()["token"])).status_code == 200
+
+    items = (await client.get("/entries?site=MBMT", headers=h)).json()["items"]
+    breakdowns = [e for e in items if e["register"] == "breakdown"]
+    assert len(breakdowns) == 1
+    assert breakdowns[0]["data"]["reported_time"] == "09:15"
+    # The mechanic's arrival is the ticket's to stamp, from the Work Done
+    # session that attends it — an import never writes it.
+    assert breakdowns[0]["data"]["attended_time"] is None
+
+
+async def test_a_breakdown_row_without_a_mech_attend_time_still_imports(
+    client: AsyncClient,
+) -> None:
+    """MECH. ATTEND TIME is blank on plenty of real rows.
+
+    It was briefly the source of `reported_time` *and* required, which failed
+    every such row. Only REPORTING TIME is required.
+    """
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    sheet = (
+        "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,REPORTING TIME,"
+        "MECH. ATTEND TIME\n"
+        "2026-08-01,MH40LY1894,B.D,No traction,09:15,\n"
+    )
+    preview = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=sheet,
+        mappings=_mappings(
+            {
+                "date": "DATE",
+                "bus": "VEHICLE NO",
+                "work_type": "TYPE OF WORK",
+                "complaint": "DRIVER COMPLAINT",
+                "t_bd": "REPORTING TIME",
+                "t_mech": "MECH. ATTEND TIME",
+            }
+        ),
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["errors"] == []
+    assert (await _commit(client, h, preview.json()["token"])).status_code == 200
+
+    items = (await client.get("/entries?site=MBMT", headers=h)).json()["items"]
+    breakdowns = [e for e in items if e["register"] == "breakdown"]
+    assert len(breakdowns) == 1
+    assert breakdowns[0]["data"]["reported_time"] == "09:15"
 
 
 async def test_re_importing_the_same_month_changes_nothing(
