@@ -6,6 +6,8 @@ import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
+import '../models/staff.dart';
+import '../models/ticket.dart';
 import 'selected_site.dart';
 import 'session.dart';
 
@@ -295,4 +297,31 @@ final siteConfigProvider = FutureProvider<SiteConfig>((ref) {
     return Future<SiteConfig>.value(SiteConfig.empty(''));
   }
   return ref.watch(siteConfigRepositoryProvider).fetchConfig(site);
+});
+
+/// Family-keyed so a debounce-driven search per (site, register, query)
+/// doesn't need its own StatefulWidget-managed cache.
+final ticketSearchProvider = FutureProvider.family<
+    List<TicketSearchResult>, ({String site, String? register, String q})>(
+  (ref, key) async {
+    if (key.site.isEmpty || key.q.trim().length < 2) {
+      return const <TicketSearchResult>[];
+    }
+    return ref.watch(ticketRepositoryProvider).search(
+          site: key.site,
+          register: key.register,
+          q: key.q.trim(),
+        );
+  },
+);
+
+final staffDirectoryProvider = FutureProvider<List<StaffMember>>((ref) async {
+  final repo = ref.watch(masterDataRepositoryProvider);
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) return const <StaffMember>[];
+  try {
+    return await repo.staffDirectory(siteCode: site);
+  } catch (_) {
+    return const <StaffMember>[];
+  }
 });

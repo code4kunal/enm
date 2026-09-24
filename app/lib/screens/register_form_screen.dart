@@ -8,6 +8,8 @@ import '../models/entry.dart';
 import '../models/register.dart';
 import '../models/report.dart';
 import '../models/site.dart';
+import '../models/staff.dart';
+import '../models/ticket.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
@@ -19,6 +21,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/dates.dart';
 import '../widgets/buttons.dart';
+import '../widgets/chips.dart';
 import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
@@ -182,6 +185,12 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
       ref
           .read(toastProvider.notifier)
           .show('${missing.map((f) => f.label).join(', ')} required');
+      return;
+    }
+
+    if (_values['completesTicket'] == 'true' &&
+        (_values['completionTime'] ?? '').isEmpty) {
+      ref.read(toastProvider.notifier).show('Resolved-at time required');
       return;
     }
 
@@ -464,6 +473,14 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   onChanged: () => setState(() {}),
                 ),
               ],
+              if (register.id == 'work') ...<Widget>[
+                const SizedBox(height: 16),
+                _TicketLinkSection(
+                  values: _values,
+                  onSet: (k, v) => setState(() => _set(k, v)),
+                  onPickTime: _pickTime,
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: <Widget>[
@@ -670,6 +687,173 @@ class _UnitSection extends ConsumerWidget {
           ],
           const SizedBox(height: 14),
           OutlineActionButton(label: '+ Add another unit', onPressed: onAdd),
+        ],
+      ),
+    );
+  }
+}
+
+/// Work Done's link to a ticket (breakdown/coolant/complaint/PM), its
+/// attending-mechanics multi-select, and — only once a ticket is picked —
+/// the "mark ticket complete" flag and its time.
+///
+/// A ticket is not a [FieldDef]: picking one needs a live, register-filtered
+/// search against `/tickets/search`, which the static master-list-driven
+/// [FieldType.select] machinery in `_Field` has no way to express. This
+/// mirrors [_UnitSection]'s precedent of a bespoke, non-FieldDef block
+/// bolted onto the Work Done form specifically.
+class _TicketLinkSection extends ConsumerStatefulWidget {
+  const _TicketLinkSection({
+    required this.values,
+    required this.onSet,
+    required this.onPickTime,
+  });
+
+  final Map<String, String> values;
+  final void Function(String key, String value) onSet;
+  final Future<void> Function(String key) onPickTime;
+
+  @override
+  ConsumerState<_TicketLinkSection> createState() => _TicketLinkSectionState();
+}
+
+class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
+  String? _registerFilter;
+  String _query = '';
+  String _pickedTitle = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final site = ref.watch(sessionProvider.select((s) => s.site));
+    final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const <StaffMember>[];
+    final searchKey = (site: site, register: _registerFilter, q: _query);
+    final results = _query.trim().length < 2
+        ? const <TicketSearchResult>[]
+        : ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
+            const <TicketSearchResult>[];
+
+    final selectedIds = widget.values['attendeeUserIds']
+            ?.split(',')
+            .where((s) => s.isNotEmpty)
+            .toSet() ??
+        <String>{};
+    final hasTicket = (widget.values['ticketId'] ?? '').isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      decoration: BoxDecoration(
+        color: T.card,
+        borderRadius: T.cardShape,
+        border: Border.all(color: T.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Link to', style: AppText.sans(size: 15, weight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(
+            'Optional — attach this session to the breakdown, coolant, '
+            'complaint, or PM ticket it was worked against.',
+            style: AppText.sans(size: 12.5, color: T.secondary, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          if (hasTicket)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                TagBadge(
+                  label: _pickedTitle.isEmpty ? 'Linked ticket' : _pickedTitle,
+                  background: T.subtleFill,
+                  foreground: T.secondary,
+                ),
+                InkWell(
+                  onTap: () => setState(() {
+                    widget.onSet('ticketId', '');
+                    widget.onSet('completesTicket', '');
+                    widget.onSet('completionTime', '');
+                    _pickedTitle = '';
+                  }),
+                  child: Text(
+                    'Remove',
+                    style: AppText.sans(size: 12, weight: FontWeight.w600, color: T.red),
+                  ),
+                ),
+              ],
+            )
+          else ...<Widget>[
+            AppSelect(
+              value: _registerFilter,
+              options: const <String>['breakdown', 'coolant', 'complaint', 'pm'],
+              placeholder: 'Which register…',
+              onChanged: (v) => setState(() => _registerFilter = v),
+            ),
+            const SizedBox(height: 8),
+            AppTextField(
+              controller: TextEditingController(text: _query),
+              placeholder: 'Search by title or ID…',
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            if (results.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 8),
+              for (final r in results)
+                InkWell(
+                  onTap: () => setState(() {
+                    widget.onSet('ticketId', r.ticketId);
+                    _pickedTitle = r.title;
+                    _query = '';
+                  }),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Text(r.title, style: AppText.sans(size: 13.5)),
+                  ),
+                ),
+            ],
+          ],
+          const SizedBox(height: 16),
+          const FieldLabel(label: 'Attending mechanic(s)'),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final s in staff)
+                FilterChip(
+                  label: Text(s.name),
+                  selected: selectedIds.contains(s.id),
+                  onSelected: (picked) => setState(() {
+                    final next = Set<String>.of(selectedIds);
+                    picked ? next.add(s.id) : next.remove(s.id);
+                    widget.onSet('attendeeUserIds', next.join(','));
+                  }),
+                ),
+            ],
+          ),
+          if (hasTicket) ...<Widget>[
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Checkbox(
+                  value: widget.values['completesTicket'] == 'true',
+                  onChanged: (checked) => setState(
+                    () => widget.onSet('completesTicket', (checked ?? false).toString()),
+                  ),
+                ),
+                Text('Mark ticket resolved', style: AppText.sans(size: 13.5)),
+              ],
+            ),
+            if (widget.values['completesTicket'] == 'true') ...<Widget>[
+              const SizedBox(height: 8),
+              const FieldLabel(label: 'Resolved at', required: true),
+              const SizedBox(height: 6),
+              PickerField(
+                display: widget.values['completionTime'] ?? '',
+                placeholder: '--:--',
+                onTap: () => widget.onPickTime('completionTime'),
+              ),
+            ],
+          ],
         ],
       ),
     );
