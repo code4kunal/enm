@@ -31,6 +31,7 @@ from app.services.masters import (
     resolve_defect_type,
     resolve_vehicle,
 )
+from app.services.tickets import complete_ticket, mark_attended
 
 IST = ZoneInfo(settings.timezone)
 
@@ -206,6 +207,23 @@ async def _build_detail(
     ]
 
 
+async def _apply_ticket_side_effects(
+    session: AsyncSession, entry: Entry, detail: Any, actor: User
+) -> None:
+    if entry.register is not Register.work_done or detail.ticket_id is None:
+        return
+    ticket = await session.get(Ticket, detail.ticket_id)
+    now = _now_ist()
+    mark_attended(ticket, now)
+    if detail.completes_ticket:
+        completed_at = (
+            datetime.combine(entry.entry_date, detail.completion_time, tzinfo=IST)
+            if detail.completion_time
+            else now
+        )
+        await complete_ticket(session, ticket=ticket, completed_by=actor, completed_at=completed_at)
+
+
 async def create_entry(
     session: AsyncSession,
     *,
@@ -242,6 +260,7 @@ async def create_entry(
 
     session.add(entry)
     await session.flush()
+    await _apply_ticket_side_effects(session, entry, detail, creator)
     return entry
 
 
@@ -252,6 +271,7 @@ async def update_entry(
     entry_date: date_t | None,
     entry_time: time_t | None,
     raw_data: dict[str, Any],
+    actor: User,
 ) -> Entry:
     """Replace the register payload wholesale (the UI submits the full form)."""
     data = validate_data(entry.register, raw_data)
@@ -277,6 +297,7 @@ async def update_entry(
     entry.updated_at = datetime.now(UTC)
 
     await session.flush()
+    await _apply_ticket_side_effects(session, entry, detail, actor)
     return entry
 
 
@@ -289,6 +310,12 @@ def _num(value: Decimal | None) -> float | None:
 
 def _hhmm(value: time_t | None) -> str | None:
     return None if value is None else value.strftime("%H:%M")
+
+
+def _ist_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(IST).isoformat(timespec="seconds")
 
 
 def serialize_data(entry: Entry) -> dict[str, Any]:
@@ -345,6 +372,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "attended_details": d.attended_details,
             "remarks": d.remarks,
             "supervisor": d.supervisor,
+            "resolved_at": _ist_iso(d.resolved_at),
         }
     return {
         "bus_no": bus_no,

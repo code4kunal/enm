@@ -82,6 +82,11 @@ class BreakdownData(_DataBase):
     attended_details: OptText = None
     remarks: OptText = None
     supervisor: OptText = None
+    # Read-only: set by resolving the ticket, never by the form. Accepted here
+    # (and ignored — see services/entries._build_detail) purely so an
+    # edit-form round trip (GET the entry, PUT it back) doesn't 400 on a key
+    # the client never set but the server always echoes.
+    resolved_at: OptText = None
 
 
 class PMScheduleData(_DataBase):

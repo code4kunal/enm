@@ -119,17 +119,16 @@ async def test_a_breakdown_can_be_written_back_unchanged(
 ) -> None:
     """What GET returns, PUT has to accept.
 
-    An edit form reads an entry, changes one field and writes it back. The
-    serialised `data` used to carry `resolved_at`, which `BreakdownData`
-    forbids, so a round trip 400ed on a key the client never set. Lifecycle
-    state belongs to the entry — `status` already carries it — not to the
-    register payload, which mirrors a paper column.
+    An edit form reads an entry, changes one field and writes it back.
+    `resolved_at` rides along in the serialised `data` (read-only — set by
+    resolving the ticket, never by the form), so `BreakdownData` accepts and
+    ignores it rather than 400ing on a key the client never set itself.
     """
     h = await auth_headers(client)
     created = await client.post("/entries", json=breakdown(), headers=h)
     assert created.status_code == 201, created.text
     entry = created.json()
-    assert "resolved_at" not in entry["data"]
+    assert entry["data"]["resolved_at"] is None
 
     echoed = await client.put(
         f"/entries/{entry['id']}",
@@ -155,7 +154,7 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
 
     fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
     assert fetched["status"] == "resolved"
-    assert "resolved_at" not in fetched["data"]
+    assert fetched["data"]["resolved_at"] is not None
 
     again = await client.put(
         f"/entries/{entry['id']}",

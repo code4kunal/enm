@@ -124,3 +124,47 @@ async def test_raise_ticket_rejects_work_done(
 
     r = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
     assert r.status_code == 409
+
+
+async def test_work_done_completing_a_breakdown_ticket_mirrors_resolved_fields(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown"},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "16:00"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    bd_after = await client.get(f"/entries/{bd_id}", headers=h)
+    assert bd_after.json()["status"] == "resolved"
+    assert bd_after.json()["data"]["resolved_at"] is not None
+
+    still_open = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown"},
+        headers=h,
+    )
+    assert still_open.json() == []
+
+
+async def test_resolve_endpoint_still_works_and_completes_the_ticket(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    resolved = await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    assert resolved.status_code == 200
+    again = await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    assert again.status_code == 409

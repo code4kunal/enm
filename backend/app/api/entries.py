@@ -18,8 +18,9 @@ from app.deps import (
     assert_site_permission,
 )
 from app.errors import Conflict, Forbidden, NotFound
-from app.models.entry import BreakdownEntry, Entry
+from app.models.entry import Entry
 from app.models.enums import AuditAction, EntryStatus, Register
+from app.models.ticket import Ticket
 from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
 from app.services import audit, notifications, storage, tickets as tickets_svc
@@ -271,6 +272,7 @@ async def update_entry(
         entry_date=payload.date,
         entry_time=payload.entry_time,
         raw_data=payload.data,
+        actor=user,
     )
     await audit.record(
         session,
@@ -294,15 +296,17 @@ async def resolve_breakdown(
     assert_site_permission(user, entry.site_code, "em_entry:write")
     if entry.register is not Register.breakdown:
         raise Conflict("Only breakdown entries can be resolved")
-    if entry.status is EntryStatus.resolved:
-        raise Conflict("Breakdown is already resolved")
 
-    now = datetime.now(UTC)
-    entry.status = EntryStatus.resolved
-    entry.updated_at = now
-    detail: BreakdownEntry = entry.breakdown
-    detail.resolved_at = now
-    detail.resolved_by_id = user.id
+    ticket = await session.scalar(
+        select(Ticket).where(Ticket.source_entry_id == entry.id)
+    )
+    if ticket is None:
+        raise Conflict("This breakdown has no ticket")
+
+    await tickets_svc.complete_ticket(
+        session, ticket=ticket, completed_by=user, completed_at=datetime.now(UTC)
+    )
+    entry.updated_at = datetime.now(UTC)
 
     await audit.record(
         session,

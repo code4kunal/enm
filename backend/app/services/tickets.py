@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import Conflict
-from app.models.entry import Entry
-from app.models.enums import Register
+from app.models.entry import BreakdownEntry, Entry
+from app.models.enums import EntryStatus, Register, TicketStatus
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -70,3 +72,32 @@ async def search_tickets(
         await session.scalars(stmt.order_by(Entry.entry_date.desc()))
     ).unique().all()
     return list(rows)
+
+
+def mark_attended(ticket: Ticket, at: datetime) -> None:
+    """Set once, from the first Work Done session logged against this ticket."""
+    if ticket.attended_at is not None:
+        return
+    ticket.attended_at = at
+    source = ticket.source_entry
+    if source.register is Register.breakdown:
+        detail: BreakdownEntry = source.breakdown
+        detail.attended_time = at.timetz().replace(tzinfo=None)
+
+
+async def complete_ticket(
+    session: AsyncSession, *, ticket: Ticket, completed_by: User, completed_at: datetime
+) -> None:
+    if ticket.status is TicketStatus.completed:
+        raise Conflict("This ticket is already completed")
+    ticket.status = TicketStatus.completed
+    ticket.completed_at = completed_at
+    ticket.completed_by_id = completed_by.id
+
+    source = ticket.source_entry
+    source.status = EntryStatus.resolved
+    source.updated_at = completed_at
+    if source.register is Register.breakdown:
+        detail: BreakdownEntry = source.breakdown
+        detail.resolved_at = completed_at
+        detail.resolved_by_id = completed_by.id
