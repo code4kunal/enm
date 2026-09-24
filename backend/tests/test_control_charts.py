@@ -292,7 +292,7 @@ async def test_breakdowns_chart_is_its_own_grid_not_folded_into_complaints(
 ) -> None:
     h = await auth_headers(client)
     await _entry(client, h, "driver_complaint", 8, {"complaint": "Noise"})
-    await _entry(client, h, "breakdown", 8, {"complaint": "No traction"})
+    await _entry(client, h, "breakdown", 8, {"complaint": "No traction", "reported_time": "09:00"})
 
     breakdowns = await chart(client, h, "breakdowns")
     assert cell(breakdowns, BUS, 8) == {
@@ -457,7 +457,7 @@ async def test_the_export_carries_the_colour_a_csv_cannot_hold(
     client: AsyncClient,
 ) -> None:
     h = await auth_headers(client)
-    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
+    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak", "reported_time": "09:00"})
 
     resp = await client.get(
         "/sites/MBMT/reports/control-charts/breakdowns/export",
@@ -482,7 +482,7 @@ async def test_breakdowns_and_driver_complaints_export_as_excel(
     from openpyxl import load_workbook
 
     h = await auth_headers(client)
-    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak"})
+    await _entry(client, h, "breakdown", 4, {"complaint": "Air leak", "reported_time": "09:00"})
     await _entry(client, h, "driver_complaint", 4, {"complaint": "AC weak"})
 
     for kind, text in (("breakdowns", "Air leak"), ("driverComplaints", "AC weak")):

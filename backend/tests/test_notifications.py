@@ -16,7 +16,11 @@ BREAKDOWN = {
     "register": "breakdown",
     "site": "MBMT",
     "date": TODAY,
-    "data": {"bus_no": "MH40LY1895", "complaint": "HV contactor tripped"},
+    "data": {
+        "bus_no": "MH40LY1895",
+        "complaint": "HV contactor tripped",
+        "reported_time": "09:00",
+    },
 }
 
 
