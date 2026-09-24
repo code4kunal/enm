@@ -497,6 +497,35 @@ async def test_work_done_attendees_preserve_submission_order(
     ]
 
 
+async def test_attendee_without_access_to_the_site_is_rejected(
+    client: AsyncClient,
+) -> None:
+    """An attendee is an attribution on a site-scoped entry.
+
+    TV4105 works at MBMT only. TV4021 (the manager) reaches both MBMT and UMT,
+    so it can write a UMT entry — but it may not name an MBMT-only colleague
+    on it. Existing-and-active was the only check; site membership is the one
+    that matters, and it's the same list `/master/staff` offers the picker.
+    """
+    mgr = await auth_headers(client)
+    other = await client.get("/auth/me", headers=await auth_headers(client, "TV4105"))
+    mbmt_only_id = other.json()["id"]
+
+    payload = work_done(bus="MH05GX4410")  # a UMT bus
+    payload["site"] = "UMT"
+    payload["data"]["attendee_user_ids"] = [mbmt_only_id]
+    r = await client.post("/entries", json=payload, headers=mgr)
+    assert r.status_code == 400, r.text
+    assert "attendee_user_ids" in r.json()["error"]["fields"]
+
+    # …and the same person on their own site is fine, so this isn't just
+    # rejecting every attendee.
+    same_site = work_done()
+    same_site["data"]["attendee_user_ids"] = [mbmt_only_id]
+    ok = await client.post("/entries", json=same_site, headers=mgr)
+    assert ok.status_code == 201, ok.text
+
+
 async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)

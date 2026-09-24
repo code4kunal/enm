@@ -27,7 +27,7 @@ from app.models.entry import (
 from app.models.enums import EntryStatus, Register, TicketStatus
 from app.models.ticket import Ticket
 from app.models.master import Vehicle
-from app.models.user import User
+from app.models.user import User, UserSiteAccess
 from app.schemas.entry import REGISTER_DATA_SCHEMAS
 from app.services.masters import (
     resolve_defect_source,
@@ -98,12 +98,25 @@ def _search_text(
 
 
 async def _resolve_ticket(
-    session: AsyncSession, ticket_id: str | None, *, existing_ticket_id: str | None = None
+    session: AsyncSession,
+    ticket_id: str | None,
+    *,
+    site_code: str,
+    existing_ticket_id: str | None = None,
 ) -> Ticket | None:
     if not ticket_id:
         return None
     ticket = await session.get(Ticket, ticket_id)
     if ticket is None:
+        raise ValidationError("ticket_id: not found", {"ticket_id": "not found"})
+    # Site is the tenant boundary, and a ticket belongs to the site of the
+    # entry it was raised from. Write access to this site says nothing about
+    # the other one, so another site's ticket is simply not a ticket that
+    # exists here — reported as "not found" rather than "forbidden" so the id
+    # space of a site you can't reach stays unprobeable. `/tickets/search`
+    # already only ever offers same-site tickets; this is the server-side
+    # re-check behind it.
+    if ticket.source_entry.site_code != site_code:
         raise ValidationError("ticket_id: not found", {"ticket_id": "not found"})
     # A completed ticket can't be newly attached to — but an edit that
     # resubmits an entry's own already-completed ticket unchanged (the
@@ -113,12 +126,26 @@ async def _resolve_ticket(
     return ticket
 
 
-async def _resolve_attendees(session: AsyncSession, user_ids: list[str]) -> list[User]:
+async def _resolve_attendees(
+    session: AsyncSession, user_ids: list[str], *, site_code: str
+) -> list[User]:
+    """The people who worked the session, restricted to this site's roster.
+
+    Existing-and-active is not enough: an attendee is an attribution on a
+    site-scoped entry, so it has to come from the same list the form's picker
+    offers — `/master/staff`, which is the site's `user_site_access` rows.
+    Without the join a caller could name anyone in the platform on their own
+    site's entries.
+    """
     if not user_ids:
         return []
     users = (
-        await session.scalars(select(User).where(User.id.in_(user_ids)))
-    ).all()
+        await session.scalars(
+            select(User)
+            .join(UserSiteAccess, UserSiteAccess.user_id == User.id)
+            .where(User.id.in_(user_ids), UserSiteAccess.site_code == site_code)
+        )
+    ).unique().all()
     by_id = {u.id: u for u in users}
     missing = [uid for uid in user_ids if uid not in by_id]
     if missing:
@@ -139,7 +166,12 @@ async def _resolve_attendees(session: AsyncSession, user_ids: list[str]) -> list
 
 
 async def _set_attendees(
-    session: AsyncSession, entry_id: str, detail: WorkDoneEntry, user_ids: list[str]
+    session: AsyncSession,
+    entry_id: str,
+    detail: WorkDoneEntry,
+    user_ids: list[str],
+    *,
+    site_code: str,
 ) -> None:
     """Set a flushed `WorkDoneEntry`'s attendees.
 
@@ -149,7 +181,7 @@ async def _set_attendees(
     and seed the in-memory collection with `set_committed_value` so the same
     request's response can read `detail.attendees` without triggering one.
     """
-    users = await _resolve_attendees(session, user_ids)
+    users = await _resolve_attendees(session, user_ids, site_code=site_code)
     rows = [
         WorkDoneAttendee(work_done_entry_id=entry_id, user_id=u.id, user=u)
         for u in users
@@ -163,16 +195,26 @@ async def _build_detail(
     register: Register,
     data: Any,
     *,
+    site_code: str,
     existing_ticket_id: str | None = None,
 ) -> tuple[Any, list[Any]]:
-    """Return (detail_row, searchable_values) for the register subtype table."""
+    """Return (detail_row, searchable_values) for the register subtype table.
+
+    `site_code` is the tenant the entry belongs to: every id the payload
+    references — the ticket, the attendees — has to belong to it too.
+    """
     if register is Register.work_done:
         src = await resolve_defect_source(session, data.defect_source)
         typ = await resolve_defect_type(session, data.defect_type)
         ticket = await _resolve_ticket(
-            session, data.ticket_id, existing_ticket_id=existing_ticket_id
+            session,
+            data.ticket_id,
+            site_code=site_code,
+            existing_ticket_id=existing_ticket_id,
         )
-        await _resolve_attendees(session, data.attendee_user_ids)  # validate only
+        # Validate only — `_set_attendees` writes the rows once the entry is
+        # flushed and has an id.
+        await _resolve_attendees(session, data.attendee_user_ids, site_code=site_code)
         row = WorkDoneEntry(
             shift=data.shift,
             reported_defects=data.reported_defects,
@@ -263,21 +305,80 @@ async def _build_detail(
     ]
 
 
+def _session_moment(entry: Entry, at: time_t | None = None) -> datetime:
+    """A Work Done session's own timestamp, never wall-clock now.
+
+    `entry_date` is user-supplied and routinely backdated (yesterday's shift
+    written up this morning, a month of paper caught up in one sitting).
+    Stamping `datetime.now()` on a ticket would put the attend/complete moment
+    hours or weeks after the work, which is what "Time taken" on the
+    breakdowns screen measures.
+    """
+    return datetime.combine(
+        entry.entry_date,
+        at or entry.entry_time or _now_ist().time().replace(microsecond=0),
+        tzinfo=IST,
+    )
+
+
 async def _apply_ticket_side_effects(
     session: AsyncSession, entry: Entry, detail: Any, actor: User
 ) -> None:
     if entry.register is not Register.work_done or detail.ticket_id is None:
         return
     ticket = await session.get(Ticket, detail.ticket_id)
-    now = _now_ist()
-    mark_attended(ticket, now)
+    # The mechanic reached the bus when this session started, so the session's
+    # own date+time is the attend moment — same derivation as `completed_at`
+    # below, which takes the date and the form's completion time.
+    mark_attended(ticket, _session_moment(entry))
     if detail.completes_ticket and ticket.status is not TicketStatus.completed:
-        completed_at = (
-            datetime.combine(entry.entry_date, detail.completion_time, tzinfo=IST)
-            if detail.completion_time
-            else now
-        )
+        completed_at = _session_moment(entry, detail.completion_time)
         await complete_ticket(session, ticket=ticket, completed_by=actor, completed_at=completed_at)
+
+
+#: Detail columns the server owns: written by the ticket lifecycle (or the SLA
+#: sweep), never by the form. `update_entry` replaces the detail row wholesale
+#: from the submitted `data`, so these have to be carried across the rebuild
+#: explicitly. Reading them back out of `data` instead would let a PUT forge
+#: them — `BreakdownData` accepts the keys precisely so it can ignore them.
+_SERVER_OWNED_DETAIL_COLUMNS: dict[Register, tuple[str, ...]] = {
+    Register.breakdown: (
+        "attended_time",
+        "resolved_at",
+        "resolved_by_id",
+        "sla_notified_at",
+    ),
+}
+
+
+async def _reject_undoing_completion(
+    session: AsyncSession, old_detail: WorkDoneEntry, data: Any
+) -> None:
+    """Completion is one-directional: this path can only ever close a ticket.
+
+    `_resolve_ticket` already lets an edit resubmit its own completed ticket
+    unchanged — that's the GET-then-PUT round trip and it's a no-op. The
+    reverse has no no-op reading: unchecking "mark ticket resolved", or
+    unlinking the ticket altogether, would leave the ticket completed and the
+    source `resolved` with no session claiming the completion. Rather than
+    silently diverge, refuse it. Reopening is deliberately not an edit-form
+    affordance; there is no un-resolve.
+    """
+    if not old_detail.completes_ticket or old_detail.ticket_id is None:
+        return
+    still_claimed = data.completes_ticket and data.ticket_id == old_detail.ticket_id
+    if still_claimed:
+        return
+    ticket = await session.get(Ticket, old_detail.ticket_id)
+    # Only the one session that actually completed the ticket is locked: a
+    # `completes_ticket` flag on a ticket that never reached `completed`
+    # (nothing does that today, but the guard shouldn't depend on it) is free
+    # to change.
+    if ticket is not None and ticket.status is TicketStatus.completed:
+        raise Conflict(
+            "This session completed its ticket — a completion can't be undone "
+            "by editing the session that made it"
+        )
 
 
 async def _flush_catching_shift_conflict(session: AsyncSession) -> None:
@@ -329,14 +430,18 @@ async def create_entry(
         # booked inspection actually happened.
         work_type_id=work_type_id,
     )
-    detail, searchable = await _build_detail(session, register, data)
+    detail, searchable = await _build_detail(
+        session, register, data, site_code=site_code
+    )
     setattr(entry, register.value, detail)
     entry.search_text = _search_text(entry, vehicle, creator, searchable)
 
     session.add(entry)
     await _flush_catching_shift_conflict(session)
     if register is Register.work_done:
-        await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
+        await _set_attendees(
+            session, entry.id, detail, data.attendee_user_ids, site_code=site_code
+        )
         await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, creator)
     return entry
@@ -365,21 +470,39 @@ async def update_entry(
 
     old_detail = entry.detail
     old_ticket_id = getattr(old_detail, "ticket_id", None)
+    if entry.register is Register.work_done and old_detail is not None:
+        await _reject_undoing_completion(session, old_detail, data)
+    carried = {
+        name: getattr(old_detail, name)
+        for name in _SERVER_OWNED_DETAIL_COLUMNS.get(entry.register, ())
+    } if old_detail is not None else {}
     if old_detail is not None:
         await session.delete(old_detail)
         await session.flush()
         setattr(entry, entry.register.value, None)
 
     detail, searchable = await _build_detail(
-        session, entry.register, data, existing_ticket_id=old_ticket_id
+        session,
+        entry.register,
+        data,
+        site_code=entry.site_code,
+        existing_ticket_id=old_ticket_id,
     )
+    for name, value in carried.items():
+        setattr(detail, name, value)
     setattr(entry, entry.register.value, detail)
     entry.search_text = _search_text(entry, vehicle, entry.created_by, searchable)
     entry.updated_at = datetime.now(UTC)
 
     await _flush_catching_shift_conflict(session)
     if entry.register is Register.work_done:
-        await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
+        await _set_attendees(
+            session,
+            entry.id,
+            detail,
+            data.attendee_user_ids,
+            site_code=entry.site_code,
+        )
         await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, actor)
     return entry

@@ -308,6 +308,119 @@ async def test_an_attended_breakdown_still_round_trips_through_the_edit_form(
     assert forged.json()["data"]["attended_time"] == stamped
 
 
+async def test_a_work_done_entry_cannot_link_another_sites_ticket(
+    client: AsyncClient,
+) -> None:
+    """I3: site is the tenant boundary, and a ticket belongs to a site.
+
+    TV4021 reaches both MBMT and UMT, which is exactly what makes this
+    reachable without a permission error: the UMT breakdown is legitimately
+    theirs to create, and the MBMT Work Done entry is legitimately theirs to
+    write. Linking one to the other is not.
+    """
+    h = await auth_headers(client)
+    umt = {
+        "register": "breakdown",
+        "site": "UMT",
+        "date": TODAY,
+        "data": {
+            "bus_no": "MH05GX4410",
+            "complaint": "Air leak, bus immobile",
+            "reported_time": "08:00",
+        },
+    }
+    created = await client.post("/entries", json=umt, headers=h)
+    assert created.status_code == 201, created.text
+    umt_ticket = await _ticket_for(client, h, created.json()["id"], site="UMT")
+
+    wd = work_done()  # MBMT bus, MBMT site
+    wd["data"]["ticket_id"] = umt_ticket
+    r = await client.post("/entries", json=wd, headers=h)
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["fields"]["ticket_id"] == "not found"
+
+    # The UMT breakdown is untouched — not attended, still open.
+    after = (await client.get(f"/entries/{created.json()['id']}", headers=h)).json()
+    assert after["status"] == "open"
+    assert after["data"]["attended_time"] is None
+
+
+async def test_attend_and_completion_times_come_from_the_session_not_the_clock(
+    client: AsyncClient,
+) -> None:
+    """I6: `entry_date` is user-supplied and routinely backdated.
+
+    A month of paper caught up in one sitting must not stamp every breakdown
+    it attends with today. Both the attend moment and the completion moment
+    are derived from the session's own date and times.
+    """
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    ticket_id = await _ticket_for(client, h, bd_id)
+
+    wd = work_done()
+    wd["date"] = "2026-03-04"
+    wd["entry_time"] = "11:20"
+    wd["data"]["ticket_id"] = ticket_id
+    wd["data"]["completes_ticket"] = True
+    wd["data"]["completion_time"] = "13:45"
+    assert (await client.post("/entries", json=wd, headers=h)).status_code == 201
+
+    after = (await client.get(f"/entries/{bd_id}", headers=h)).json()
+    assert after["data"]["attended_time"] == "11:20"
+    assert after["data"]["resolved_at"].startswith("2026-03-04T13:45")
+
+
+async def test_a_completed_ticket_cannot_be_uncompleted_by_editing_its_session(
+    client: AsyncClient,
+) -> None:
+    """I7: completion is one-directional from this path.
+
+    Unchecking the box would leave the ticket completed and the breakdown
+    `resolved` with nothing claiming the completion. There is no un-resolve,
+    so the edit is refused rather than silently half-applied.
+    """
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = await _ticket_for(client, h, bd_id)
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "16:00"
+    entry = (await client.post("/entries", json=payload, headers=h)).json()
+
+    fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
+    unchecked = dict(fetched["data"])
+    unchecked["completes_ticket"] = False
+    unchecked.pop("completion_time", None)
+    r = await client.put(
+        f"/entries/{entry['id']}",
+        json={"date": fetched["date"], "data": unchecked},
+        headers=h,
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "CONFLICT"
+
+    # Unlinking the ticket altogether is the same move by another route.
+    unlinked = dict(fetched["data"])
+    unlinked["completes_ticket"] = False
+    unlinked["ticket_id"] = None
+    unlinked.pop("completion_time", None)
+    r2 = await client.put(
+        f"/entries/{entry['id']}",
+        json={"date": fetched["date"], "data": unlinked},
+        headers=h,
+    )
+    assert r2.status_code == 409, r2.text
+
+    # The breakdown stayed resolved throughout.
+    assert (await client.get(f"/entries/{bd_id}", headers=h)).json()[
+        "status"
+    ] == "resolved"
+
+
 async def test_non_ticketable_register_get_has_no_linked_sessions(
     client: AsyncClient,
 ) -> None:
