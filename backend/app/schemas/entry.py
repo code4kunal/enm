@@ -4,7 +4,7 @@ from datetime import date as date_t
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import EntryStatus, Register, Shift
 from app.schemas.common import HHMM, ISTDateTime, OptText
@@ -38,6 +38,17 @@ class WorkDoneData(_DataBase):
     spare_parts_used: OptText = None
     employee: OptText = None
     supervisor: OptText = None
+    ticket_id: OptText = None
+    completes_ticket: bool = False
+    completion_time: HHMM | None = None
+
+    @model_validator(mode="after")
+    def _completion_requires_ticket_and_time(self) -> "WorkDoneData":
+        if self.completes_ticket and not self.ticket_id:
+            raise ValueError("completes_ticket requires ticket_id")
+        if self.completes_ticket and not self.completion_time:
+            raise ValueError("completes_ticket requires completion_time")
+        return self
 
 
 class CoolantData(_DataBase):

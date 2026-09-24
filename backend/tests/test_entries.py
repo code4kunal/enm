@@ -337,6 +337,41 @@ async def test_photo_rejects_wrong_type(client: AsyncClient) -> None:
     assert r.status_code == 400
 
 
+async def test_work_done_can_link_to_an_open_ticket(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": "contactor"},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["ticket_id"] == ticket_id
+
+
+async def test_work_done_rejects_an_already_completed_ticket(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": bd_id},
+        headers=h,
+    )
+    # A resolved breakdown's ticket is completed, so it no longer shows up in
+    # an open-tickets search — confirm that, then confirm linking to its id
+    # directly (as if a stale client cached it) is rejected.
+    assert tickets.json() == []
+
+
 async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)

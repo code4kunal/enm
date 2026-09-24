@@ -6,6 +6,7 @@ from datetime import time as time_t
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     Date,
     Enum,
     ForeignKey,
@@ -31,6 +32,7 @@ from app.models.enums import (
     UnitStatus,
 )
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
+from app.models.ticket import Ticket
 from app.models.user import User
 
 
@@ -197,10 +199,18 @@ class WorkDoneEntry(Base):
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ticket_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True
+    )
+    completes_ticket: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    completion_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="work_done")
     defect_source: Mapped[DefectSource | None] = relationship(lazy="joined")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
+    ticket: Mapped["Ticket | None"] = relationship(lazy="joined")
 
 
 class CoolantEntry(Base):

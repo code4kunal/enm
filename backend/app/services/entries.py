@@ -12,7 +12,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.errors import ValidationError
+from app.errors import Conflict, ValidationError
 from app.models.entry import (
     BreakdownEntry,
     CoolantEntry,
@@ -21,7 +21,8 @@ from app.models.entry import (
     PMScheduleEntry,
     WorkDoneEntry,
 )
-from app.models.enums import EntryStatus, Register
+from app.models.enums import EntryStatus, Register, TicketStatus
+from app.models.ticket import Ticket
 from app.models.master import Vehicle
 from app.models.user import User
 from app.schemas.entry import REGISTER_DATA_SCHEMAS
@@ -92,6 +93,17 @@ def _search_text(
 # --- write path ------------------------------------------------------------
 
 
+async def _resolve_ticket(session: AsyncSession, ticket_id: str | None) -> Ticket | None:
+    if not ticket_id:
+        return None
+    ticket = await session.get(Ticket, ticket_id)
+    if ticket is None:
+        raise ValidationError("ticket_id: not found", {"ticket_id": "not found"})
+    if ticket.status is TicketStatus.completed:
+        raise Conflict("This ticket is already completed")
+    return ticket
+
+
 async def _build_detail(
     session: AsyncSession, register: Register, data: Any
 ) -> tuple[Any, list[Any]]:
@@ -99,6 +111,7 @@ async def _build_detail(
     if register is Register.work_done:
         src = await resolve_defect_source(session, data.defect_source)
         typ = await resolve_defect_type(session, data.defect_type)
+        ticket = await _resolve_ticket(session, data.ticket_id)
         row = WorkDoneEntry(
             shift=data.shift,
             reported_defects=data.reported_defects,
@@ -108,6 +121,9 @@ async def _build_detail(
             spare_parts_used=data.spare_parts_used,
             employee=data.employee,
             supervisor=data.supervisor,
+            ticket_id=ticket.id if ticket else None,
+            completes_ticket=data.completes_ticket,
+            completion_time=data.completion_time,
         )
         return row, [
             data.reported_defects,
@@ -293,6 +309,9 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "spare_parts_used": d.spare_parts_used,
             "employee": d.employee,
             "supervisor": d.supervisor,
+            "ticket_id": d.ticket_id,
+            "completes_ticket": d.completes_ticket,
+            "completion_time": _hhmm(d.completion_time),
         }
     if entry.register is Register.coolant:
         return {
