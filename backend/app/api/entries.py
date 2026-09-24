@@ -144,7 +144,7 @@ async def create_entry(
         action=AuditAction.entry_created,
         object_type="entry",
         object_id=entry.id,
-        after=svc.serialize_data(entry),
+        after=svc.audit_snapshot(entry),
     )
     if payload.register is Register.breakdown:
         await notifications.notify_breakdown_opened(session, entry)
@@ -263,7 +263,7 @@ async def update_entry(
         await load_site(session, entry.site_code), payload.date, today_ist()
     )
 
-    before: dict[str, Any] = svc.serialize_data(entry)
+    before: dict[str, Any] = svc.audit_snapshot(entry)
     await svc.update_entry(
         session,
         entry,
@@ -278,7 +278,7 @@ async def update_entry(
         object_type="entry",
         object_id=entry.id,
         before=before,
-        after=svc.serialize_data(entry),
+        after=svc.audit_snapshot(entry),
     )
     result = svc.serialize_entry(entry)
     await session.commit()
@@ -309,7 +309,7 @@ async def resolve_breakdown(
         action=AuditAction.entry_resolved,
         object_type="entry",
         object_id=entry.id,
-        after={"status": "resolved"},
+        after=svc.audit_snapshot(entry, extra={"status": "resolved"}),
     )
     await notifications.notify_breakdown_resolved(session, entry, user)
     result = svc.serialize_entry(entry)

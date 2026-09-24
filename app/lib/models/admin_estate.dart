@@ -183,6 +183,10 @@ class AuditLogEntry {
     this.actorName,
     this.before,
     this.after,
+    this.subject,
+    this.register,
+    this.siteCode,
+    this.busNo,
   });
 
   final String id;
@@ -195,6 +199,10 @@ class AuditLogEntry {
   final Map<String, dynamic>? before;
   final Map<String, dynamic>? after;
   final String createdAt;
+  final String? subject;
+  final String? register;
+  final String? siteCode;
+  final String? busNo;
 
   String get actorLabel {
     if (actorName != null && actorName!.isNotEmpty) {
@@ -203,6 +211,27 @@ class AuditLogEntry {
     }
     return actorUserId ?? actorId ?? '—';
   }
+
+  /// Prefer API subject; fall back to reconstructing from after for old clients.
+  String get displaySubject {
+    if (subject != null && subject!.isNotEmpty) return subject!;
+    final a = after;
+    if (a == null) return '$objectType/$objectId';
+    if (objectType == 'entry') {
+      final reg = a['register']?.toString() ?? register ?? 'entry';
+      final bus = a['bus_no']?.toString() ?? busNo ?? '';
+      final site = a['site']?.toString() ?? siteCode ?? '';
+      return [reg, bus, site].where((s) => s.isNotEmpty).join(' · ');
+    }
+    if (objectType == 'inspection') {
+      final wt = a['work_type']?.toString() ?? 'inspection';
+      final bus = a['bus_no']?.toString() ?? a['vehicle']?.toString() ?? '';
+      return [wt, bus].where((s) => s.isNotEmpty).join(' · ');
+    }
+    return '$objectType/$objectId';
+  }
+
+  bool get canOpenEntry => objectType == 'entry' && objectId.isNotEmpty;
 
   factory AuditLogEntry.fromJson(Map<String, dynamic> json) {
     Map<String, dynamic>? asMap(Object? v) {
@@ -221,6 +250,10 @@ class AuditLogEntry {
       before: asMap(json['before']),
       after: asMap(json['after']),
       createdAt: json['created_at']?.toString() ?? '',
+      subject: json['subject']?.toString(),
+      register: json['register']?.toString(),
+      siteCode: json['site_code']?.toString(),
+      busNo: json['bus_no']?.toString(),
     );
   }
 }

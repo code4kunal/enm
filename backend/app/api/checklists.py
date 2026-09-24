@@ -263,8 +263,13 @@ async def record_inspection(
         object_type="inspection",
         object_id=inspection.id,
         after={
+            "site": site_code,
+            "bus_no": vehicle.registration_no,
             "vehicle": vehicle.registration_no,
             "work_type": work_type.code,
+            "work_type_name": work_type.name,
+            "inspected_on": payload.inspected_on.isoformat(),
+            "milestone_km": inspection.milestone_km,
             "failed": len(inspection.failed),
         },
     )

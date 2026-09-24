@@ -339,6 +339,26 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
     }
 
 
+def audit_snapshot(
+    entry: Entry, *, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Audit after/before payload — always names register, site, date, bus.
+
+    `serialize_data` alone is the form fields; without register the trail cannot
+    tell a breakdown from a complaint.
+    """
+    out: dict[str, Any] = {
+        "register": entry.register.value,
+        "site": entry.site_code,
+        "date": entry.entry_date.isoformat(),
+        "status": entry.status.value,
+        **serialize_data(entry),
+    }
+    if extra:
+        out.update(extra)
+    return out
+
+
 #: The person each register names as having done the work. The register is a
 #: record of what a mechanic did, so that name — not the account that typed it
 #: in — is who the entry belongs to.

@@ -72,6 +72,11 @@ class AuditLogOut(BaseModel):
     before: dict | None = None
     after: dict | None = None
     created_at: ISTDateTime
+    #: Human label — e.g. "Breakdown · MH04LY… · MBMT · 2026-09-13".
+    subject: str | None = None
+    register: str | None = None
+    site_code: str | None = None
+    bus_no: str | None = None
 
 
 class AuditLogList(BaseModel):

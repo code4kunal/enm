@@ -2,10 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/repositories.dart';
 import '../../models/admin_estate.dart';
+import '../../router.dart';
 import '../../state/admin_estate.dart';
 import '../../state/providers.dart';
 import '../../state/toast.dart';
@@ -14,6 +16,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../../utils/dates.dart';
 import '../../widgets/buttons.dart';
+import '../../widgets/chips.dart';
 import '../../widgets/dashed.dart';
 import '../../widgets/form_controls.dart';
 import '../../widgets/sub_tabs.dart';
@@ -94,7 +97,8 @@ class _AdminAuditPaneState extends ConsumerState<AdminAuditPane> {
                   Text('Audit trail', style: AppText.sectionTitle),
                   const SizedBox(height: 4),
                   Text(
-                    'Every recorded action — filter by user and date.',
+                    'Who did what — login account is the actor. Register type '
+                    'and Open link to the entry when available.',
                     style: AppText.sans(size: 13, color: T.secondary),
                   ),
                 ],
@@ -296,6 +300,24 @@ class _AuditRow extends StatelessWidget {
 
   final AuditLogEntry entry;
 
+  String get _registerChip {
+    final wire = entry.register ?? entry.after?['register']?.toString();
+    if (wire == null || wire.isEmpty) {
+      if (entry.objectType == 'inspection') return 'INSPECTION';
+      if (entry.objectType == 'fitted_unit') return 'UNIT';
+      return entry.objectType.toUpperCase();
+    }
+    // Wire names → register codes used in the UI.
+    const map = <String, String>{
+      'work_done': 'WD',
+      'coolant': 'CL',
+      'driver_complaint': 'DC',
+      'breakdown': 'BD',
+      'pm_schedule': 'PM',
+    };
+    return map[wire] ?? wire.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -310,6 +332,12 @@ class _AuditRow extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
+              TagBadge(
+                label: _registerChip,
+                background: T.indigoTint,
+                foreground: T.indigo,
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   entry.action,
@@ -324,11 +352,42 @@ class _AuditRow extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            entry.displaySubject,
+            style: AppText.sans(size: 13.5, weight: FontWeight.w600),
+          ),
           const SizedBox(height: 4),
           Text(
-            '${entry.actorLabel} · ${entry.objectType}/${entry.objectId}',
+            'By ${entry.actorLabel}',
             style: AppText.sans(size: 12.5, color: T.secondary),
           ),
+          if (entry.canOpenEntry) ...<Widget>[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlineActionButton(
+                label: 'Open entry',
+                fontSize: 13,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                onPressed: () =>
+                    context.go(Routes.editEntry(entry.objectId)),
+              ),
+            ),
+          ] else if (entry.objectType == 'inspection') ...<Widget>[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlineActionButton(
+                label: 'Open registers',
+                fontSize: 13,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                onPressed: () => context.go(Routes.registers),
+              ),
+            ),
+          ],
         ],
       ),
     );
