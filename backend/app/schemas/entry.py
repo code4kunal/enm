@@ -41,6 +41,13 @@ class WorkDoneData(_DataBase):
     ticket_id: OptText = None
     completes_ticket: bool = False
     completion_time: HHMM | None = None
+    attendee_user_ids: list[str] = Field(default_factory=list)
+    # Read-only: the server always echoes attendees back as `{user_id, name}`
+    # objects (see services/entries.serialize_data), but the form writes them
+    # back as `attendee_user_ids`. Accepted here (and ignored) purely so a
+    # GET-then-PUT-the-whole-form-back round trip doesn't 400 on a key the
+    # client never set itself — same contract as `BreakdownData.resolved_at`.
+    attendees: list[Any] | None = None
 
     @model_validator(mode="after")
     def _completion_requires_ticket_and_time(self) -> "WorkDoneData":

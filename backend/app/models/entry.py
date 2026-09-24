@@ -211,6 +211,27 @@ class WorkDoneEntry(Base):
     defect_source: Mapped[DefectSource | None] = relationship(lazy="joined")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
     ticket: Mapped["Ticket | None"] = relationship(lazy="joined")
+    attendees: Mapped[list[WorkDoneAttendee]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class WorkDoneAttendee(Base):
+    """One engineer/mechanic who worked a Work Done session — a multi-select,
+    replacing the old single free-text `employee` column."""
+
+    __tablename__ = "work_done_attendees"
+
+    work_done_entry_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("work_done_entries.entry_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+
+    user: Mapped[User] = relationship(lazy="joined")
 
 
 class CoolantEntry(Base):

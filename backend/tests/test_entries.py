@@ -371,6 +371,19 @@ async def test_work_done_rejects_an_already_completed_ticket(
     assert tickets.json() == []
 
 
+async def test_work_done_attendees_round_trip_by_user_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    me = await client.get("/auth/me", headers=h)
+    my_id = me.json()["id"]
+
+    payload = work_done()
+    payload["data"]["attendee_user_ids"] = [my_id]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    attendees = r.json()["data"]["attendees"]
+    assert attendees == [{"user_id": my_id, "name": me.json()["name"]}]
+
+
 async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)

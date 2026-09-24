@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.config import settings
 from app.errors import Conflict, ValidationError
@@ -19,6 +20,7 @@ from app.models.entry import (
     DriverComplaintEntry,
     Entry,
     PMScheduleEntry,
+    WorkDoneAttendee,
     WorkDoneEntry,
 )
 from app.models.enums import EntryStatus, Register, TicketStatus
@@ -110,6 +112,42 @@ async def _resolve_ticket(
     return ticket
 
 
+async def _resolve_attendees(session: AsyncSession, user_ids: list[str]) -> list[User]:
+    if not user_ids:
+        return []
+    users = (
+        await session.scalars(select(User).where(User.id.in_(user_ids)))
+    ).all()
+    found = {u.id for u in users}
+    missing = [uid for uid in user_ids if uid not in found]
+    if missing:
+        raise ValidationError(
+            f"attendee_user_ids: unknown user {missing[0]}",
+            {"attendee_user_ids": "unknown user"},
+        )
+    return list(users)
+
+
+async def _set_attendees(
+    session: AsyncSession, entry_id: str, detail: WorkDoneEntry, user_ids: list[str]
+) -> None:
+    """Set a flushed `WorkDoneEntry`'s attendees.
+
+    `detail.attendees = [...]` would make the ORM fetch the *old* collection
+    first (it's a persistent row once flushed) — a lazy load that raises
+    `MissingGreenlet` outside an awaited call. Add the rows directly instead,
+    and seed the in-memory collection with `set_committed_value` so the same
+    request's response can read `detail.attendees` without triggering one.
+    """
+    users = await _resolve_attendees(session, user_ids)
+    rows = [
+        WorkDoneAttendee(work_done_entry_id=entry_id, user_id=u.id, user=u)
+        for u in users
+    ]
+    session.add_all(rows)
+    set_committed_value(detail, "attendees", rows)
+
+
 async def _build_detail(
     session: AsyncSession,
     register: Register,
@@ -124,6 +162,7 @@ async def _build_detail(
         ticket = await _resolve_ticket(
             session, data.ticket_id, existing_ticket_id=existing_ticket_id
         )
+        await _resolve_attendees(session, data.attendee_user_ids)  # validate only
         row = WorkDoneEntry(
             shift=data.shift,
             reported_defects=data.reported_defects,
@@ -271,6 +310,9 @@ async def create_entry(
 
     session.add(entry)
     await session.flush()
+    if register is Register.work_done:
+        await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
+        await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, creator)
     return entry
 
@@ -311,6 +353,9 @@ async def update_entry(
     entry.updated_at = datetime.now(UTC)
 
     await session.flush()
+    if entry.register is Register.work_done:
+        await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
+        await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, actor)
     return entry
 
@@ -353,6 +398,9 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "ticket_id": d.ticket_id,
             "completes_ticket": d.completes_ticket,
             "completion_time": _hhmm(d.completion_time),
+            "attendees": [
+                {"user_id": a.user_id, "name": a.user.name} for a in d.attendees
+            ],
         }
     if entry.register is Register.coolant:
         return {
@@ -424,7 +472,6 @@ def audit_snapshot(
 #: record of what a mechanic did, so that name — not the account that typed it
 #: in — is who the entry belongs to.
 REPORTER_COLUMN = {
-    Register.work_done: "employee",
     Register.coolant: "topped_by",
     Register.driver_complaint: "mechanic",
     Register.breakdown: "attended_details",
@@ -439,6 +486,12 @@ def reporter_name(entry: Entry) -> str:
     the register itself names nobody.
     """
     detail = entry.detail
+    if entry.register is Register.work_done and detail is not None:
+        if detail.attendees:
+            return detail.attendees[0].user.name
+        if (detail.employee or "").strip():
+            return detail.employee.strip()
+        return entry.created_by.name
     if detail is not None:
         column = REPORTER_COLUMN.get(entry.register)
         if column and entry.register is not Register.breakdown:
