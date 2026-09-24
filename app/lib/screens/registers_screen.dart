@@ -518,6 +518,14 @@ class _ResultRow extends ConsumerWidget {
               ),
               const SizedBox(width: 10),
               OutlineActionButton(
+                label: 'View',
+                onPressed: () => context.go(Routes.viewEntry(entry.id)),
+                fontSize: 12.5,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+              ),
+              const SizedBox(width: 8),
+              OutlineActionButton(
                 label: 'Edit',
                 onPressed: () => context.go(Routes.editEntry(entry.id)),
                 accent: T.green,

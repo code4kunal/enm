@@ -36,6 +36,7 @@ class RegisterFormScreen extends ConsumerStatefulWidget {
     this.registerId,
     this.entryId,
     this.onClose,
+    this.readOnly = false,
   });
 
   final String? registerId;
@@ -46,6 +47,10 @@ class RegisterFormScreen extends ConsumerStatefulWidget {
   /// sheet, say) rather than reached by its own route, so closing pops the
   /// sheet instead of routing the whole app to Registers.
   final VoidCallback? onClose;
+
+  /// Disables every control and hides Save/Unit/TicketLink editing — the
+  /// Registers screen's View action, alongside Edit.
+  final bool readOnly;
 
   @override
   ConsumerState<RegisterFormScreen> createState() => _RegisterFormScreenState();
@@ -423,7 +428,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                         ),
                         Text(
                           '$siteLabel ($site) · '
-                          '${existing == null ? 'New entry' : 'Editing entry'}',
+                          '${widget.readOnly ? 'Viewing entry' : (existing == null ? 'New entry' : 'Editing entry')}',
                           style: AppText.sans(size: 13, color: T.secondary),
                         ),
                       ],
@@ -458,9 +463,10 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   photoAttached: _hasPhoto,
                   onAttachPhoto: _onAttachPhoto,
                   onRemovePhoto: _onRemovePhoto,
+                  readOnly: widget.readOnly,
                 ),
               ),
-              if (register.id == 'work') ...<Widget>[
+              if (!widget.readOnly && register.id == 'work') ...<Widget>[
                 const SizedBox(height: 16),
                 _UnitSection(
                   entryId: existing?.id,
@@ -473,7 +479,7 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   onChanged: () => setState(() {}),
                 ),
               ],
-              if (register.id == 'work') ...<Widget>[
+              if (!widget.readOnly && register.id == 'work') ...<Widget>[
                 const SizedBox(height: 16),
                 _TicketLinkSection(
                   values: _values,
@@ -482,32 +488,39 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  OutlineActionButton(
-                    label: 'Cancel',
-                    onPressed: _saving ? null : _close,
-                    fontSize: 16,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 15,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledActionButton(
-                      label: _saving ? 'Saving…' : 'Save entry',
-                      onPressed: _saving ? null : () => _save(register),
-                      fontSize: 16.5,
-                      elevated: true,
+              if (!widget.readOnly)
+                Row(
+                  children: <Widget>[
+                    OutlineActionButton(
+                      label: 'Cancel',
+                      onPressed: _saving ? null : _close,
+                      fontSize: 16,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
+                        horizontal: 22,
                         vertical: 15,
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledActionButton(
+                        label: _saving ? 'Saving…' : 'Save entry',
+                        onPressed: _saving ? null : () => _save(register),
+                        fontSize: 16.5,
+                        elevated: true,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                OutlineActionButton(
+                  label: 'Close',
+                  onPressed: _close,
+                  fontSize: 16,
+                ),
               const SizedBox(height: 32),
             ],
           ),
@@ -888,6 +901,7 @@ class _FieldGrid extends StatelessWidget {
     required this.photoAttached,
     required this.onAttachPhoto,
     required this.onRemovePhoto,
+    required this.readOnly,
   });
 
   final RegisterDef register;
@@ -905,6 +919,7 @@ class _FieldGrid extends StatelessWidget {
   final bool photoAttached;
   final void Function(String filename, List<int> bytes) onAttachPhoto;
   final VoidCallback onRemovePhoto;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -947,15 +962,27 @@ class _FieldGrid extends StatelessWidget {
                   onSet: onSet,
                   onPickDate: onPickDate,
                   onPickTime: onPickTime,
+                  readOnly: readOnly,
                 ),
               ),
             SizedBox(
               width: total,
-              child: PhotoAttachButton(
-                attached: photoAttached,
-                onAttach: onAttachPhoto,
-                onRemove: onRemovePhoto,
-              ),
+              child: readOnly
+                  ? AbsorbPointer(
+                      child: Opacity(
+                        opacity: 0.7,
+                        child: PhotoAttachButton(
+                          attached: photoAttached,
+                          onAttach: onAttachPhoto,
+                          onRemove: onRemovePhoto,
+                        ),
+                      ),
+                    )
+                  : PhotoAttachButton(
+                      attached: photoAttached,
+                      onAttach: onAttachPhoto,
+                      onRemove: onRemovePhoto,
+                    ),
             ),
           ],
         );
@@ -978,6 +1005,7 @@ class _Field extends StatelessWidget {
     required this.onSet,
     required this.onPickDate,
     required this.onPickTime,
+    required this.readOnly,
   });
 
   final String registerId;
@@ -992,6 +1020,7 @@ class _Field extends StatelessWidget {
   final void Function(String key, String value) onSet;
   final Future<void> Function(String key) onPickDate;
   final Future<void> Function(String key) onPickTime;
+  final bool readOnly;
 
   List<String> get _options {
     if ((registerId == 'work' || registerId == 'coolant') && def.key == 'employee') {
@@ -1024,7 +1053,7 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final control = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -1036,6 +1065,9 @@ class _Field extends StatelessWidget {
         _control(),
       ],
     );
+    return readOnly
+        ? AbsorbPointer(child: Opacity(opacity: 0.7, child: control))
+        : control;
   }
 
   Widget _control() {
