@@ -475,6 +475,40 @@ void main() {
       expect(results.first.title, contains('MH40LY1895'));
     });
 
+    test('the register filter is sent as the wire id, not the app id', () async {
+      // The picker offers the app-side ids from `registers.dart`; the backend
+      // binds `register` to its `Register` enum and 422s on anything that
+      // isn't one of its values. `complaint` and `pm` are the two that differ,
+      // so they are the two that broke.
+      Map<String, String>? sent;
+      final mock = MockClient((http.Request request) async {
+        sent = request.url.queryParameters;
+        return http.Response(
+          '[]',
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final repo = ApiTicketRepository(
+        ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock),
+      );
+
+      await repo.search(site: 'MBMT', register: 'complaint');
+      expect(sent!['register'], 'driver_complaint');
+
+      await repo.search(site: 'MBMT', register: 'pm');
+      expect(sent!['register'], 'pm_schedule');
+
+      // The three whose app id already is the wire value go through unchanged.
+      for (final id in <String>['breakdown', 'coolant', 'work']) {
+        await repo.search(site: 'MBMT', register: id);
+        expect(sent!['register'], registerToWire[id], reason: id);
+      }
+
+      // No filter means no parameter at all — not an empty one.
+      await repo.search(site: 'MBMT');
+      expect(sent!.containsKey('register'), isFalse);
+    });
   });
 
   group('breakdown edit round trip', () {

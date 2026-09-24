@@ -20,7 +20,7 @@ import '../auth/ms_sso.dart';
 
 /// Register id translation. The app uses the short ids from `registers.dart`;
 /// the API uses the `Register` enum values.
-const Map<String, String> _registerToWire = <String, String>{
+const Map<String, String> registerToWire = <String, String>{
   'work': 'work_done',
   'coolant': 'coolant',
   'complaint': 'driver_complaint',
@@ -29,7 +29,7 @@ const Map<String, String> _registerToWire = <String, String>{
 };
 
 final Map<String, String> _registerFromWire = <String, String>{
-  for (final e in _registerToWire.entries) e.value: e.key,
+  for (final e in registerToWire.entries) e.value: e.key,
 };
 
 // ─── Master data ──────────────────────────────────────────────────────────
@@ -622,7 +622,7 @@ class ApiEntryRepository implements EntryRepository {
       query: <String, String>{
         'site': site,
         'page_size': '200',
-        if (registerId != null) 'register': _registerToWire[registerId] ?? registerId,
+        if (registerId != null) 'register': registerToWire[registerId] ?? registerId,
         if (dateFrom != null) 'date_from': dateFrom,
         if (dateTo != null) 'date_to': dateTo,
       },
@@ -639,7 +639,7 @@ class ApiEntryRepository implements EntryRepository {
   @override
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     final json = await _api.post('/entries', body: <String, dynamic>{
-      'register': _registerToWire[entry.registerId],
+      'register': registerToWire[entry.registerId],
       'site': entry.site,
       'date': entry.date,
       'entry_time': entry.time,
@@ -746,7 +746,10 @@ class ApiTicketRepository implements TicketRepository {
       '/tickets/search',
       query: <String, String>{
         'site': site,
-        if (register != null) 'register': register,
+        // App-side ids in, wire values out — `complaint`/`pm` are
+        // `driver_complaint`/`pm_schedule` on the wire, and the backend's
+        // `Register` enum 422s on anything else.
+        if (register != null) 'register': registerToWire[register] ?? register,
         if (q != null && q.isNotEmpty) 'q': q,
       },
     );

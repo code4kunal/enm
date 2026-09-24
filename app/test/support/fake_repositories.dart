@@ -3,6 +3,7 @@ import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
+import 'package:transvolt_em/data/api/api_repositories.dart' show registerToWire;
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/state/entries.dart' show entrySummary;
@@ -247,10 +248,19 @@ class FakeTicketRepository implements TicketRepository {
   }) async {
     await Future<void>.delayed(_latency);
     final needle = (q ?? '').toLowerCase();
+    // `ApiTicketRepository.search` translates the app-side register id to its
+    // wire value before sending, and the backend's `Register` enum 422s on
+    // anything else. Match on the wire value here for the same reason: a fake
+    // that quietly accepted `complaint` where the real API sends
+    // `driver_complaint` is a fake that hides the bug.
+    final wanted = register == null ? null : registerToWire[register];
+    if (register != null && wanted == null) {
+      throw ApiException('register: $register is not a register id');
+    }
     return _store.entries
         .where((e) => e.site == site)
         .where((e) => e.isOpen || e.registerId != kBreakdownRegisterId)
-        .where((e) => register == null || e.registerId == register)
+        .where((e) => wanted == null || registerToWire[e.registerId] == wanted)
         .where((e) => needle.isEmpty || entrySummary(e).toLowerCase().contains(needle))
         .map(
           (e) => TicketSearchResult(
