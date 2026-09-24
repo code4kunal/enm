@@ -64,7 +64,7 @@ async def _clean() -> AsyncIterator[None]:
             text(
                 "TRUNCATE audit_logs, notifications, device_tokens, refresh_tokens, "
                 "work_done_entries, coolant_entries, driver_complaint_entries, "
-                "breakdown_entries, pm_schedule_entries, entries, "
+                "breakdown_entries, pm_schedule_entries, entries, tickets, "
                 "fitted_units, unit_types, off_road_cases, breakdown_investigations, "
                 "dmr_days, inspection_results, inspection_entries, checklist_items, "
                 "checklist_templates, alerts, inspection_slots, inspection_plans, "
