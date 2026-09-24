@@ -31,7 +31,6 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "attended": "attended_details",
         "spares": "spare_parts_used",
         "supervisor": "supervisor",
-        "employee": "employee",
     },
     Register.coolant: {
         "bus": "bus_no",
@@ -92,7 +91,6 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("defectType", "Type of Defect"),
         TargetField("attended", "Attended Details"),
         TargetField("spares", "Spare Parts Used"),
-        TargetField("employee", "Name & No. of Employee"),
         TargetField("supervisor", "Supervisor (floor)"),
     ],
     Register.coolant: [
@@ -207,7 +205,6 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
         "complaint": "defects",
         "action": "attended",
         "spares": "spares",
-        "employee": "employee",
     },
     Register.pm_schedule: {
         "bus": "bus",

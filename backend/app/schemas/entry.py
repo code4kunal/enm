@@ -36,7 +36,6 @@ class WorkDoneData(_DataBase):
     defect_type: OptText = None
     attended_details: OptText = None
     spare_parts_used: OptText = None
-    employee: OptText = None
     supervisor: OptText = None
     ticket_id: OptText = None
     completes_ticket: bool = False

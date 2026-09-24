@@ -195,7 +195,6 @@ class WorkDoneEntry(Base):
     )
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     spare_parts_used: Mapped[str | None] = mapped_column(Text, nullable=True)
-    employee: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)

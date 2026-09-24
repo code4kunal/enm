@@ -22,7 +22,6 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
             "defect_type": "Brakes & air system",
             "attended_details": "Replaced air dryer cartridge",
             "spare_parts_used": "Air dryer cartridge x1",
-            "employee": "S. Pawar",
         },
     }
 
@@ -494,3 +493,12 @@ async def test_pagination(client: AsyncClient) -> None:
         "/entries", params={"site": "MBMT", "page_size": 500}, headers=h
     )
     assert too_big.status_code == 400
+
+
+async def test_work_done_no_longer_accepts_employee(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = work_done()
+    payload["data"]["employee"] = "S. Pawar"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400
+    assert "employee" in r.json()["error"]["fields"] or "employee" in r.json()["error"]["message"]

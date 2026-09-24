@@ -83,7 +83,6 @@ def work_done() -> dict:
             "defect_type": "Brakes & air system",
             "attended_details": "Replaced air dryer cartridge",
             "spare_parts_used": "Air dryer cartridge x1",
-            "employee": "S. Pawar",
         },
     }
 

@@ -179,7 +179,6 @@ async def _build_detail(
             defect_type=typ,
             attended_details=data.attended_details,
             spare_parts_used=data.spare_parts_used,
-            employee=data.employee,
             supervisor=data.supervisor,
             ticket_id=ticket.id if ticket else None,
             completes_ticket=data.completes_ticket,
@@ -191,7 +190,6 @@ async def _build_detail(
             data.defect_type,
             data.attended_details,
             data.spare_parts_used,
-            data.employee,
             data.shift.value if data.shift else None,
         ]
 
@@ -402,7 +400,6 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "defect_type": d.defect_type.name if d.defect_type else None,
             "attended_details": d.attended_details,
             "spare_parts_used": d.spare_parts_used,
-            "employee": d.employee,
             "supervisor": d.supervisor,
             "ticket_id": d.ticket_id,
             "completes_ticket": d.completes_ticket,
@@ -498,8 +495,6 @@ def reporter_name(entry: Entry) -> str:
     if entry.register is Register.work_done and detail is not None:
         if detail.attendees:
             return detail.attendees[0].user.name
-        if (detail.employee or "").strip():
-            return detail.employee.strip()
         return entry.created_by.name
     if detail is not None:
         column = REPORTER_COLUMN.get(entry.register)
