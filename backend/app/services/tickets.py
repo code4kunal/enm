@@ -65,8 +65,15 @@ async def search_tickets(
         stmt = stmt.where(Entry.register == register)
     if q:
         needle = f"%{q.strip().lower()}%"
+        # Lets a caller that just created the source entry (and so knows its
+        # id, not the ticket's) look the ticket up directly, same as an
+        # exact ticket-id lookup.
         stmt = stmt.where(
-            or_(Entry.search_text.like(needle), Ticket.id == q.strip())
+            or_(
+                Entry.search_text.like(needle),
+                Ticket.id == q.strip(),
+                Entry.id == q.strip(),
+            )
         )
     rows = (
         await session.scalars(stmt.order_by(Entry.entry_date.desc()))

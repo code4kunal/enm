@@ -44,6 +44,15 @@ def breakdown() -> dict:
     }
 
 
+def coolant() -> dict:
+    return {
+        "register": "coolant",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {"bus_no": "MH40LY1894", "bcs_litres": 2.5},
+    }
+
+
 async def test_create_work_done_normalizes_bus_no(client: AsyncClient) -> None:
     h = await auth_headers(client)
     r = await client.post("/entries", json=work_done(), headers=h)
@@ -368,6 +377,70 @@ async def test_work_done_rejects_an_already_completed_ticket(
     # an open-tickets search — confirm that, then confirm linking to its id
     # directly (as if a stale client cached it) is rejected.
     assert tickets.json() == []
+
+
+async def test_two_sessions_same_ticket_date_shift_is_rejected(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": bd_id},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    first = work_done()
+    first["data"]["ticket_id"] = ticket_id
+    r1 = await client.post("/entries", json=first, headers=h)
+    assert r1.status_code == 201, r1.text
+
+    second = work_done()
+    second["data"]["ticket_id"] = ticket_id  # same shift ("A"), same date, same ticket
+    r2 = await client.post("/entries", json=second, headers=h)
+    assert r2.status_code == 409, r2.text
+
+
+async def test_two_tickets_same_bus_same_shift_both_get_sessions(
+    client: AsyncClient,
+) -> None:
+    """Ticket-scoped, not vehicle-scoped — resolves the same-shift limitation."""
+    h = await auth_headers(client)
+    bd1 = await client.post("/entries", json=breakdown(), headers=h)
+    coolant_payload = coolant()
+    coolant_payload["data"]["bus_no"] = "MH40LY1895"  # same bus as the breakdown
+    bd2_source = await client.post("/entries", json=coolant_payload, headers=h)
+    raised = await client.post(
+        f"/entries/{bd2_source.json()['id']}/raise_ticket", headers=h
+    )
+    assert raised.status_code == 200
+
+    t1 = (
+        await client.get(
+            "/tickets/search",
+            params={"site": "MBMT", "register": "breakdown", "q": bd1.json()["id"]},
+            headers=h,
+        )
+    ).json()[0]["ticket_id"]
+    t2 = (
+        await client.get(
+            "/tickets/search",
+            params={"site": "MBMT", "register": "coolant", "q": bd2_source.json()["id"]},
+            headers=h,
+        )
+    ).json()[0]["ticket_id"]
+
+    wd1 = work_done(bus="MH40LY1895")
+    wd1["data"]["ticket_id"] = t1
+    wd2 = work_done(bus="MH40LY1895")
+    wd2["data"]["ticket_id"] = t2
+
+    r1 = await client.post("/entries", json=wd1, headers=h)
+    r2 = await client.post("/entries", json=wd2, headers=h)
+    assert r1.status_code == 201, r1.text
+    assert r2.status_code == 201, r2.text
 
 
 async def test_work_done_attendees_round_trip_by_user_id(client: AsyncClient) -> None:

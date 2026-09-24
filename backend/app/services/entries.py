@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import Select, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -281,6 +282,25 @@ async def _apply_ticket_side_effects(
         await complete_ticket(session, ticket=ticket, completed_by=actor, completed_at=completed_at)
 
 
+async def _flush_catching_shift_conflict(session: AsyncSession) -> None:
+    """Flush, mapping the `work_done_shift_uniqueness` trigger's raise to a 409.
+
+    A plain check-then-insert in Python would race under two devices
+    submitting the same ticket/shift concurrently, so the constraint lives
+    in a DB trigger (migration 0028) instead. Postgres reports it as a
+    `unique_violation` (23505), which asyncpg/SQLAlchemy surface here as an
+    `IntegrityError` wrapping the trigger's own message.
+    """
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if "work_done_shift_uniqueness" in str(exc.orig):
+            raise Conflict(
+                "This ticket already has a Work Done session for this date and shift"
+            ) from exc
+        raise
+
+
 async def create_entry(
     session: AsyncSession,
     *,
@@ -316,7 +336,7 @@ async def create_entry(
     entry.search_text = _search_text(entry, vehicle, creator, searchable)
 
     session.add(entry)
-    await session.flush()
+    await _flush_catching_shift_conflict(session)
     if register is Register.work_done:
         await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
         await session.flush()
@@ -359,7 +379,7 @@ async def update_entry(
     entry.search_text = _search_text(entry, vehicle, entry.created_by, searchable)
     entry.updated_at = datetime.now(UTC)
 
-    await session.flush()
+    await _flush_catching_shift_conflict(session)
     if entry.register is Register.work_done:
         await _set_attendees(session, entry.id, detail, data.attendee_user_ids)
         await session.flush()

@@ -50,7 +50,7 @@ It also surfaces two things the first revision got wrong:
 | Rollout scope this pass | Breakdown, Coolant, Driver Complaint, PM/Docking get full ticket treatment. Daily/10-Day Inspection and Manual/Auto Defect Entry (shown in the diagram but not existing concepts in this codebase) are out of scope. |
 | Work Done sessions | `work_done_entries` gains `ticket_id` (nullable FK). Each row is still a normal `Entry`/register row (Registers list, edit/view, audit trail — unchanged), now representing **one shift's session** against a ticket. A ticket accumulates many sessions over many days. Linking is still optional — general/routine work logs with no ticket. |
 | Carry-forward mechanics | No extra state machine. A session either completes the ticket or doesn't (`completes_ticket: bool`); an incomplete session's row is left frozen as history, the ticket stays `open`, and it resurfaces in the pending list for the next shift's allocation. The next session is a new `work_done_entries` row when someone actually logs it — no placeholder row is pre-created. |
-| Uniqueness constraint | `(ticket_id, entry_date, shift)` on `work_done_entries` — ticket-scoped, not vehicle-scoped. Since `ticket_id` now lives directly on this table (no header/detail split needed for this constraint), it's a plain table-level `UniqueConstraint`, not a trigger. |
+| Uniqueness constraint | `(ticket_id, entry_date, shift)` — ticket-scoped, not vehicle-scoped. `entry_date` lives on the `Entry` header, not on `work_done_entries`, so this still spans two tables and can't be a plain table-level `UniqueConstraint`; it's enforced with a Postgres trigger on `work_done_entries` instead. |
 | Completion propagation | One shared service function, called when a session sets `completes_ticket=True`: ticket → `completed`, `completed_at`/`completed_by_id` set. For Breakdown specifically, also mirrors into `breakdown_entries.resolved_at`/`resolved_by_id` (preserves the field names existing code — SLA notifications, breakdown UI — already reads) and flips header `Entry.status` to `resolved`. For Coolant/Complaint/PM, flips header `Entry.status` to `resolved` only (no per-register detail fields exist for these today). |
 | `attended_time`/`attended_at` | Ticket-level, derived: set once, from the first Work Done session ever logged against it. Mirrored into `breakdown_entries.attended_time` when the source is a breakdown. |
 | Attending person(s) | New `work_done_attendees` join table (`work_done_entry_id` FK, `user_id` FK → `users.id`), multi-select. Replaces the single free-text `employee` column, which is dropped — same data-loss tradeoff already accepted for `breakdown_time`: old rows keep their free-text value in history/audit only, new rows use the join table. |
@@ -88,8 +88,14 @@ Dropped:
 - `employee` (free-text "Attended By") — replaced by `work_done_attendees`.
 
 New constraint:
-- `UniqueConstraint(ticket_id, entry_date, shift)`, enforced only where
+- One session per `(ticket_id, entry_date, shift)`, enforced only where
   `ticket_id IS NOT NULL` (unlinked/general work has no such constraint).
+  `entry_date` lives on the `Entry` header, not on `work_done_entries`, so
+  this spans two tables and can't be a plain table-level
+  `UniqueConstraint` — it's enforced with a Postgres trigger on
+  `work_done_entries` instead, which also avoids the race an app-level
+  check-then-insert would have under two devices submitting the same
+  ticket/shift concurrently.
 
 ### `work_done_attendees` (new table)
 
@@ -202,8 +208,10 @@ Alembic revision, in order:
    depends on it beyond history/audit, which reads through
    `serialize_data`/`audit_snapshot` snapshots already taken at write time,
    unaffected by dropping the live column).
-6. Add `UniqueConstraint(ticket_id, entry_date, shift)` on
-   `work_done_entries`, `WHERE ticket_id IS NOT NULL`. Audit for existing
+6. Add a Postgres trigger enforcing one session per
+   `(ticket_id, entry_date, shift)`, scoped to `ticket_id IS NOT NULL` —
+   not a table-level `UniqueConstraint`, since `entry_date` lives on the
+   `Entry` header rather than on `work_done_entries`. Audit for existing
    violations first (should be none pre-feature, since `ticket_id` doesn't
    exist yet on any row until this migration populates it going forward).
 7. `breakdown_entries`: backfill `mechanic_reported_time` from
