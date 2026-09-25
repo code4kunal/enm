@@ -124,4 +124,15 @@ def downgrade() -> None:
         type_=sa.String(length=32),
     )
     op.add_column("breakdown_entries", sa.Column("driver_id", sa.String(length=64), nullable=True))
+    # Restore the free text from drivers.driver_code (which upgrade() set to
+    # the original text whenever it didn't collide — see upgrade()'s own
+    # comment) before the FK column is dropped, so a downgrade doesn't
+    # silently blank every breakdown's driver field.
+    connection = op.get_bind()
+    connection.execute(
+        sa.text(
+            "UPDATE breakdown_entries be SET driver_id = d.driver_code "
+            "FROM drivers d WHERE d.id = be.driver_id_fk"
+        )
+    )
     op.drop_column("breakdown_entries", "driver_id_fk")
