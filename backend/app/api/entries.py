@@ -61,6 +61,7 @@ def _filters(
     period: str | None,
     q: str | None,
     entry_status: EntryStatus | None,
+    origin: str | None = None,
 ):
     frm, to = svc.resolve_period(period, date_from, date_to, _today())
     return {
@@ -70,6 +71,7 @@ def _filters(
         "date_to": to,
         "q": q,
         "status": entry_status,
+        "origin": origin,
     }
 
 
@@ -109,8 +111,9 @@ async def list_entries(
     period: PeriodQ = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
     entry_status: Annotated[EntryStatus | None, Query(alias="status")] = None,
+    origin: Annotated[str | None, Query()] = None,
 ) -> Page[EntryOut]:
-    filters = _filters(site, register, date_from, date_to, period, q, entry_status)
+    filters = _filters(site, register, date_from, date_to, period, q, entry_status, origin)
     stmt = svc.apply_filters(select(Entry), **filters)
     total = await svc.count_entries(session, stmt)
     rows = (

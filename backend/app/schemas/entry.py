@@ -51,6 +51,9 @@ class WorkDoneData(_DataBase):
     # parts back as `{part_id, part_no, name}` objects, the form writes them
     # back as `spare_part_ids`.
     spare_parts: list[Any] | None = None
+    # Read-only: derived from source_fingerprint/ticket_id, never set by the
+    # form. Same GET-then-PUT round-trip contract as `attendees` above.
+    entry_origin: OptText = None
 
     @model_validator(mode="after")
     def _completion_requires_ticket_and_time(self) -> "WorkDoneData":

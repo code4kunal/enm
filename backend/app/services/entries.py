@@ -625,6 +625,13 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "attendees": [
                 {"user_id": a.user_id, "name": a.user.name} for a in d.attendees
             ],
+            "entry_origin": (
+                "imported"
+                if entry.source_fingerprint is not None
+                else "linked"
+                if d.ticket_id is not None
+                else "manual"
+            ),
         }
     if entry.register is Register.coolant:
         return {
@@ -828,6 +835,7 @@ def apply_filters(
     date_to: date_t | None,
     q: str | None,
     status: EntryStatus | None,
+    origin: str | None = None,
 ) -> Select:
     stmt = stmt.where(Entry.site_code == site_code)
     if register is not None:
@@ -845,6 +853,18 @@ def apply_filters(
         stmt = stmt.where(
             or_(Entry.search_text.like(needle), Entry.id == q.strip())
         )
+    if origin is not None:
+        linked_ids = select(WorkDoneEntry.entry_id).where(
+            WorkDoneEntry.ticket_id.is_not(None)
+        )
+        if origin == "imported":
+            stmt = stmt.where(Entry.source_fingerprint.is_not(None))
+        elif origin == "manual":
+            stmt = stmt.where(Entry.source_fingerprint.is_(None)).where(
+                ~Entry.id.in_(linked_ids)
+            )
+        elif origin == "linked":
+            stmt = stmt.where(Entry.id.in_(linked_ids))
     return stmt
 
 

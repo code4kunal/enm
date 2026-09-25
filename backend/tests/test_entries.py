@@ -751,3 +751,51 @@ async def test_coolant_day_entry_rolls_back_on_one_bad_vehicle(client: AsyncClie
         headers=h,
     )
     assert listing.json()["total"] == 0
+
+
+async def test_entry_origin_manual_by_default(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    created = (await client.post("/entries", json=work_done(), headers=h)).json()
+    assert created["data"]["entry_origin"] == "manual"
+
+
+async def test_entry_origin_linked_when_ticket_set(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = (await client.post("/entries", json=breakdown(), headers=h)).json()
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": bd["id"]}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    created = (await client.post("/entries", json=payload, headers=h)).json()
+    assert created["data"]["entry_origin"] == "linked"
+
+
+async def test_origin_filter_matches_only_imported(client: AsyncClient) -> None:
+    from tests.test_imports import _import_snag, _snag_work_types
+
+    h = await auth_headers(client)
+    manual = (await client.post("/entries", json=work_done(), headers=h)).json()
+
+    await _snag_work_types()
+    assert (await _import_snag(client, h)).status_code == 200
+    imported = next(
+        e
+        for e in (
+            await client.get(
+                "/entries", params={"site": "MBMT", "register": "work_done"}, headers=h
+            )
+        ).json()["items"]
+        if e["id"] != manual["id"]
+    )
+
+    r = await client.get(
+        "/entries",
+        params={"site": "MBMT", "register": "work_done", "origin": "imported"},
+        headers=h,
+    )
+    ids = {e["id"] for e in r.json()["items"]}
+    assert imported["id"] in ids
+    assert manual["id"] not in ids
