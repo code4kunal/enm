@@ -358,6 +358,7 @@ class FakeTicketRepository implements TicketRepository {
             title: '${entrySummary(e)} · ${e.busNumber}',
             entryDate: e.date,
             status: 'open',
+            sourceKind: registerToWire[e.registerId] ?? e.registerId,
           ),
         )
         .toList();
