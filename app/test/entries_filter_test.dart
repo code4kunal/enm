@@ -2,13 +2,70 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 import 'support/seed.dart';
-import 'package:transvolt_em/data/api_exception.dart';
 import 'package:transvolt_em/data/registers.dart';
+import 'package:transvolt_em/data/repositories.dart';
+import 'package:transvolt_em/models/checklist.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/state/entries.dart';
+import 'package:transvolt_em/state/inspections.dart';
 import 'package:transvolt_em/state/providers.dart';
 import 'package:transvolt_em/state/session.dart';
 import 'package:transvolt_em/utils/dates.dart';
+
+/// No FakeChecklistRepository exists in this suite (see providers.dart's own
+/// note on ChecklistRepository vs the scheduling-only InspectionRepository)
+/// -- a minimal stub for the one method filteredInspectionsProvider needs.
+class _StubChecklistRepository implements ChecklistRepository {
+  _StubChecklistRepository(this.inspections);
+
+  final List<InspectionEntry> inspections;
+
+  @override
+  Future<List<InspectionEntry>> fetchInspections(
+    String siteCode, {
+    int? workTypeId,
+  }) async =>
+      inspections;
+
+  @override
+  Future<List<InspectionEntry>> todaysInspections(String siteCode) async =>
+      inspections;
+
+  @override
+  Future<List<Checklist>> fetchChecklists(String siteCode) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Checklist> saveChecklist(String siteCode, Checklist checklist) =>
+      throw UnimplementedError();
+
+  @override
+  Future<InspectionEntry> recordInspection({
+    required String siteCode,
+    required String vehicleId,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? doneBy,
+    String? supervisor,
+    int? odometerKm,
+    String? remarks,
+    int? milestoneKm,
+    required List<InspectionResult> results,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<InspectionEntry>> recordInspectionBatch({
+    required String siteCode,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? supervisor,
+    required List<InspectionBatchItem> items,
+  }) =>
+      throw UnimplementedError();
+}
 
 /// Signs in against the fake auth repository and lands on MBMT, which is where
 /// the seed entries live.
@@ -418,6 +475,94 @@ void main() {
         )).future,
       );
       expect(included.any((e) => e.id == open.first.id), isTrue);
+    });
+  });
+
+  group('filteredInspectionsProvider hasOpenTicket', () {
+    InspectionEntry entry(String id, {required List<InspectionResult> results}) {
+      return InspectionEntry(
+        id: id,
+        siteCode: 'MBMT',
+        vehicleId: 'v1',
+        registrationNo: 'MH40LY1894',
+        workTypeId: 1,
+        workTypeCode: 'D.I',
+        workTypeName: 'Daily inspection',
+        inspectedOn: Dates.today(),
+        results: results,
+      );
+    }
+
+    late ProviderContainer container;
+
+    setUp(() {
+      container = ProviderContainer(overrides: [
+        ...fakeOverrides(),
+        checklistRepositoryProvider.overrideWithValue(
+          _StubChecklistRepository(<InspectionEntry>[
+            entry(
+              'clean',
+              results: const <InspectionResult>[
+                InspectionResult(itemId: 'i1', result: CheckResult.ok),
+              ],
+            ),
+            entry(
+              'pending',
+              results: const <InspectionResult>[
+                InspectionResult(
+                  itemId: 'i1',
+                  result: CheckResult.notOk,
+                  ticketId: 't1',
+                  ticketStatus: 'open',
+                ),
+              ],
+            ),
+            entry(
+              'completed',
+              results: const <InspectionResult>[
+                InspectionResult(
+                  itemId: 'i1',
+                  result: CheckResult.notOk,
+                  ticketId: 't2',
+                  ticketStatus: 'completed',
+                ),
+              ],
+            ),
+          ]),
+        ),
+      ]);
+      addTearDown(container.dispose);
+    });
+
+    Future<void> signIn() async {
+      await container
+          .read(sessionProvider.notifier)
+          .signInWithCredentials('TV4021', kSeedPassword);
+      container.read(sessionProvider.notifier).enterApp();
+      await container.read(siteInspectionsProvider.future);
+    }
+
+    test('true keeps only inspections with a still-open ticket', () async {
+      await signIn();
+      container.read(entryFiltersProvider.notifier).setHasOpenTicket(true);
+
+      final results = container.read(filteredInspectionsProvider);
+      expect(results.map((e) => e.id), <String>['pending']);
+    });
+
+    test('false keeps clean and completed, excludes pending', () async {
+      await signIn();
+      container.read(entryFiltersProvider.notifier).setHasOpenTicket(false);
+
+      final results = container.read(filteredInspectionsProvider);
+      expect(results.map((e) => e.id).toSet(), <String>{'clean', 'completed'});
+    });
+
+    test('null (All) keeps everything', () async {
+      await signIn();
+
+      final results = container.read(filteredInspectionsProvider);
+      expect(results, hasLength(3));
     });
   });
 

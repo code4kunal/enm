@@ -493,6 +493,7 @@ void main() {
               'title': 'HV contactor tripped · MH40LY1895',
               'entry_date': '2026-09-24',
               'status': 'open',
+              'source_kind': 'breakdown',
             },
           ]),
           200,
@@ -506,6 +507,7 @@ void main() {
           await ApiTicketRepository(client).search(site: 'MBMT');
       expect(results, hasLength(1));
       expect(results.first.title, contains('MH40LY1895'));
+      expect(results.first.sourceKind, 'breakdown');
     });
 
     test('the register filter is sent as source_kind, in TicketSourceKind wire values', () async {

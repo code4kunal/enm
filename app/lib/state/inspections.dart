@@ -273,7 +273,18 @@ final filteredInspectionsProvider =
       (e.doneBy ?? '').toLowerCase().contains(needle) ||
       (e.supervisor ?? '').toLowerCase().contains(needle);
 
+  // An inspection failure is a ticket, same as a breakdown or driver
+  // complaint -- it just has no register entry behind it, which is why
+  // this can't be answered by pendingFilterEntriesProvider. "Pending" means
+  // at least one result is still an open ticket; "Complete" means none are
+  // (never failed, or every failure has been resolved through Work Done).
+  bool matchesStatus(InspectionEntry e) {
+    if (f.hasOpenTicket == null) return true;
+    final hasOpen = e.results.any((r) => r.ticketStatus == 'open');
+    return f.hasOpenTicket! ? hasOpen : !hasOpen;
+  }
+
   return all
-      .where((e) => inPeriod(e) && matchesFilter(e) && matches(e))
+      .where((e) => inPeriod(e) && matchesFilter(e) && matches(e) && matchesStatus(e))
       .toList();
 });
