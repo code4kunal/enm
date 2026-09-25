@@ -164,25 +164,41 @@ class _BreakdownCard extends ConsumerWidget {
               style: AppText.sans(size: 10, color: T.muted),
             ),
             const SizedBox(height: 6),
-            for (final session in linkedSessions)
+            for (final indexed in linkedSessions.asMap().entries)
               InkWell(
                 onTap: () => context.go(
-                  Routes.editEntry(session['entry_id'] as String),
+                  Routes.editEntry(indexed.value['entry_id'] as String),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Expanded(
-                        child: Text(
-                          '${session['entry_date']} · Shift ${session['shift'] ?? '—'} · '
-                          '${(session['attendees'] as List<dynamic>).map((a) => (a as Map)['name']).join(', ')}',
-                          style: AppText.sans(size: 13),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            if (indexed.key == 0)
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: TagBadge(
+                                  label: 'Originally logged',
+                                  background: T.blueTint,
+                                  foreground: T.blue,
+                                ),
+                              ),
+                            Text(
+                              '${indexed.value['entry_date']} · Shift ${indexed.value['shift'] ?? '—'} · '
+                              '${(indexed.value['attendees'] as List<dynamic>).map((a) => (a as Map)['name']).join(', ')}'
+                              '${(indexed.value['supervisor'] as String?)?.isNotEmpty == true ? ' · Supervisor: ${indexed.value['supervisor']}' : ''}',
+                              style: AppText.sans(size: 13),
+                            ),
+                          ],
                         ),
                       ),
-                      if (session['completes_ticket'] == true)
+                      if (indexed.value['completes_ticket'] == true)
                         const TagBadge(
-                          label: 'Resolved this',
+                          label: 'Completed by',
                           background: T.greenTint,
                           foreground: T.green,
                         ),
