@@ -251,3 +251,24 @@ class SparePart(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+
+
+class Driver(Base):
+    """A depot's own driver roster — site-scoped like Vehicle, not
+    tenant-wide like DefectSource/DefectType/WorkType: a driver belongs to
+    one depot's fleet."""
+
+    __tablename__ = "drivers"
+    __table_args__ = (
+        UniqueConstraint("site_code", "driver_code", name="uq_drivers_site_code_driver_code"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    site_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+    )
+    driver_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )

@@ -5,8 +5,15 @@ from sqlalchemy import select
 
 from app.deps import CurrentUser, SessionDep, assert_site_permission
 from app.errors import Conflict, NotFound
-from app.models.master import SparePart
-from app.schemas.site_masters import SparePartCreate, SparePartList, SparePartOut
+from app.models.master import Driver, SparePart
+from app.schemas.site_masters import (
+    DriverCreate,
+    DriverList,
+    DriverOut,
+    SparePartCreate,
+    SparePartList,
+    SparePartOut,
+)
 
 router = APIRouter(tags=["site-masters"])
 
@@ -55,3 +62,47 @@ async def deactivate_spare_part(part_id: str, user: CurrentUser, session: Sessio
     row.is_active = False
     await session.commit()
     return _spare_part_out(row)
+
+
+def _driver_out(row: Driver) -> DriverOut:
+    return DriverOut(id=row.id, driver_code=row.driver_code, name=row.name, is_active=row.is_active)
+
+
+@router.get("/sites/{code}/drivers", response_model=DriverList)
+async def list_drivers(code: str, user: CurrentUser, session: SessionDep) -> DriverList:
+    site_code = assert_site_permission(user, code, "em_master:read")
+    rows = await session.scalars(
+        select(Driver)
+        .where(Driver.site_code == site_code, Driver.is_active.is_(True))
+        .order_by(Driver.driver_code)
+    )
+    return DriverList(items=[_driver_out(r) for r in rows])
+
+
+@router.post("/sites/{code}/drivers", response_model=DriverOut, status_code=status.HTTP_201_CREATED)
+async def create_driver(
+    code: str, payload: DriverCreate, user: CurrentUser, session: SessionDep
+) -> DriverOut:
+    site_code = assert_site_permission(user, code, "em_master:write")
+    exists = await session.scalar(
+        select(Driver.id).where(
+            Driver.site_code == site_code, Driver.driver_code == payload.driver_code
+        )
+    )
+    if exists:
+        raise Conflict(f"{payload.driver_code} already exists", {"driver_code": "duplicate"})
+    row = Driver(site_code=site_code, driver_code=payload.driver_code, name=payload.name)
+    session.add(row)
+    await session.commit()
+    return _driver_out(row)
+
+
+@router.post("/drivers/{driver_id}/deactivate", response_model=DriverOut)
+async def deactivate_driver(driver_id: str, user: CurrentUser, session: SessionDep) -> DriverOut:
+    row = await session.get(Driver, driver_id)
+    if row is None:
+        raise NotFound("Driver not found")
+    assert_site_permission(user, row.site_code, "em_master:write")
+    row.is_active = False
+    await session.commit()
+    return _driver_out(row)
