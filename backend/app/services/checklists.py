@@ -429,6 +429,47 @@ async def record_inspection(
     return inspection
 
 
+async def record_inspection_batch(
+    session: AsyncSession,
+    *,
+    site_code: str,
+    work_type: WorkType,
+    inspected_on: date_t,
+    entry_time: time_t | None,
+    supervisor: str | None,
+    items: list[
+        tuple[str, int | None, int | None, str | None, str | None, list[tuple[str, CheckResult, str | None, str | None]]]
+    ],
+    actor: User,
+) -> list[InspectionEntry]:
+    """Multiple Bus Inspection: every vehicle in one transaction — a bad
+    vehicle anywhere in the list fails the whole batch, since a partial
+    submission would misreport as "not yet inspected" for the buses that
+    should have recorded but didn't reach the request at all."""
+    out: list[InspectionEntry] = []
+    for vehicle_id, odometer_km, milestone_km, done_by, remarks, results in items:
+        vehicle = await session.get(Vehicle, vehicle_id)
+        if vehicle is None:
+            raise NotFound(f"Vehicle {vehicle_id} not found")
+        inspection = await record_inspection(
+            session,
+            site_code=site_code,
+            vehicle=vehicle,
+            work_type=work_type,
+            inspected_on=inspected_on,
+            entry_time=entry_time,
+            done_by=done_by,
+            supervisor=supervisor,
+            odometer_km=odometer_km,
+            remarks=remarks,
+            results=results,
+            actor=actor,
+            milestone_km=milestone_km,
+        )
+        out.append(inspection)
+    return out
+
+
 async def last_done(
     session: AsyncSession, site_code: str, work_type_id: int
 ) -> dict[str, date_t]:

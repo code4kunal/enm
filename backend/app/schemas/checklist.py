@@ -135,3 +135,24 @@ class InspectionOut(BaseModel):
 class InspectionList(BaseModel):
     items: list[InspectionOut]
     total: int = 0
+
+
+class InspectionBatchItem(BaseModel):
+    vehicle_id: str = Field(min_length=1, max_length=64)
+    odometer_km: int | None = Field(default=None, ge=0, le=10_000_000)
+    milestone_km: int | None = Field(default=None, ge=0, le=10_000_000)
+    done_by: str | None = Field(default=None, max_length=1000)
+    remarks: str | None = None
+    results: list[ResultIn] = Field(default_factory=list)
+
+
+class InspectionBatchCreate(BaseModel):
+    work_type_id: int
+    inspected_on: date_t
+    entry_time: HHMM | None = None
+    supervisor: str | None = Field(default=None, max_length=255)
+    items: list[InspectionBatchItem] = Field(min_length=1, max_length=200)
+
+
+class InspectionBatchOut(BaseModel):
+    items: list[InspectionOut]

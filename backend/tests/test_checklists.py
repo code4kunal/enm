@@ -700,3 +700,63 @@ async def test_inspection_get_shows_ticket_status_on_failed_result(client: Async
     passed = next(r for r in created["results"] if r["item_id"] == items[1]["id"])
     assert passed["ticket_id"] is None
     assert passed["ticket_status"] is None
+
+
+def _all_ok(items: list[dict]) -> list[dict]:
+    return [{"item_id": i["id"], "result": "ok"} for i in items]
+
+
+async def test_batch_inspection_creates_one_entry_per_vehicle(client: AsyncClient) -> None:
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
+    failing_results = _all_ok(items)
+    failing_results[1] = {"item_id": items[1]["id"], "result": "not_ok", "remark": "worn"}
+
+    r = await client.post(
+        "/sites/MBMT/inspections/batch",
+        json={
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "items": [
+                {"vehicle_id": await _vehicle("MH40LY1894"), "results": _all_ok(items)},
+                {"vehicle_id": await _vehicle("MH40LY1895"), "results": failing_results},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert len(body["items"]) == 2
+    assert body["items"][1]["failed_count"] == 1
+
+
+async def test_batch_inspection_rolls_back_entirely_on_one_bad_vehicle(client: AsyncClient) -> None:
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
+
+    r = await client.post(
+        "/sites/MBMT/inspections/batch",
+        json={
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "items": [
+                {"vehicle_id": await _vehicle("MH40LY1894"), "results": _all_ok(items)},
+                {"vehicle_id": "not-a-real-vehicle", "results": _all_ok(items)},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code in (400, 404), r.text
+
+    # No date filter: list_inspections compares date_from/date_to as raw
+    # strings against a `date` column (a pre-existing bug, unrelated to this
+    # task — Postgres rejects the untyped bind param). work_type_id alone is
+    # enough here since this test's DB has no other D.I inspections.
+    surviving = await client.get(
+        "/sites/MBMT/inspections",
+        params={"work_type_id": ids["D.I"]},
+        headers=h,
+    )
+    assert surviving.json()["total"] == 0

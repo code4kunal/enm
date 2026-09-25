@@ -16,6 +16,8 @@ from app.schemas.checklist import (
     ChecklistList,
     ChecklistOut,
     ChecklistUpdate,
+    InspectionBatchCreate,
+    InspectionBatchOut,
     InspectionCreate,
     InspectionList,
     InspectionOut,
@@ -278,6 +280,61 @@ async def record_inspection(
     await session.commit()
     await session.refresh(inspection)
     return _inspection_out(inspection)
+
+
+@router.post(
+    "/sites/{code}/inspections/batch",
+    response_model=InspectionBatchOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_inspection_batch(
+    code: str, payload: InspectionBatchCreate, user: CurrentUser, session: SessionDep
+) -> InspectionBatchOut:
+    """Multiple Bus Inspection: one checklist/date/time/supervisor, several
+    vehicles, one transaction."""
+    site_code = assert_site_permission(user, code, "em_inspection:write")
+    work_type = await session.get(WorkType, payload.work_type_id)
+    if work_type is None:
+        raise NotFound("Inspection type not found")
+
+    inspections = await checklists.record_inspection_batch(
+        session,
+        site_code=site_code,
+        work_type=work_type,
+        inspected_on=payload.inspected_on,
+        entry_time=payload.entry_time,
+        supervisor=payload.supervisor,
+        items=[
+            (
+                item.vehicle_id,
+                item.odometer_km,
+                item.milestone_km,
+                item.done_by,
+                item.remarks,
+                [(r.item_id, r.result, r.value, r.remark) for r in item.results],
+            )
+            for item in payload.items
+        ],
+        actor=user,
+    )
+    for inspection in inspections:
+        await audit.record(
+            session,
+            actor_id=user.id,
+            action=AuditAction.inspection_recorded,
+            object_type="inspection",
+            object_id=inspection.id,
+            after={
+                "site": site_code,
+                "work_type": work_type.code,
+                "batch": True,
+                "failed": len(inspection.failed),
+            },
+        )
+    await session.commit()
+    for inspection in inspections:
+        await session.refresh(inspection)
+    return InspectionBatchOut(items=[_inspection_out(i) for i in inspections])
 
 
 @router.get("/sites/{code}/inspections", response_model=InspectionList)
