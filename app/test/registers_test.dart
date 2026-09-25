@@ -36,7 +36,6 @@ void main() {
         'Source of Defect',
         'Type of Defect',
         'Attended Details',
-        'Spare Parts Used',
         'Supervisor (Floor)',
       ],
     );

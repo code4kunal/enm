@@ -61,12 +61,6 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'What was done to rectify',
       ),
       FieldDef(
-        key: 'spares',
-        label: 'Spare Parts Used',
-        type: FieldType.text,
-        placeholder: 'Part name & qty, or NIL',
-      ),
-      FieldDef(
         key: 'supervisor',
         label: 'Supervisor (Floor)',
         type: FieldType.select,

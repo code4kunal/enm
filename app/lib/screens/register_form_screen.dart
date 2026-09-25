@@ -8,6 +8,7 @@ import '../models/entry.dart';
 import '../models/register.dart';
 import '../models/report.dart';
 import '../models/site.dart';
+import '../models/spare_part.dart';
 import '../models/staff.dart';
 import '../models/ticket.dart';
 import '../router.dart';
@@ -487,6 +488,13 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   onPickTime: _pickTime,
                 ),
               ],
+              if (!widget.readOnly && register.id == 'work') ...<Widget>[
+                const SizedBox(height: 16),
+                _SparePartsSection(
+                  values: _values,
+                  onSet: (k, v) => setState(() => _set(k, v)),
+                ),
+              ],
               const SizedBox(height: 16),
               if (!widget.readOnly)
                 Row(
@@ -874,6 +882,161 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                 onTap: () => widget.onPickTime('completionTime'),
               ),
             ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Work Done's spare parts multi-select — typeahead search against the
+/// site's catalogue, a chip list of what's picked, and an inline "add as
+/// new part" affordance when the typed text matches nothing. Structurally
+/// mirrors [_TicketLinkSection]'s attendee picker.
+class _SparePartsSection extends ConsumerStatefulWidget {
+  const _SparePartsSection({required this.values, required this.onSet});
+
+  final Map<String, String> values;
+  final void Function(String key, String value) onSet;
+
+  @override
+  ConsumerState<_SparePartsSection> createState() => _SparePartsSectionState();
+}
+
+class _SparePartsSectionState extends ConsumerState<_SparePartsSection> {
+  String _query = '';
+  final TextEditingController _queryController = TextEditingController();
+  bool _adding = false;
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addNew(String partNo) async {
+    final site = ref.read(sessionProvider.select((s) => s.site));
+    if (site.isEmpty || _adding) return;
+    setState(() => _adding = true);
+    try {
+      final created = await ref.read(masterDataRepositoryProvider).createSparePart(
+            siteCode: site,
+            partNo: partNo,
+            name: partNo,
+          );
+      ref.invalidate(sparePartDirectoryProvider);
+      final selected = _selectedIds();
+      widget.onSet('sparePartIds', <String>{...selected, created.id}.join(','));
+      setState(() {
+        _query = '';
+        _queryController.clear();
+      });
+    } on ApiException catch (e) {
+      ref.read(toastProvider.notifier).show(e.message);
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  Set<String> _selectedIds() => widget.values['sparePartIds']
+          ?.split(',')
+          .where((s) => s.isNotEmpty)
+          .toSet() ??
+      <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = ref.watch(sparePartDirectoryProvider).valueOrNull ?? const <SparePart>[];
+    final selectedIds = _selectedIds();
+    final selectedParts = parts.where((p) => selectedIds.contains(p.id)).toList();
+    final needle = _query.trim().toLowerCase();
+    final matches = needle.isEmpty
+        ? const <SparePart>[]
+        : parts
+            .where((p) =>
+                !selectedIds.contains(p.id) &&
+                (p.partNo.toLowerCase().contains(needle) ||
+                    p.name.toLowerCase().contains(needle)))
+            .toList();
+    final exactMatch = parts.any((p) => p.partNo.toLowerCase() == needle);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      decoration: BoxDecoration(
+        color: T.card,
+        borderRadius: T.cardShape,
+        border: Border.all(color: T.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const FieldLabel(label: 'Spare Parts Used'),
+          const SizedBox(height: 6),
+          if (selectedParts.isNotEmpty) ...<Widget>[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                for (final p in selectedParts)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      TagBadge(
+                        label: '${p.partNo} · ${p.name}',
+                        background: T.subtleFill,
+                        foreground: T.secondary,
+                      ),
+                      InkWell(
+                        onTap: () {
+                          final next = Set<String>.of(selectedIds)..remove(p.id);
+                          widget.onSet('sparePartIds', next.join(','));
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '✕',
+                            style: AppText.sans(size: 12, color: T.red),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          AppTextField(
+            controller: _queryController,
+            placeholder: 'Search part number or name…',
+            onChanged: (v) => setState(() => _query = v),
+          ),
+          if (matches.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            for (final p in matches)
+              InkWell(
+                onTap: () {
+                  final next = Set<String>.of(selectedIds)..add(p.id);
+                  widget.onSet('sparePartIds', next.join(','));
+                  setState(() {
+                    _query = '';
+                    _queryController.clear();
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text('${p.partNo} · ${p.name}', style: AppText.sans(size: 13.5)),
+                ),
+              ),
+          ] else if (needle.isNotEmpty && !exactMatch) ...<Widget>[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: _adding ? null : () => _addNew(_queryController.text.trim()),
+              child: Text(
+                _adding ? 'Adding…' : 'Add "$_query" as new part',
+                style: AppText.sans(size: 13.5, weight: FontWeight.w600, color: T.blue),
+              ),
+            ),
           ],
         ],
       ),

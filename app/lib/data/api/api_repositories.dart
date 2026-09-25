@@ -10,6 +10,7 @@ import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
+import '../../models/spare_part.dart';
 import '../../models/staff.dart';
 import '../../models/ticket.dart';
 import '../repositories.dart';
@@ -148,6 +149,27 @@ class ApiMasterDataRepository implements MasterDataRepository {
     return itemsOf(json)
         .map((j) => StaffMember.fromJson(j as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<List<SparePart>> sparePartDirectory({required String siteCode}) async {
+    final json = await _api.get('/sites/$siteCode/spare-parts');
+    return itemsOf(json)
+        .map((j) => SparePart.fromJson(j))
+        .toList();
+  }
+
+  @override
+  Future<SparePart> createSparePart({
+    required String siteCode,
+    required String partNo,
+    required String name,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/spare-parts',
+      body: <String, dynamic>{'part_no': partNo, 'name': name},
+    );
+    return SparePart.fromJson(json as Map<String, dynamic>);
   }
 
   @override

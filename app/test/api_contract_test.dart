@@ -170,7 +170,6 @@ void main() {
           'source': 'Driver report',
           'defectType': 'AC & HVAC',
           'attended': 'Fixed',
-          'spares': 'Fuse',
         },
         'complaint': <String, String>{
           'bus': 'MH1',
@@ -255,6 +254,26 @@ void main() {
     test('employee is no longer a work-done field-map key', () {
       final wire = RegisterFieldMap.toWire('work', <String, String>{'employee': 'X'});
       expect(wire.containsKey('employee'), isFalse);
+    });
+
+    test('spares is no longer a work-done field-map key', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{'spares': 'X'});
+      expect(wire.containsKey('spares'), isFalse);
+    });
+
+    test('work done spare part ids round-trip as a list', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{
+        'sparePartIds': 'p1,p2',
+      });
+      expect(wire['spare_part_ids'], <String>['p1', 'p2']);
+
+      final back = RegisterFieldMap.fromWire('work', <String, dynamic>{
+        'spare_parts': <dynamic>[
+          <String, dynamic>{'part_id': 'p1', 'part_no': 'SP-1', 'name': 'Filter'},
+          <String, dynamic>{'part_id': 'p2', 'part_no': 'SP-2', 'name': 'Pad'},
+        ],
+      });
+      expect(back['sparePartIds'], 'p1,p2');
     });
   });
 
@@ -619,6 +638,57 @@ void main() {
       expect(staff, hasLength(1));
       expect(staff.first.id, 'u1');
       expect(staff.first.name, 'S. Pawar');
+    });
+  });
+
+  group('spare parts directory', () {
+    test('spare part directory keeps the id the backend returns', () async {
+      final mock = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'items': <dynamic>[
+              <String, dynamic>{'id': 'sp1', 'part_no': 'SP-1001', 'name': 'Brake pad set'},
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final parts = await ApiMasterDataRepository(client)
+          .sparePartDirectory(siteCode: 'MBMT');
+      expect(parts, hasLength(1));
+      expect(parts.first.id, 'sp1');
+      expect(parts.first.partNo, 'SP-1001');
+      expect(parts.first.name, 'Brake pad set');
+    });
+
+    test('a work done submission posts spare_part_ids as a list', () async {
+      late Map<String, dynamic> sent;
+      final mock = MockClient((http.Request request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(fixture('entry_create'), 200);
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      await ApiEntryRepository(client).createEntry(
+        const RegisterEntry(
+          id: '',
+          registerId: 'work',
+          date: '2026-09-25',
+          time: '09:29',
+          site: 'MBMT',
+          enteredBy: '',
+          data: <String, String>{
+            'bus': 'MH40LY1894',
+            'defects': 'AC not cooling',
+            'sparePartIds': 'sp1,sp2',
+          },
+        ),
+      );
+      final data = sent['data'] as Map<String, dynamic>;
+      expect(data['spare_part_ids'], <String>['sp1', 'sp2']);
     });
   });
 

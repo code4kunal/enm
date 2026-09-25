@@ -1,6 +1,7 @@
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/spare_part.dart';
 import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
 import 'package:transvolt_em/data/api/api_repositories.dart' show registerToWire;
@@ -62,6 +63,28 @@ class FakeMasterDataRepository implements MasterDataRepository {
         .where((u) => u.active && u.canAccess(siteCode))
         .map((u) => StaffMember(id: u.id, name: u.name))
         .toList();
+  }
+
+  @override
+  Future<List<SparePart>> sparePartDirectory({required String siteCode}) async {
+    await Future<void>.delayed(_latency);
+    return List<SparePart>.of(_store.spareParts);
+  }
+
+  @override
+  Future<SparePart> createSparePart({
+    required String siteCode,
+    required String partNo,
+    required String name,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final normalized = partNo.trim().toUpperCase();
+    if (_store.spareParts.any((p) => p.partNo == normalized)) {
+      throw ApiException('"$normalized" already exists');
+    }
+    final part = SparePart(id: _store.newId(), partNo: normalized, name: name.trim());
+    _store.spareParts.add(part);
+    return part;
   }
 
   @override

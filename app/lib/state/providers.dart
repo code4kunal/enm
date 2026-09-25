@@ -6,6 +6,7 @@ import '../data/api/siteops_client.dart';
 import '../data/repositories.dart';
 import '../models/site.dart';
 import '../models/site_config.dart';
+import '../models/spare_part.dart';
 import '../models/staff.dart';
 import '../models/ticket.dart';
 import 'selected_site.dart';
@@ -323,5 +324,16 @@ final staffDirectoryProvider = FutureProvider<List<StaffMember>>((ref) async {
     return await repo.staffDirectory(siteCode: site);
   } catch (_) {
     return const <StaffMember>[];
+  }
+});
+
+final sparePartDirectoryProvider = FutureProvider<List<SparePart>>((ref) async {
+  final repo = ref.watch(masterDataRepositoryProvider);
+  final site = ref.watch(sessionProvider.select((s) => s.site));
+  if (site.isEmpty) return const <SparePart>[];
+  try {
+    return await repo.sparePartDirectory(siteCode: site);
+  } catch (_) {
+    return const <SparePart>[];
   }
 });

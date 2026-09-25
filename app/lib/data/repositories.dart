@@ -9,6 +9,7 @@ import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
+import '../models/spare_part.dart';
 import '../models/staff.dart';
 import '../models/ticket.dart';
 import '../models/site_config.dart';
@@ -191,6 +192,17 @@ abstract interface class MasterDataRepository {
   /// The site's staff, with ids — for the Work Done attending-mechanics
   /// multi-select, which needs an FK to post, not just a display name.
   Future<List<StaffMember>> staffDirectory({required String siteCode});
+
+  /// The site's spare-parts catalogue, for the Work Done parts multi-select.
+  Future<List<SparePart>> sparePartDirectory({required String siteCode});
+
+  /// Adds a new part to the site's catalogue — the multi-select's inline
+  /// "add as new part" affordance when a typed search matches nothing.
+  Future<SparePart> createSparePart({
+    required String siteCode,
+    required String partNo,
+    required String name,
+  });
 
   /// Active technicians for Daily Work Done's "Attended By" picker.
   Future<List<String>> technicianStaff({required String siteName, String? siteId});

@@ -5,6 +5,7 @@ import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/models/site_config.dart';
 import 'package:transvolt_em/models/site_import.dart';
+import 'package:transvolt_em/models/spare_part.dart';
 import 'package:transvolt_em/utils/dates.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/models/register.dart';
@@ -40,6 +41,7 @@ class FakeStore {
   final List<RegisterEntry> entries = <RegisterEntry>[];
   final List<MasterListItem> defectSources = <MasterListItem>[];
   final List<MasterListItem> defectTypes = <MasterListItem>[];
+  final List<SparePart> spareParts = <SparePart>[];
   final Map<String, SiteConfig> configs = <String, SiteConfig>{};
   final List<ImportProfile> profiles = <ImportProfile>[];
   final List<ImportRun> runs = <ImportRun>[];

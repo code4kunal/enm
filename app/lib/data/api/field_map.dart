@@ -18,12 +18,12 @@ abstract final class RegisterFieldMap {
       'source': 'defect_source',
       'defectType': 'defect_type',
       'attended': 'attended_details',
-      'spares': 'spare_parts_used',
       'supervisor': 'supervisor',
       'ticketId': 'ticket_id',
       'completesTicket': 'completes_ticket',
       'completionTime': 'completion_time',
       'attendeeUserIds': 'attendee_user_ids',
+      'sparePartIds': 'spare_part_ids',
     },
     'coolant': <String, String>{
       'bus': 'bus_no',
@@ -87,7 +87,10 @@ abstract final class RegisterFieldMap {
   /// Fields the API sends/accepts as a JSON array — the form stores them as
   /// a single comma-joined string, same trick `_numericWireKeys` uses for
   /// numbers.
-  static const Set<String> _listWireKeys = <String>{'attendee_user_ids'};
+  static const Set<String> _listWireKeys = <String>{
+    'attendee_user_ids',
+    'spare_part_ids',
+  };
 
   /// Converts the form's values into the register's API payload.
   ///
@@ -143,6 +146,13 @@ abstract final class RegisterFieldMap {
             .map((a) => (a as Map<String, dynamic>)['user_id'] as String)
             .join(',');
         out['attendeeUserIds'] = ids;
+        continue;
+      }
+      if (registerId == 'work' && entry.key == 'spare_parts') {
+        final ids = (entry.value as List<dynamic>? ?? <dynamic>[])
+            .map((p) => (p as Map<String, dynamic>)['part_id'] as String)
+            .join(',');
+        out['sparePartIds'] = ids;
         continue;
       }
       final appKey = map[entry.key];
