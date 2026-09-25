@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import date
 
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.models.enums import Register, SlotStatus
+from app.models.checklist import InspectionResult
+from app.models.enums import Register, SlotStatus, TicketSourceKind
 from app.models.inspection import InspectionSlot
 from app.models.master import Vehicle, WorkType
+from app.models.ticket import Ticket
 from tests.conftest import SUPER_ADMIN, auth_headers
 
 TODAY = date(2026, 8, 13)
@@ -602,3 +604,69 @@ async def test_docking_checklist_resolves_by_bus_type_and_km(
         )
         assert at_60 is not None and any("60k" in i.label for i in at_60.items)
         assert at_80 is not None and any("80k" in i.label for i in at_80.items)
+
+
+async def test_failed_check_raises_one_ticket_per_failure(client: AsyncClient) -> None:
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
+
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {"item_id": items[0]["id"], "result": "not_ok", "remark": "brake pad worn"},
+                {"item_id": items[1]["id"], "result": "not_ok", "remark": "headlamp dim"},
+                {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    inspection_id = r.json()["id"]
+
+    async with SessionLocal() as session:
+        tickets_raised = (
+            await session.scalars(
+                select(Ticket)
+                .join(InspectionResult, InspectionResult.id == Ticket.source_inspection_result_id)
+                .where(InspectionResult.inspection_id == inspection_id)
+            )
+        ).all()
+        assert len(tickets_raised) == 2
+        assert {t.source_kind for t in tickets_raised} == {TicketSourceKind.daily_inspection}
+
+
+async def test_passing_inspection_raises_no_tickets(client: AsyncClient) -> None:
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
+
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {"item_id": items[0]["id"], "result": "ok"},
+                {"item_id": items[1]["id"], "result": "ok"},
+                {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    inspection_id = r.json()["id"]
+
+    async with SessionLocal() as session:
+        count = await session.scalar(
+            select(func.count())
+            .select_from(Ticket)
+            .join(InspectionResult, InspectionResult.id == Ticket.source_inspection_result_id)
+            .where(InspectionResult.inspection_id == inspection_id)
+        )
+        assert count == 0

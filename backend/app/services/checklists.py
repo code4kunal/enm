@@ -27,6 +27,7 @@ from app.models.inspection import InspectionSlot
 from app.models.master import Vehicle, WorkType
 from app.models.user import User
 from app.services import odometer as odometer_service
+from app.services import tickets as ticket_service
 
 
 async def inspection_work_types(session: AsyncSession) -> list[WorkType]:
@@ -391,6 +392,17 @@ async def record_inspection(
 
     session.add(inspection)
     await session.flush()
+
+    # Populates the relationship in memory (inspection.work_type_id alone
+    # doesn't) so create_ticket_for_inspection_result below can read
+    # result.inspection.work_type.code without a lazy load outside the
+    # async context.
+    inspection.work_type = work_type
+    for result in inspection.results:
+        if result.result is CheckResult.not_ok:
+            await ticket_service.create_ticket_for_inspection_result(
+                session, result=result, creator=actor
+            )
 
     # An inspection reads the odometer on the way past; it never runs backwards.
     if odometer_km is not None and (
