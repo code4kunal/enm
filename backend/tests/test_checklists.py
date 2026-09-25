@@ -670,3 +670,33 @@ async def test_passing_inspection_raises_no_tickets(client: AsyncClient) -> None
             .where(InspectionResult.inspection_id == inspection_id)
         )
         assert count == 0
+
+
+async def test_inspection_get_shows_ticket_status_on_failed_result(client: AsyncClient) -> None:
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
+
+    created = (
+        await client.post(
+            "/sites/MBMT/inspections",
+            json={
+                "vehicle_id": await _vehicle(),
+                "work_type_id": ids["D.I"],
+                "inspected_on": TODAY.isoformat(),
+                "results": [
+                    {"item_id": items[0]["id"], "result": "not_ok", "remark": "brake pad worn"},
+                    {"item_id": items[1]["id"], "result": "ok"},
+                    {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
+                ],
+            },
+            headers=h,
+        )
+    ).json()
+    failed = next(r for r in created["results"] if r["item_id"] == items[0]["id"])
+    assert failed["ticket_id"] is not None
+    assert failed["ticket_status"] == "open"
+
+    passed = next(r for r in created["results"] if r["item_id"] == items[1]["id"])
+    assert passed["ticket_id"] is None
+    assert passed["ticket_status"] is None

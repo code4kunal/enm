@@ -92,6 +92,8 @@ class ResultOut(BaseModel):
     result: CheckResult
     value: str | None = None
     remark: str | None = None
+    ticket_id: str | None = None
+    ticket_status: str | None = None
 
 
 class InspectionCreate(BaseModel):

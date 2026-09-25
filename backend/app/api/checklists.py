@@ -85,6 +85,8 @@ def _inspection_out(inspection: InspectionEntry) -> InspectionOut:
                 result=r.result,
                 value=r.value,
                 remark=r.remark,
+                ticket_id=r.ticket.id if r.ticket else None,
+                ticket_status=r.ticket.status.value if r.ticket else None,
             )
             for r in inspection.results
         ],
