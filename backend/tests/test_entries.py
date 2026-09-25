@@ -21,7 +21,6 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
             "defect_source": "Driver report",
             "defect_type": "Brakes & air system",
             "attended_details": "Replaced air dryer cartridge",
-            "spare_parts_used": "Air dryer cartridge x1",
         },
     }
 
@@ -621,3 +620,34 @@ async def test_work_done_no_longer_accepts_employee(client: AsyncClient) -> None
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 400
     assert "employee" in r.json()["error"]["fields"] or "employee" in r.json()["error"]["message"]
+
+
+async def test_work_done_persists_multiple_spare_parts(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    part_a = (
+        await client.post(
+            "/sites/MBMT/spare-parts",
+            json={"part_no": "SP-3001", "name": "Air dryer cartridge"},
+            headers=h,
+        )
+    ).json()
+    part_b = (
+        await client.post(
+            "/sites/MBMT/spare-parts", json={"part_no": "SP-3002", "name": "Brake pad"}, headers=h
+        )
+    ).json()
+
+    payload = work_done()
+    payload["data"]["spare_part_ids"] = [part_a["id"], part_b["id"]]
+    created = (await client.post("/entries", json=payload, headers=h)).json()
+
+    part_ids = {p["part_id"] for p in created["data"]["spare_parts"]}
+    assert part_ids == {part_a["id"], part_b["id"]}
+
+
+async def test_work_done_rejects_unknown_spare_part_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = work_done()
+    payload["data"]["spare_part_ids"] = ["not-real"]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400

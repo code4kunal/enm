@@ -31,7 +31,7 @@ from app.models.enums import (
     Shift,
     UnitStatus,
 )
-from app.models.master import DefectSource, DefectType, Vehicle, WorkType
+from app.models.master import DefectSource, DefectType, SparePart, Vehicle, WorkType
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -194,7 +194,6 @@ class WorkDoneEntry(Base):
         Integer, ForeignKey("defect_types.id", ondelete="RESTRICT"), nullable=True
     )
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
-    spare_parts_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -211,6 +210,9 @@ class WorkDoneEntry(Base):
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
     ticket: Mapped["Ticket | None"] = relationship(lazy="joined")
     attendees: Mapped[list[WorkDoneAttendee]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    spare_parts: Mapped[list["WorkDoneSparePart"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -231,6 +233,24 @@ class WorkDoneAttendee(Base):
     )
 
     user: Mapped[User] = relationship(lazy="joined")
+
+
+class WorkDoneSparePart(Base):
+    """One spare part used on a Work Done session — a catalogue-backed
+    multi-select, replacing the old free-text `spare_parts_used` column."""
+
+    __tablename__ = "work_done_spare_parts"
+
+    work_done_entry_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("work_done_entries.entry_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    spare_part_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("spare_parts.id", ondelete="RESTRICT"), primary_key=True
+    )
+
+    spare_part: Mapped["SparePart"] = relationship(lazy="joined")
 
 
 class CoolantEntry(Base):

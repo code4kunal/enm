@@ -35,7 +35,7 @@ class WorkDoneData(_DataBase):
     defect_source: OptText = None
     defect_type: OptText = None
     attended_details: OptText = None
-    spare_parts_used: OptText = None
+    spare_part_ids: list[str] = Field(default_factory=list)
     supervisor: OptText = None
     ticket_id: OptText = None
     completes_ticket: bool = False
@@ -47,6 +47,10 @@ class WorkDoneData(_DataBase):
     # GET-then-PUT-the-whole-form-back round trip doesn't 400 on a key the
     # client never set itself — same contract as `BreakdownData.resolved_at`.
     attendees: list[Any] | None = None
+    # Read-only, same contract as `attendees` above: the server echoes spare
+    # parts back as `{part_id, part_no, name}` objects, the form writes them
+    # back as `spare_part_ids`.
+    spare_parts: list[Any] | None = None
 
     @model_validator(mode="after")
     def _completion_requires_ticket_and_time(self) -> "WorkDoneData":

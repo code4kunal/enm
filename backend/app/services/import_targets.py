@@ -29,7 +29,11 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "source": "defect_source",
         "defectType": "defect_type",
         "attended": "attended_details",
-        "spares": "spare_parts_used",
+        # "spares" is deliberately unmapped: spare_parts_used is gone from
+        # WorkDoneData (replaced by a catalogue-backed spare_part_ids), and
+        # resolving an imported free-text column against that catalog is a
+        # bigger feature this pass doesn't build. PM Schedule's own "spares"
+        # mapping below is untouched — that register keeps free text.
         "supervisor": "supervisor",
     },
     Register.coolant: {
@@ -86,7 +90,6 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("source", "Source of Defect"),
         TargetField("defectType", "Type of Defect"),
         TargetField("attended", "Attended Details"),
-        TargetField("spares", "Spare Parts Used"),
         TargetField("supervisor", "Supervisor (floor)"),
     ],
     Register.coolant: [

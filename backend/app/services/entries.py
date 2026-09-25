@@ -23,6 +23,7 @@ from app.models.entry import (
     PMScheduleEntry,
     WorkDoneAttendee,
     WorkDoneEntry,
+    WorkDoneSparePart,
 )
 from app.models.enums import EntryStatus, Register, TicketStatus
 from app.models.ticket import Ticket
@@ -32,6 +33,7 @@ from app.schemas.entry import REGISTER_DATA_SCHEMAS
 from app.services.masters import (
     resolve_defect_source,
     resolve_defect_type,
+    resolve_spare_parts,
     resolve_vehicle,
 )
 from app.services.tickets import TICKETABLE_REGISTERS, complete_ticket, mark_attended
@@ -190,6 +192,25 @@ async def _set_attendees(
     set_committed_value(detail, "attendees", rows)
 
 
+async def _set_spare_parts(
+    session: AsyncSession,
+    entry_id: str,
+    detail: WorkDoneEntry,
+    spare_part_ids: list[str],
+    *,
+    site_code: str,
+) -> None:
+    """Set a flushed `WorkDoneEntry`'s spare parts — mirrors `_set_attendees`
+    exactly, same `MissingGreenlet` reasoning."""
+    parts = await resolve_spare_parts(session, spare_part_ids, site_code=site_code)
+    rows = [
+        WorkDoneSparePart(work_done_entry_id=entry_id, spare_part_id=p.id, spare_part=p)
+        for p in parts
+    ]
+    session.add_all(rows)
+    set_committed_value(detail, "spare_parts", rows)
+
+
 async def _build_detail(
     session: AsyncSession,
     register: Register,
@@ -212,16 +233,16 @@ async def _build_detail(
             site_code=site_code,
             existing_ticket_id=existing_ticket_id,
         )
-        # Validate only — `_set_attendees` writes the rows once the entry is
-        # flushed and has an id.
+        # Validate only — `_set_attendees`/`_set_spare_parts` write the rows
+        # once the entry is flushed and has an id.
         await _resolve_attendees(session, data.attendee_user_ids, site_code=site_code)
+        await resolve_spare_parts(session, data.spare_part_ids, site_code=site_code)
         row = WorkDoneEntry(
             shift=data.shift,
             reported_defects=data.reported_defects,
             defect_source=src,
             defect_type=typ,
             attended_details=data.attended_details,
-            spare_parts_used=data.spare_parts_used,
             supervisor=data.supervisor,
             ticket_id=ticket.id if ticket else None,
             completes_ticket=data.completes_ticket,
@@ -232,7 +253,6 @@ async def _build_detail(
             data.defect_source,
             data.defect_type,
             data.attended_details,
-            data.spare_parts_used,
             data.shift.value if data.shift else None,
         ]
 
@@ -442,6 +462,9 @@ async def create_entry(
         await _set_attendees(
             session, entry.id, detail, data.attendee_user_ids, site_code=site_code
         )
+        await _set_spare_parts(
+            session, entry.id, detail, data.spare_part_ids, site_code=site_code
+        )
         await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, creator)
     return entry
@@ -503,6 +526,13 @@ async def update_entry(
             data.attendee_user_ids,
             site_code=entry.site_code,
         )
+        await _set_spare_parts(
+            session,
+            entry.id,
+            detail,
+            data.spare_part_ids,
+            site_code=entry.site_code,
+        )
         await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, actor)
     return entry
@@ -540,7 +570,10 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "defect_source": d.defect_source.name if d.defect_source else None,
             "defect_type": d.defect_type.name if d.defect_type else None,
             "attended_details": d.attended_details,
-            "spare_parts_used": d.spare_parts_used,
+            "spare_parts": [
+                {"part_id": sp.spare_part_id, "part_no": sp.spare_part.part_no, "name": sp.spare_part.name}
+                for sp in d.spare_parts
+            ],
             "supervisor": d.supervisor,
             "ticket_id": d.ticket_id,
             "completes_ticket": d.completes_ticket,

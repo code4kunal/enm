@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ValidationError
-from app.models.master import DefectSource, DefectType, Vehicle
+from app.models.master import DefectSource, DefectType, SparePart, Vehicle
 from app.services import siteops
 
 
@@ -320,3 +320,33 @@ async def resolve_defect_type(
             f"Unknown defect type: {name}", {"defect_type": "not in master list"}
         )
     return row
+
+
+async def resolve_spare_parts(
+    session: AsyncSession, spare_part_ids: list[str], *, site_code: str
+) -> list[SparePart]:
+    """Mirrors `entries._resolve_attendees`: ids must belong to this site,
+    inactive rows still resolve (history keeps reading), unknown ids 400."""
+    if not spare_part_ids:
+        return []
+    rows = (
+        await session.scalars(
+            select(SparePart).where(
+                SparePart.id.in_(spare_part_ids), SparePart.site_code == site_code
+            )
+        )
+    ).unique().all()
+    by_id = {p.id: p for p in rows}
+    missing = [pid for pid in spare_part_ids if pid not in by_id]
+    if missing:
+        raise ValidationError(
+            f"spare_part_ids: unknown spare part {missing[0]}",
+            {"spare_part_ids": "unknown spare part"},
+        )
+    seen: set[str] = set()
+    ordered: list[SparePart] = []
+    for pid in spare_part_ids:
+        if pid not in seen:
+            seen.add(pid)
+            ordered.append(by_id[pid])
+    return ordered
