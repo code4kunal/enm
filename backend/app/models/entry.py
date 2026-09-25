@@ -31,7 +31,14 @@ from app.models.enums import (
     Shift,
     UnitStatus,
 )
-from app.models.master import DefectSource, DefectType, Driver, SparePart, Vehicle, WorkType
+from app.models.master import (
+    DefectSource,
+    DefectType,
+    Driver,
+    SparePart,
+    Vehicle,
+    WorkType,
+)
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -208,11 +215,11 @@ class WorkDoneEntry(Base):
     entry: Mapped[Entry] = relationship(back_populates="work_done")
     defect_source: Mapped[DefectSource | None] = relationship(lazy="joined")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
-    ticket: Mapped["Ticket | None"] = relationship(lazy="joined")
+    ticket: Mapped[Ticket | None] = relationship(lazy="joined")
     attendees: Mapped[list[WorkDoneAttendee]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
-    spare_parts: Mapped[list["WorkDoneSparePart"]] = relationship(
+    spare_parts: Mapped[list[WorkDoneSparePart]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -250,7 +257,7 @@ class WorkDoneSparePart(Base):
         String(32), ForeignKey("spare_parts.id", ondelete="RESTRICT"), primary_key=True
     )
 
-    spare_part: Mapped["SparePart"] = relationship(lazy="joined")
+    spare_part: Mapped[SparePart] = relationship(lazy="joined")
 
 
 class CoolantEntry(Base):
@@ -286,7 +293,7 @@ class DriverComplaintEntry(Base):
 
     entry: Mapped[Entry] = relationship(back_populates="driver_complaint")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
-    driver: Mapped["Driver | None"] = relationship(lazy="joined")
+    driver: Mapped[Driver | None] = relationship(lazy="joined")
 
 
 class BreakdownEntry(Base):
@@ -325,7 +332,7 @@ class BreakdownEntry(Base):
 
     entry: Mapped[Entry] = relationship(back_populates="breakdown")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
-    driver: Mapped["Driver | None"] = relationship(lazy="joined")
+    driver: Mapped[Driver | None] = relationship(lazy="joined")
     resolved_by: Mapped[User | None] = relationship(
         lazy="joined", foreign_keys=[resolved_by_id]
     )

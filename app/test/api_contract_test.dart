@@ -12,7 +12,6 @@ import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/checklist.dart';
 import 'package:transvolt_em/models/entry.dart';
-import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
 
 /// Contract tests against responses captured from a running backend.

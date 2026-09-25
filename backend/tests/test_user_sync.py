@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models.enums import Role
-from app.models.user import User, UserSiteAccess
+from app.models.user import User
 from app.security import hash_password
 from app.services import siteops, user_sync
 from tests.conftest import PASSWORD, SUPER_ADMIN, auth_headers

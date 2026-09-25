@@ -27,7 +27,13 @@ from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.models.enums import Role  # noqa: E402
-from app.models.master import DefectSource, DefectType, Driver, Site, Vehicle  # noqa: E402
+from app.models.master import (  # noqa: E402
+    DefectSource,
+    DefectType,
+    Driver,
+    Site,
+    Vehicle,
+)
 from app.models.user import User, UserSiteAccess  # noqa: E402
 from app.security import hash_password  # noqa: E402
 

@@ -80,10 +80,10 @@ class Ticket(Base):
         String(32), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
 
-    source_entry: Mapped["Entry | None"] = relationship(
+    source_entry: Mapped[Entry | None] = relationship(
         lazy="joined", foreign_keys=[source_entry_id]
     )
-    source_inspection_result: Mapped["InspectionResult | None"] = relationship(
+    source_inspection_result: Mapped[InspectionResult | None] = relationship(
         lazy="joined",
         foreign_keys=[source_inspection_result_id],
         back_populates="ticket",

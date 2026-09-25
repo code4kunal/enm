@@ -31,8 +31,9 @@ from app.schemas.entry import (
     PhotoOut,
     SummaryOut,
 )
-from app.services import audit, notifications, storage, tickets as tickets_svc
+from app.services import audit, notifications, storage
 from app.services import entries as svc
+from app.services import tickets as tickets_svc
 from app.services.common import today_ist
 from app.services.sites import (
     assert_date_is_plausible,

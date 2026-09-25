@@ -95,7 +95,7 @@ async def create_ticket_for_inspection_result(
 #: How each register's own text is rendered as a ticket's search title.
 _TITLE_FIELD = {
     Register.breakdown: lambda d: d.complaint,
-    Register.coolant: lambda d: "Coolant topping",
+    Register.coolant: lambda _d: "Coolant topping",
     Register.driver_complaint: lambda d: d.complaint,
     #: Retired for new tickets, but a pre-existing ticket can still have one
     #: as its source -- ticket_title must keep reading it.
@@ -179,7 +179,7 @@ def mark_attended(ticket: Ticket, at: datetime) -> None:
 
 
 async def complete_ticket(
-    session: AsyncSession, *, ticket: Ticket, completed_by: User, completed_at: datetime
+    _session: AsyncSession, *, ticket: Ticket, completed_by: User, completed_at: datetime
 ) -> None:
     if ticket.status is TicketStatus.completed:
         raise Conflict("This ticket is already completed")

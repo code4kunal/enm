@@ -4,7 +4,14 @@ from datetime import date as date_t
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.models.enums import EntryStatus, Register, Shift
 from app.schemas.common import HHMM, ISTDateTime, OptText
@@ -56,7 +63,7 @@ class WorkDoneData(_DataBase):
     entry_origin: OptText = None
 
     @model_validator(mode="after")
-    def _completion_requires_ticket_and_time(self) -> "WorkDoneData":
+    def _completion_requires_ticket_and_time(self) -> WorkDoneData:
         if self.completes_ticket and not self.ticket_id:
             raise ValueError("completes_ticket requires ticket_id")
         if self.completes_ticket and not self.completion_time:

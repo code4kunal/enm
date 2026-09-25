@@ -373,7 +373,7 @@ async def test_photo_rejects_wrong_type(client: AsyncClient) -> None:
 
 async def test_work_done_can_link_to_an_open_ticket(client: AsyncClient) -> None:
     h = await auth_headers(client)
-    bd = await client.post("/entries", json=breakdown(), headers=h)
+    await client.post("/entries", json=breakdown(), headers=h)
     tickets = await client.get(
         "/tickets/search",
         params={"site": "MBMT", "register": "breakdown", "q": "contactor"},
@@ -850,10 +850,9 @@ async def test_work_done_can_complete_an_inspection_sourced_ticket(
     daily_inspection) has no `source_entry` — only `source_inspection_result`.
     Completing it via a Work Done session must not assume every ticket has
     a register entry as its source."""
-    from tests.test_tickets import _daily_inspection_result
-
     from app.db import SessionLocal
     from app.services import tickets as tickets_service
+    from tests.test_tickets import _daily_inspection_result
 
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)

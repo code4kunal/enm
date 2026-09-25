@@ -19,9 +19,9 @@ from app.services.dmr import snapshot_all_sites
 from app.services.inspections import run_nightly
 from app.services.masters import sync_all_linked_sites
 from app.services.notifications import scan_breakdown_sla
-from app.services.user_sync import sync_all_users_from_siteops
 from app.services.odometer import scan_sites_due_for_sync
 from app.services.permission_sync import push_permissions
+from app.services.user_sync import sync_all_users_from_siteops
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,

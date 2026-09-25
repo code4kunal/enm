@@ -26,8 +26,8 @@ from app.models.entry import (
     WorkDoneSparePart,
 )
 from app.models.enums import EntryStatus, Register, TicketStatus
-from app.models.ticket import Ticket
 from app.models.master import Vehicle
+from app.models.ticket import Ticket
 from app.models.user import User, UserSiteAccess
 from app.schemas.entry import REGISTER_DATA_SCHEMAS, CoolantDayRow
 from app.services.masters import (

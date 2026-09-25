@@ -161,9 +161,7 @@ class ApiMasterDataRepository implements MasterDataRepository {
       '/master/staff',
       query: <String, String>{'site': siteCode},
     );
-    return itemsOf(json)
-        .map((j) => StaffMember.fromJson(j as Map<String, dynamic>))
-        .toList();
+    return itemsOf(json).map(StaffMember.fromJson).toList();
   }
 
   @override

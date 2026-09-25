@@ -11,7 +11,6 @@ from app.api import auth as auth_module
 from app.db import SessionLocal
 from app.models.user import User
 from app.services import siteops
-from tests.conftest import PASSWORD
 
 
 def _fake_ms_claims(email: str) -> dict:
@@ -41,6 +40,7 @@ async def test_sso_exchange_redeems_the_code_then_completes_sign_in(
     )
 
     from httpx import ASGITransport
+
     from app.main import app
 
     async with AsyncClient(
@@ -156,6 +156,7 @@ async def test_sso_provisions_a_shadow_row_from_siteops(monkeypatch) -> None:
     monkeypatch.setattr(siteops, "user_site_ids", fake_site_ids)
 
     from httpx import ASGITransport
+
     from app.main import app
 
     async with AsyncClient(
@@ -187,6 +188,7 @@ async def test_sso_404s_when_neither_local_nor_siteops_know_the_email(
     monkeypatch.setattr(siteops, "find_user_by_email", fake_find)
 
     from httpx import ASGITransport
+
     from app.main import app
 
     async with AsyncClient(
@@ -213,6 +215,7 @@ async def test_sso_still_matches_an_existing_local_account_by_email(
     monkeypatch.setattr(siteops, "find_user_by_email", never)
 
     from httpx import ASGITransport
+
     from app.main import app
 
     async with AsyncClient(

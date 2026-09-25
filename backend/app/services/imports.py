@@ -23,7 +23,14 @@ from app.errors import AppError, ValidationError
 from app.models.checklist import InspectionEntry
 from app.models.entry import Entry
 from app.models.enums import DefectCategory, EntryStatus, ImportTarget, Register, Shift
-from app.models.master import DefectSource, DefectType, Driver, SparePart, Vehicle, WorkType
+from app.models.master import (
+    DefectSource,
+    DefectType,
+    Driver,
+    SparePart,
+    Vehicle,
+    WorkType,
+)
 from app.models.site_config import ServicePlan
 from app.models.user import User
 from app.schemas.site_import import ColumnMappingIO, RowErrorOut

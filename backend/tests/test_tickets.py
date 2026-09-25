@@ -9,7 +9,12 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import SessionLocal
 from app.errors import Conflict
-from app.models.checklist import ChecklistItem, ChecklistTemplate, InspectionEntry, InspectionResult
+from app.models.checklist import (
+    ChecklistItem,
+    ChecklistTemplate,
+    InspectionEntry,
+    InspectionResult,
+)
 from app.models.entry import Entry, PMScheduleEntry
 from app.models.enums import CheckResult, EntryStatus, Register, TicketSourceKind
 from app.models.master import Vehicle, WorkType
@@ -19,15 +24,6 @@ from app.services import tickets
 from tests.conftest import SUPER_ADMIN, auth_headers
 
 TODAY = date.today().isoformat()
-
-
-def coolant() -> dict:
-    return {
-        "register": "coolant",
-        "site": "MBMT",
-        "date": TODAY,
-        "data": {"bus_no": "MH40LY1894"},
-    }
 
 
 def breakdown() -> dict:
@@ -188,7 +184,7 @@ async def test_editing_a_work_done_entry_after_it_completed_its_ticket_is_not_a_
     state is not the same thing as trying to complete it a second time.
     """
     h = await auth_headers(client)
-    bd = await client.post("/entries", json=breakdown(), headers=h)
+    await client.post("/entries", json=breakdown(), headers=h)
     tickets = await client.get(
         "/tickets/search",
         params={"site": "MBMT", "register": "breakdown"},

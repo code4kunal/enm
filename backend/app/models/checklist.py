@@ -238,6 +238,6 @@ class InspectionResult(Base):
         back_populates="results", lazy="joined"
     )
     item: Mapped[ChecklistItem] = relationship(lazy="joined")
-    ticket: Mapped["Ticket | None"] = relationship(
+    ticket: Mapped[Ticket | None] = relationship(
         lazy="selectin", back_populates="source_inspection_result", uselist=False
     )
