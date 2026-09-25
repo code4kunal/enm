@@ -818,3 +818,20 @@ async def test_has_open_ticket_true_matches_only_open(client: AsyncClient) -> No
     assert open_entry["id"] in ids
     assert completed_source["id"] not in ids
     assert unticketed["id"] not in ids
+
+
+async def test_linked_sessions_include_supervisor(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = (await client.post("/entries", json=breakdown(), headers=h)).json()
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": bd["id"]}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["supervisor"] = "R. Mehta"
+    await client.post("/entries", json=payload, headers=h)
+
+    body = (await client.get(f"/entries/{bd['id']}", headers=h)).json()
+    assert body["linked_sessions"][0]["supervisor"] == "R. Mehta"

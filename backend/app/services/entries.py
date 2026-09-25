@@ -785,6 +785,7 @@ async def load_linked_sessions(
                     {"user_id": a.user_id, "name": a.user.name} for a in wd.attendees
                 ],
                 "completes_ticket": wd.completes_ticket,
+                "supervisor": wd.supervisor,
             }
         )
     return out
