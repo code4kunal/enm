@@ -55,6 +55,14 @@ class EntryFilters {
   /// (an open ticket), `false` is "Complete". Ticket status isn't on the
   /// cached [RegisterEntry] page, so a non-null value always asks the
   /// server directly — see [pendingFilterEntriesProvider].
+  ///
+  /// "Complete" deliberately means "not pending" (never raised a ticket, or
+  /// its ticket is resolved), not "was once open and got resolved" — most
+  /// entries (a routine coolant topping, a Work Done session with nothing
+  /// to follow up) never raise a ticket at all, and there is nothing for a
+  /// depot user to have "completed" about them; grouping them under
+  /// Complete rather than adding a third "never applicable" state matches
+  /// how the physical register's own Complete/Pending column works.
   final bool? hasOpenTicket;
 
   EntryFilters copyWith({
