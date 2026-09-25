@@ -640,6 +640,7 @@ abstract interface class EntryRepository {
     String? registerId,
     String? dateFrom,
     String? dateTo,
+    bool? hasOpenTicket,
   });
 
   /// One entry with its full detail, including [RegisterEntry.linkedSessions]

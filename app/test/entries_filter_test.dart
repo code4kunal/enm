@@ -339,6 +339,52 @@ void main() {
     });
   });
 
+  group('pendingFilterEntriesProvider', () {
+    test('true matches only entries with an open ticket', () async {
+      final container = await signedInContainer();
+      final open = container.read(openBreakdownsProvider);
+      expect(open, isNotEmpty);
+      final openId = open.first.id;
+
+      final pending = await container.read(
+        pendingFilterEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          hasOpenTicket: true,
+        )).future,
+      );
+      expect(pending, isNotEmpty);
+      expect(pending.every((e) => e.status == EntryStatus.open), isTrue);
+      expect(pending.any((e) => e.id == openId), isTrue);
+
+      await container.read(entriesProvider.notifier).resolveBreakdown(openId);
+      final afterResolve = await container.read(
+        pendingFilterEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          hasOpenTicket: true,
+        )).future,
+      );
+      expect(afterResolve.any((e) => e.id == openId), isFalse);
+    });
+
+    test('false matches only entries without an open ticket', () async {
+      final container = await signedInContainer();
+      final open = container.read(openBreakdownsProvider);
+      expect(open, isNotEmpty);
+
+      final complete = await container.read(
+        pendingFilterEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          hasOpenTicket: false,
+        )).future,
+      );
+
+      expect(complete.any((e) => e.id == open.first.id), isFalse);
+    });
+  });
+
   group('ticketSearchProvider', () {
     // The ticket picker offers the app-side register ids from
     // `registers.dart`; the API translates them to the backend's `Register`

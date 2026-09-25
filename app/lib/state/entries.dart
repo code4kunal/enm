@@ -32,6 +32,7 @@ class EntryFilters {
     this.from = '',
     this.to = '',
     String? month,
+    this.hasOpenTicket,
   }) : month = month ?? Dates.currentMonthPrefix();
 
   final String query;
@@ -50,6 +51,12 @@ class EntryFilters {
   /// fresh session shows what "This month" already implies.
   final String month;
 
+  /// Complete/Pending chips: `null` means unfiltered, `true` is "Pending"
+  /// (an open ticket), `false` is "Complete". Ticket status isn't on the
+  /// cached [RegisterEntry] page, so a non-null value always asks the
+  /// server directly — see [pendingFilterEntriesProvider].
+  final bool? hasOpenTicket;
+
   EntryFilters copyWith({
     String? query,
     String? registerId,
@@ -65,8 +72,21 @@ class EntryFilters {
       from: from ?? this.from,
       to: to ?? this.to,
       month: month ?? this.month,
+      hasOpenTicket: hasOpenTicket,
     );
   }
+
+  /// Separate from [copyWith] since that method's `??` fallback can never
+  /// set a field back to `null` — needed here to clear the filter.
+  EntryFilters withHasOpenTicket(bool? value) => EntryFilters(
+        query: query,
+        registerId: registerId,
+        dateMode: dateMode,
+        from: from,
+        to: to,
+        month: month,
+        hasOpenTicket: value,
+      );
 }
 
 class EntryFiltersController extends Notifier<EntryFilters> {
@@ -84,6 +104,8 @@ class EntryFiltersController extends Notifier<EntryFilters> {
   void setTo(String d) => state = state.copyWith(to: d);
 
   void setMonth(String m) => state = state.copyWith(month: m);
+
+  void setHasOpenTicket(bool? value) => state = state.withHasOpenTicket(value);
 }
 
 final entryFiltersProvider =
@@ -128,6 +150,7 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     ref.invalidate(dmrMonthProvider);
     ref.invalidate(controlChartProvider);
     ref.invalidate(investigationsProvider);
+    ref.invalidate(pendingFilterEntriesProvider);
     return created;
   }
 
@@ -150,6 +173,7 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     ref.invalidate(dmrMonthProvider);
     ref.invalidate(controlChartProvider);
     ref.invalidate(investigationsProvider);
+    ref.invalidate(pendingFilterEntriesProvider);
     return created;
   }
 
@@ -176,12 +200,14 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     ref.invalidate(dmrMonthProvider);
     ref.invalidate(controlChartProvider);
     ref.invalidate(investigationsProvider);
+    ref.invalidate(pendingFilterEntriesProvider);
     return saved;
   }
 
   Future<void> raiseTicket(String entryId) async {
     final saved = await ref.read(ticketRepositoryProvider).raiseTicket(entryId);
     _replaceAll((list) => list.map((e) => e.id == saved.id ? saved : e).toList());
+    ref.invalidate(pendingFilterEntriesProvider);
   }
 
   Future<void> resolveBreakdown(String entryId) async {
@@ -191,6 +217,9 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     _replaceAll(
       (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
     );
+    // A live Complete/Pending filter reads this directly from the server,
+    // not from the list just replaced above.
+    ref.invalidate(pendingFilterEntriesProvider);
   }
 
   Future<String> attachPhoto({
@@ -347,6 +376,35 @@ final registerMonthEntriesProvider =
         registerId: key.registerId == 'all' ? null : key.registerId,
         dateFrom: '${key.month}-01',
         dateTo: Dates.lastOfMonth(key.month),
+      );
+  final needle = ref.watch(
+    entryFiltersProvider.select((f) => f.query.trim().toLowerCase()),
+  );
+  return entries.where((e) => _matchesQuery(e, needle)).toList()
+    ..sort((a, b) {
+      final byDate = b.date.compareTo(a.date);
+      return byDate != 0 ? byDate : b.time.compareTo(a.time);
+    });
+});
+
+/// Key for [pendingFilterEntriesProvider]: which site, which register
+/// (`all` included), Complete (`false`) or Pending (`true`).
+typedef PendingFilterKey = ({String site, String registerId, bool hasOpenTicket});
+
+/// Entries matching a Complete/Pending chip, fetched directly from the
+/// server — ticket status isn't part of the cached [entriesProvider] page,
+/// so it can never be answered by filtering that cache client-side the way
+/// register/date/query are. Same reasoning as [registerMonthEntriesProvider].
+final pendingFilterEntriesProvider =
+    FutureProvider.family<List<RegisterEntry>, PendingFilterKey>((
+  ref,
+  key,
+) async {
+  if (key.site.isEmpty) return const <RegisterEntry>[];
+  final entries = await ref.watch(entryRepositoryProvider).fetchEntries(
+        site: key.site,
+        registerId: key.registerId == 'all' ? null : key.registerId,
+        hasOpenTicket: key.hasOpenTicket,
       );
   final needle = ref.watch(
     entryFiltersProvider.select((f) => f.query.trim().toLowerCase()),

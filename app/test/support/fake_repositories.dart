@@ -195,12 +195,21 @@ class FakeEntryRepository implements EntryRepository {
     String? registerId,
     String? dateFrom,
     String? dateTo,
+    bool? hasOpenTicket,
   }) async {
     await Future<void>.delayed(_latency);
     return scopedEntries(_store, site)
         .where((e) => registerId == null || e.registerId == registerId)
         .where((e) => dateFrom == null || e.date.compareTo(dateFrom) >= 0)
         .where((e) => dateTo == null || e.date.compareTo(dateTo) <= 0)
+        // The fake has no separate ticket concept (see FakeTicketRepository's
+        // own note) — EntryStatus.open is the only register that ever
+        // reaches "open" today, so it stands in for "has an open ticket".
+        .where(
+          (e) =>
+              hasOpenTicket == null ||
+              (e.status == EntryStatus.open) == hasOpenTicket,
+        )
         .toList();
   }
 

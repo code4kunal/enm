@@ -658,6 +658,7 @@ class ApiEntryRepository implements EntryRepository {
     String? registerId,
     String? dateFrom,
     String? dateTo,
+    bool? hasOpenTicket,
   }) async {
     final json = await _api.get(
       '/entries',
@@ -667,6 +668,7 @@ class ApiEntryRepository implements EntryRepository {
         if (registerId != null) 'register': registerToWire[registerId] ?? registerId,
         if (dateFrom != null) 'date_from': dateFrom,
         if (dateTo != null) 'date_to': dateTo,
+        if (hasOpenTicket != null) 'has_open_ticket': '$hasOpenTicket',
       },
     );
     return itemsOf(json).map(_entryFromWire).toList();

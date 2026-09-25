@@ -71,19 +71,32 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
   Widget build(BuildContext context) {
     final filters = ref.watch(entryFiltersProvider);
     final controller = ref.read(entryFiltersProvider.notifier);
-    // The month picker asks the server directly — filteredEntriesProvider
-    // filters entriesProvider's capped cache, which a month picked further
-    // back than that cache's page would make look empty rather than old.
-    final results = filters.dateMode == DateMode.month
+    final site = ref.watch(sessionProvider.select((s) => s.site));
+    // Ticket status isn't in the cached page filteredEntriesProvider reads,
+    // so a Complete/Pending chip always asks the server directly — same
+    // reasoning as the month picker below.
+    final results = filters.hasOpenTicket != null
         ? ref
-                .watch(registerMonthEntriesProvider((
-                  site: ref.watch(sessionProvider.select((s) => s.site)),
+                .watch(pendingFilterEntriesProvider((
+                  site: site,
                   registerId: filters.registerId,
-                  month: filters.month,
+                  hasOpenTicket: filters.hasOpenTicket!,
                 )))
                 .valueOrNull ??
             const <RegisterEntry>[]
-        : ref.watch(filteredEntriesProvider);
+        // The month picker asks the server directly — filteredEntriesProvider
+        // filters entriesProvider's capped cache, which a month picked further
+        // back than that cache's page would make look empty rather than old.
+        : filters.dateMode == DateMode.month
+            ? ref
+                    .watch(registerMonthEntriesProvider((
+                      site: site,
+                      registerId: filters.registerId,
+                      month: filters.month,
+                    )))
+                    .valueOrNull ??
+                const <RegisterEntry>[]
+            : ref.watch(filteredEntriesProvider);
     final inspections = ref.watch(filteredInspectionsProvider);
     final showingInspections = isInspectionFilter(filters.registerId);
     final siteName = ref.watch(siteDisplayNameProvider);
@@ -214,6 +227,47 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                   month: filters.month,
                   onChanged: controller.setMonth,
                 ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Complete/Pending chips — a ticket, not a date/register, so it
+          // always asks the server directly (see pendingFilterEntriesProvider).
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Text(
+                'STATUS',
+                style: AppText.sans(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: T.muted,
+                  letterSpacing: 0.08 * 12,
+                ),
+              ),
+              PillChip(
+                label: 'All',
+                dense: true,
+                tone: ChipTone.green,
+                selected: filters.hasOpenTicket == null,
+                onTap: () => controller.setHasOpenTicket(null),
+              ),
+              PillChip(
+                label: 'Pending',
+                dense: true,
+                tone: ChipTone.green,
+                selected: filters.hasOpenTicket == true,
+                onTap: () => controller.setHasOpenTicket(true),
+              ),
+              PillChip(
+                label: 'Complete',
+                dense: true,
+                tone: ChipTone.green,
+                selected: filters.hasOpenTicket == false,
+                onTap: () => controller.setHasOpenTicket(false),
+              ),
             ],
           ),
           const SizedBox(height: 14),
