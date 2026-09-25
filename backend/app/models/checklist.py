@@ -234,7 +234,9 @@ class InspectionResult(Base):
     value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    inspection: Mapped[InspectionEntry] = relationship(back_populates="results")
+    inspection: Mapped[InspectionEntry] = relationship(
+        back_populates="results", lazy="joined"
+    )
     item: Mapped[ChecklistItem] = relationship(lazy="joined")
     ticket: Mapped["Ticket | None"] = relationship(
         lazy="selectin", back_populates="source_inspection_result", uselist=False

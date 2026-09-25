@@ -10,3 +10,4 @@ class TicketSearchResult(BaseModel):
     title: str
     entry_date: date_t
     status: str
+    source_kind: str

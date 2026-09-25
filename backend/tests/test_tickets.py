@@ -615,3 +615,23 @@ async def test_search_tickets_scopes_inspection_source_by_site(client: AsyncClie
         found_ids = {r.source_inspection_result_id for r in results}
         assert mbmt_result.id in found_ids
         assert umt_result.id not in found_ids
+
+
+async def test_search_endpoint_accepts_source_kind(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        site_code = result.inspection.site_code
+        admin = await session.get(User, await _admin_id(session))
+        await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        await session.commit()
+
+    h = await auth_headers(client)
+    r = await client.get(
+        "/tickets/search",
+        params={"site": site_code, "source_kind": "daily_inspection"},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["source_kind"] == "daily_inspection"
