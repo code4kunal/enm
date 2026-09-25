@@ -47,6 +47,13 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   bool _saving = false;
   String? _error;
 
+  /// Multiple Bus Inspection — one shared checklist/date/supervisor answered
+  /// once and submitted for every selected bus. Not offered for docking:
+  /// each bus can be on a different KM rung, which this form has no way to
+  /// pick per-vehicle without turning this into a different screen.
+  bool _multiMode = false;
+  List<String> _multiRegistrations = <String>[];
+
   /// Docking (P.M) KM sheet — null until the mechanic picks one (or a booking
   /// pre-fills it).
   int? _milestoneKm;
@@ -151,6 +158,59 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
     }
   }
 
+  Future<void> _saveBatch(Checklist checklist, List<Vehicle> fleet) async {
+    final vehicleIds = <String>[
+      for (final reg in _multiRegistrations)
+        fleet.firstWhere((v) => v.registrationNo == reg).id,
+    ];
+    if (vehicleIds.isEmpty) {
+      setState(() => _error = 'Pick at least one bus.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    final results = <InspectionResult>[
+      for (final item in checklist.items)
+        InspectionResult(
+          itemId: item.id,
+          result: _results[item.id] ?? CheckResult.ok,
+          value: item.responseType == ResponseType.okNotOk
+              ? null
+              : _noteFor(item.id).text.trim(),
+          remark: item.responseType == ResponseType.okNotOk
+              ? _noteFor(item.id).text.trim()
+              : null,
+        ),
+    ];
+
+    try {
+      final entries = await ref.read(inspectionControllerProvider).recordBatch(
+            workTypeId: checklist.workTypeId,
+            inspectedOn: _date,
+            entryTime: Dates.nowClock(),
+            supervisor: _supervisor,
+            items: <InspectionBatchItem>[
+              for (final vehicleId in vehicleIds)
+                InspectionBatchItem(vehicleId: vehicleId, results: results),
+            ],
+          );
+      final failed = entries.where((e) => !e.isClean).length;
+      ref.read(toastProvider.notifier).show(
+            failed == 0
+                ? '${entries.length} buses recorded'
+                : '${entries.length} buses recorded — $failed to follow up',
+          );
+      if (mounted) context.go(Routes.home);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final masterRaw = ref.watch(masterDataProvider).valueOrNull;
@@ -178,6 +238,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
         _doneBy = <String>[];
         _supervisor = '';
         _milestoneKm = null;
+        _multiRegistrations = <String>[];
         _clearAnswers();
       });
     });
@@ -265,27 +326,56 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    const FieldLabel(label: 'Bus No', required: true),
-                    const SizedBox(height: 6),
-                    AppSelect(
-                      value: _registrationOf(active),
-                      options: active.map((v) => v.registrationNo).toList(),
-                      placeholder: 'Pick a bus',
-                      mono: true,
-                      onChanged: (reg) => setState(() {
-                        _vehicleId = active
-                            .firstWhere((v) => v.registrationNo == reg,
-                                orElse: () => active.first)
-                            .id;
-                        _clearAnswers();
-                        // Prefill from an open docking booking when present.
-                        _milestoneKm = isDocking
-                            ? _bookedKm(_vehicleId, calendar)
-                            : null;
-                      }),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_vehicleId.isNotEmpty) ...<Widget>[
+                    if (!isDocking) ...<Widget>[
+                      SubTabs(
+                        labels: const <String>['Single bus', 'Multiple buses'],
+                        selectedIndex: _multiMode ? 1 : 0,
+                        onChanged: (i) => setState(() {
+                          _multiMode = i == 1;
+                          if (_multiMode) {
+                            _vehicleId = '';
+                          } else {
+                            _multiRegistrations = <String>[];
+                          }
+                          _clearAnswers();
+                        }),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (_multiMode) ...<Widget>[
+                      const FieldLabel(label: 'Buses', required: true),
+                      const SizedBox(height: 6),
+                      AppMultiSelect(
+                        values: _multiRegistrations,
+                        options: active.map((v) => v.registrationNo).toList(),
+                        placeholder: 'Select buses…',
+                        emptyHint: 'No active buses',
+                        onChanged: (v) => setState(() => _multiRegistrations = v),
+                      ),
+                      const SizedBox(height: 16),
+                    ] else ...<Widget>[
+                      const FieldLabel(label: 'Bus No', required: true),
+                      const SizedBox(height: 6),
+                      AppSelect(
+                        value: _registrationOf(active),
+                        options: active.map((v) => v.registrationNo).toList(),
+                        placeholder: 'Pick a bus',
+                        mono: true,
+                        onChanged: (reg) => setState(() {
+                          _vehicleId = active
+                              .firstWhere((v) => v.registrationNo == reg,
+                                  orElse: () => active.first)
+                              .id;
+                          _clearAnswers();
+                          // Prefill from an open docking booking when present.
+                          _milestoneKm = isDocking
+                              ? _bookedKm(_vehicleId, calendar)
+                              : null;
+                        }),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (!_multiMode && _vehicleId.isNotEmpty) ...<Widget>[
                       Text(
                         'Bus Type: ${fleet.where((v) => v.id == _vehicleId).map((v) => v.busTypeLabel).firstOrNull ?? '—'}',
                         style: AppText.sans(
@@ -449,11 +539,17 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                 const SizedBox(height: 16),
                 if (_error != null) InlineError(message: _error!),
                 FilledActionButton(
-                  label: _saving ? 'Saving…' : 'Save inspection',
+                  label: _saving
+                      ? 'Saving…'
+                      : _multiMode
+                          ? 'Save for ${_multiRegistrations.length} buses'
+                          : 'Save inspection',
                   expand: true,
                   onPressed: _saving
                       ? null
-                      : () => _save(checklist, isDocking: isDocking),
+                      : _multiMode
+                          ? () => _saveBatch(checklist, fleet)
+                          : () => _save(checklist, isDocking: isDocking),
                 ),
                 const SizedBox(height: 40),
               ],

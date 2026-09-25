@@ -213,6 +213,35 @@ class InspectionResult {
       );
 }
 
+/// One vehicle's slice of a Multiple Bus Inspection submission.
+@immutable
+class InspectionBatchItem {
+  const InspectionBatchItem({
+    required this.vehicleId,
+    required this.results,
+    this.odometerKm,
+    this.milestoneKm,
+    this.doneBy,
+    this.remarks,
+  });
+
+  final String vehicleId;
+  final List<InspectionResult> results;
+  final int? odometerKm;
+  final int? milestoneKm;
+  final String? doneBy;
+  final String? remarks;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'vehicle_id': vehicleId,
+        if (odometerKm != null) 'odometer_km': odometerKm,
+        if (milestoneKm != null) 'milestone_km': milestoneKm,
+        if (doneBy != null && doneBy!.isNotEmpty) 'done_by': doneBy,
+        if (remarks != null && remarks!.isNotEmpty) 'remarks': remarks,
+        'results': results.map((r) => r.toJson()).toList(),
+      };
+}
+
 /// One completed inspection.
 @immutable
 class InspectionEntry {

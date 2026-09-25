@@ -395,6 +395,17 @@ abstract interface class ChecklistRepository {
     required List<InspectionResult> results,
   });
 
+  /// Multiple Bus Inspection: one checklist/date/time/supervisor, several
+  /// vehicles, one request.
+  Future<List<InspectionEntry>> recordInspectionBatch({
+    required String siteCode,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? supervisor,
+    required List<InspectionBatchItem> items,
+  });
+
   Future<List<InspectionEntry>> fetchInspections(
     String siteCode, {
     int? workTypeId,

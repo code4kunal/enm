@@ -1210,6 +1210,28 @@ class ApiChecklistRepository implements ChecklistRepository {
   }
 
   @override
+  Future<List<InspectionEntry>> recordInspectionBatch({
+    required String siteCode,
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? supervisor,
+    required List<InspectionBatchItem> items,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/inspections/batch',
+      body: <String, dynamic>{
+        'work_type_id': workTypeId,
+        'inspected_on': inspectedOn,
+        if (entryTime != null && entryTime.isNotEmpty) 'entry_time': entryTime,
+        if (supervisor != null && supervisor.isNotEmpty) 'supervisor': supervisor,
+        'items': items.map((i) => i.toJson()).toList(),
+      },
+    );
+    return itemsOf(json).map(InspectionEntry.fromJson).toList();
+  }
+
+  @override
   Future<List<InspectionEntry>> fetchInspections(
     String siteCode, {
     int? workTypeId,

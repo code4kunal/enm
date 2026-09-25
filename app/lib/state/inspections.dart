@@ -177,6 +177,33 @@ class InspectionController {
     _ref.invalidate(controlChartProvider);
     return entry;
   }
+
+  /// Multiple Bus Inspection: one checklist/date/time/supervisor, several
+  /// vehicles, one request.
+  Future<List<InspectionEntry>> recordBatch({
+    required int workTypeId,
+    required String inspectedOn,
+    String? entryTime,
+    String? supervisor,
+    required List<InspectionBatchItem> items,
+  }) async {
+    final entries = await _repo.recordInspectionBatch(
+      siteCode: _site,
+      workTypeId: workTypeId,
+      inspectedOn: inspectedOn,
+      entryTime: entryTime,
+      supervisor: supervisor,
+      items: items,
+    );
+    _ref.invalidate(todaysInspectionsProvider);
+    _ref.invalidate(siteInspectionsProvider);
+    _ref.invalidate(calendarProvider);
+    _ref.invalidate(siteVehiclesProvider);
+    _ref.invalidate(dmrDayProvider);
+    _ref.invalidate(dmrMonthProvider);
+    _ref.invalidate(controlChartProvider);
+    return entries;
+  }
 }
 
 final inspectionControllerProvider =

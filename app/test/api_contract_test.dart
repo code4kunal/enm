@@ -10,6 +10,7 @@ import 'package:transvolt_em/data/api/siteops_client.dart';
 import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/checklist.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
@@ -618,6 +619,68 @@ void main() {
       expect(staff, hasLength(1));
       expect(staff.first.id, 'u1');
       expect(staff.first.name, 'S. Pawar');
+    });
+  });
+
+  group('inspection batch', () {
+    test('a batch submission posts every vehicle in one request body',
+        () async {
+      late Map<String, dynamic> sent;
+      final mock = MockClient((http.Request request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'items': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': 'i1', 'site_code': 'MBMT', 'vehicle_id': 'v1',
+                'registration_no': 'MH40LY1894', 'work_type_id': 1,
+                'work_type_code': 'D.I', 'work_type_name': 'Daily inspection',
+                'inspected_on': '2026-09-25', 'failed_count': 0,
+                'results': <Map<String, dynamic>>[],
+              },
+              <String, dynamic>{
+                'id': 'i2', 'site_code': 'MBMT', 'vehicle_id': 'v2',
+                'registration_no': 'MH40LY1895', 'work_type_id': 1,
+                'work_type_code': 'D.I', 'work_type_name': 'Daily inspection',
+                'inspected_on': '2026-09-25', 'failed_count': 1,
+                'results': <Map<String, dynamic>>[],
+              },
+            ],
+          }),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final entries = await ApiChecklistRepository(client).recordInspectionBatch(
+        siteCode: 'MBMT',
+        workTypeId: 1,
+        inspectedOn: '2026-09-25',
+        items: const <InspectionBatchItem>[
+          InspectionBatchItem(
+            vehicleId: 'v1',
+            results: <InspectionResult>[
+              InspectionResult(itemId: 'it1', result: CheckResult.ok),
+            ],
+          ),
+          InspectionBatchItem(
+            vehicleId: 'v2',
+            results: <InspectionResult>[
+              InspectionResult(itemId: 'it1', result: CheckResult.notOk, remark: 'worn'),
+            ],
+          ),
+        ],
+      );
+
+      expect(sent['work_type_id'], 1);
+      expect(sent['inspected_on'], '2026-09-25');
+      final items = sent['items'] as List<dynamic>;
+      expect(items, hasLength(2));
+      expect((items[0] as Map<String, dynamic>)['vehicle_id'], 'v1');
+      expect((items[1] as Map<String, dynamic>)['vehicle_id'], 'v2');
+      expect(entries, hasLength(2));
+      expect(entries[1].failedCount, 1);
     });
   });
 }
