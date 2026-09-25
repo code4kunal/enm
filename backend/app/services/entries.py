@@ -119,7 +119,12 @@ async def _resolve_ticket(
     # space of a site you can't reach stays unprobeable. `/tickets/search`
     # already only ever offers same-site tickets; this is the server-side
     # re-check behind it.
-    if ticket.source_entry.site_code != site_code:
+    ticket_site_code = (
+        ticket.source_entry.site_code
+        if ticket.source_entry_id is not None
+        else ticket.source_inspection_result.inspection.site_code
+    )
+    if ticket_site_code != site_code:
         raise ValidationError("ticket_id: not found", {"ticket_id": "not found"})
     # A completed ticket can't be newly attached to — but an edit that
     # resubmits an entry's own already-completed ticket unchanged (the

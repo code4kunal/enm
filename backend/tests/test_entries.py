@@ -820,6 +820,44 @@ async def test_has_open_ticket_true_matches_only_open(client: AsyncClient) -> No
     assert unticketed["id"] not in ids
 
 
+async def test_work_done_can_complete_an_inspection_sourced_ticket(
+    client: AsyncClient,
+) -> None:
+    """A ticket raised from a failed inspection result (source_kind =
+    daily_inspection) has no `source_entry` — only `source_inspection_result`.
+    Completing it via a Work Done session must not assume every ticket has
+    a register entry as its source."""
+    from tests.test_tickets import _daily_inspection_result
+
+    from app.db import SessionLocal
+    from app.services import tickets as tickets_service
+
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        from app.models.user import User
+        from tests.conftest import SUPER_ADMIN
+
+        admin = await session.scalar(select(User).where(User.user_id == SUPER_ADMIN))
+        ticket = await tickets_service.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        ticket_id = ticket.id
+        await session.commit()
+
+    h = await auth_headers(client)
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "11:30"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": ""}, headers=h
+    )
+    assert not any(t["ticket_id"] == ticket_id for t in found.json())
+
+
 async def test_linked_sessions_include_supervisor(client: AsyncClient) -> None:
     h = await auth_headers(client)
     bd = (await client.post("/entries", json=breakdown(), headers=h)).json()
