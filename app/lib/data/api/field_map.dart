@@ -153,10 +153,16 @@ abstract final class RegisterFieldMap {
         continue;
       }
       if (registerId == 'work' && entry.key == 'spare_parts') {
-        final ids = (entry.value as List<dynamic>? ?? <dynamic>[])
-            .map((p) => (p as Map<String, dynamic>)['part_id'] as String)
-            .join(',');
-        out['sparePartIds'] = ids;
+        final rows = (entry.value as List<dynamic>? ?? <dynamic>[])
+            .map((p) => p as Map<String, dynamic>)
+            .toList();
+        out['sparePartIds'] = rows.map((p) => p['part_id'] as String).join(',');
+        // The directory (sparePartDirectoryProvider) is active-rows-only, so
+        // a deactivated part's label would otherwise vanish from the form --
+        // the entry's own echo is the only place its label survives.
+        out['sparePartLabels'] = rows
+            .map((p) => '${p['part_id']}|${p['part_no']}|${p['name']}')
+            .join(';;');
         continue;
       }
       final appKey = map[entry.key];

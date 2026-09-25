@@ -275,6 +275,19 @@ void main() {
       });
       expect(back['sparePartIds'], 'p1,p2');
     });
+
+    test('spare part labels round-trip so a deactivated part still renders', () {
+      // The directory (sparePartDirectoryProvider) is active-rows-only, so a
+      // deactivated part's label can only come from the entry's own echo --
+      // this is what the form falls back to for a selected id the directory
+      // no longer carries.
+      final back = RegisterFieldMap.fromWire('work', <String, dynamic>{
+        'spare_parts': <dynamic>[
+          <String, dynamic>{'part_id': 'p1', 'part_no': 'SP-1', 'name': 'Filter'},
+        ],
+      });
+      expect(back['sparePartLabels'], 'p1|SP-1|Filter');
+    });
   });
 
   group('user parsing', () {

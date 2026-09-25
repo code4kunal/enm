@@ -949,11 +949,32 @@ class _SparePartsSectionState extends ConsumerState<_SparePartsSection> {
           .toSet() ??
       <String>{};
 
+  /// The entry's own echo of every selected part's label (`part_id|part_no|
+  /// name`, records joined by `;;` -- see field_map.dart's `spare_parts`
+  /// handling), keyed by id. The directory is active-rows-only, so this is
+  /// the only source left for a part that's since been deactivated.
+  Map<String, SparePart> _echoedLabels() {
+    final raw = widget.values['sparePartLabels'];
+    if (raw == null || raw.isEmpty) return const <String, SparePart>{};
+    final out = <String, SparePart>{};
+    for (final record in raw.split(';;')) {
+      final fields = record.split('|');
+      if (fields.length != 3) continue;
+      out[fields[0]] = SparePart(id: fields[0], partNo: fields[1], name: fields[2]);
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final parts = ref.watch(sparePartDirectoryProvider).valueOrNull ?? const <SparePart>[];
     final selectedIds = _selectedIds();
-    final selectedParts = parts.where((p) => selectedIds.contains(p.id)).toList();
+    final echoed = _echoedLabels();
+    final byId = <String, SparePart>{...echoed, for (final p in parts) p.id: p};
+    final selectedParts = [
+      for (final id in selectedIds)
+        if (byId[id] != null) byId[id]!,
+    ];
     final needle = _query.trim().toLowerCase();
     final matches = needle.isEmpty
         ? const <SparePart>[]
