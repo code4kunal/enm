@@ -16,7 +16,7 @@ depends_on = None
 
 TICKET_SOURCE_KIND = sa.Enum(
     "breakdown", "coolant", "driver_complaint",
-    "daily_inspection", "ten_day_inspection", "pm_docking",
+    "daily_inspection", "ten_day_inspection", "pm_docking", "pm_schedule",
     name="ticket_source_kind_enum",
 )
 

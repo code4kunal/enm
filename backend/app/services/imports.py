@@ -23,7 +23,7 @@ from app.errors import AppError, ValidationError
 from app.models.checklist import InspectionEntry
 from app.models.entry import Entry
 from app.models.enums import DefectCategory, EntryStatus, ImportTarget, Register, Shift
-from app.models.master import DefectSource, DefectType, Vehicle, WorkType
+from app.models.master import DefectSource, DefectType, Driver, Vehicle, WorkType
 from app.models.site_config import ServicePlan
 from app.models.user import User
 from app.schemas.site_import import ColumnMappingIO, RowErrorOut
@@ -400,6 +400,13 @@ async def _fleet(session: AsyncSession, site_code: str) -> dict[str, Vehicle]:
     return {v.registration_no: v for v in rows}
 
 
+async def _drivers(session: AsyncSession, site_code: str) -> dict[str, Driver]:
+    rows = await session.scalars(
+        select(Driver).where(Driver.site_code == site_code)
+    )
+    return {d.driver_code.strip().lower(): d for d in rows}
+
+
 def normalize_work_type(raw: str) -> str:
     """A comparable form of a TYPE OF WORK code.
 
@@ -485,6 +492,7 @@ async def build_preview(
             fleet=fleet,
             types=types,
             work_types=work_types,
+            drivers=await _drivers(session, site_code),
         )
         fleet = await _fleet(session, site_code)
         sources, types = await _master_names(session)
@@ -550,8 +558,10 @@ async def _ensure_snag_dependencies(
     fleet: dict[str, Vehicle],
     types: dict[str, str],
     work_types: dict[str, WorkType],
+    drivers: dict[str, Driver],
 ) -> None:
-    """Create any work type, defect group or bus the sheet names that we lack.
+    """Create any work type, defect group, bus or driver the sheet names that
+    we lack.
 
     Snag history is operational truth — rejecting a written row because the
     master list lagged the fitters' vocabulary is data loss. New codes default
@@ -563,6 +573,7 @@ async def _ensure_snag_dependencies(
     seen_work: set[str] = set()
     seen_types: set[str] = set()
     seen_regs: set[str] = set()
+    seen_drivers: set[str] = set()
     need_fleetwide = False
 
     for values in mapped_rows:
@@ -609,6 +620,20 @@ async def _ensure_snag_dependencies(
             if reg and reg not in fleet and reg not in seen_regs:
                 seen_regs.add(reg)
                 session.add(Vehicle(registration_no=reg, site_code=site_code))
+                created = True
+
+        raw_driver = collapse(values.get("driver", ""))
+        if raw_driver:
+            key = raw_driver.strip().lower()
+            if key and key not in drivers and key not in seen_drivers:
+                seen_drivers.add(key)
+                session.add(
+                    Driver(
+                        site_code=site_code,
+                        driver_code=raw_driver[:64],
+                        name=raw_driver[:160],
+                    )
+                )
                 created = True
 
     if need_fleetwide and FLEETWIDE_REGISTRATION not in fleet:
@@ -957,6 +982,7 @@ async def _commit_snag_report(
         fleet=fleet,
         types=types,
         work_types=work_types,
+        drivers=await _drivers(session, site_code),
     )
     work_types = await _work_types(session)
     fleet = await _fleet(session, site_code)

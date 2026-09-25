@@ -590,6 +590,33 @@ async def test_pm_schedule_is_no_longer_ticketable(client: AsyncClient) -> None:
             await tickets.create_ticket_for_entry(session, entry=entry, creator=admin)
 
 
+async def test_legacy_pm_schedule_ticket_still_reads(client: AsyncClient) -> None:
+    """Migration 0030 backfills `source_kind` from every pre-existing
+    ticket's entry register, including tickets raised before this branch
+    against a pm_schedule entry (retired for new writes, but real depot
+    data still has old rows). ticket_title/search_tickets must not KeyError
+    on one -- they only run backward, never create a new one."""
+    async with SessionLocal() as session:
+        entry = await _seeded_pm_entry(session)
+        admin = await session.get(User, await _admin_id(session))
+        ticket = Ticket(
+            source_entry=entry,
+            source_kind=TicketSourceKind.pm_schedule,
+            created_by_id=admin.id,
+        )
+        session.add(ticket)
+        await session.commit()
+        await session.refresh(ticket)
+
+        title = tickets.ticket_title(ticket)
+        assert "legacy row" in title  # title comes from defects_noticed
+        assert entry.vehicle.registration_no in title
+
+    h = await auth_headers(client)
+    found = await client.get("/tickets/search", params={"site": "MBMT", "q": ""}, headers=h)
+    assert found.status_code == 200, found.text
+
+
 async def test_ticket_title_for_inspection_source(client: AsyncClient) -> None:
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)

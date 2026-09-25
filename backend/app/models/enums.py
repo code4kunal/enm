@@ -64,6 +64,9 @@ class TicketSourceKind(StrEnum):
     daily_inspection = "daily_inspection"
     ten_day_inspection = "ten_day_inspection"
     pm_docking = "pm_docking"
+    #: Retired for new tickets (see RETIRED_REGISTERS / TICKETABLE_REGISTERS)
+    #: -- kept here only so a pre-existing ticket's source_kind still reads.
+    pm_schedule = "pm_schedule"
 
 
 class Shift(StrEnum):

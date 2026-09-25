@@ -88,6 +88,9 @@ _TITLE_FIELD = {
     Register.breakdown: lambda d: d.complaint,
     Register.coolant: lambda d: "Coolant topping",
     Register.driver_complaint: lambda d: d.complaint,
+    #: Retired for new tickets, but a pre-existing ticket can still have one
+    #: as its source -- ticket_title must keep reading it.
+    Register.pm_schedule: lambda d: d.defects_noticed,
 }
 
 

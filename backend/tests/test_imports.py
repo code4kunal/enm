@@ -924,6 +924,34 @@ async def test_snag_import_adds_missing_buses_instead_of_rejecting(
     assert any(v["registration_no"] == "MH05FJ3510" for v in fleet)
 
 
+async def test_snag_import_adds_missing_driver_instead_of_rejecting(
+    client: AsyncClient,
+) -> None:
+    """A breakdown row's DRIVER NO isn't yet on the depot's driver master --
+    same rule as an unknown bus or work type: vivify it, don't drop the row."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,"
+            "ATTEND BY,DRIVER NO\n"
+            "2026-08-02,MH40LY1894,B.D,No traction,Contactor replaced,"
+            "Tushar,DRVNEW9\n"
+        ),
+        mappings=_mappings({**SNAG_MAP, "driver": "DRIVER NO"}),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["errors"] == []
+    await _commit(client, h, r.json()["token"])
+
+    drivers = (await client.get("/sites/MBMT/drivers", headers=h)).json()["items"]
+    assert any(d["driver_code"] == "DRVNEW9" for d in drivers)
+
+
 async def test_na_vehicle_on_snag_lands_on_fleetwide_placeholder(
     client: AsyncClient,
 ) -> None:
