@@ -351,6 +351,8 @@ void main() {
           site: 'MBMT',
           registerId: 'all',
           hasOpenTicket: true,
+          dateFrom: null,
+          dateTo: null,
         )).future,
       );
       expect(pending, isNotEmpty);
@@ -363,6 +365,8 @@ void main() {
           site: 'MBMT',
           registerId: 'all',
           hasOpenTicket: true,
+          dateFrom: null,
+          dateTo: null,
         )).future,
       );
       expect(afterResolve.any((e) => e.id == openId), isFalse);
@@ -378,10 +382,42 @@ void main() {
           site: 'MBMT',
           registerId: 'all',
           hasOpenTicket: false,
+          dateFrom: null,
+          dateTo: null,
         )).future,
       );
 
       expect(complete.any((e) => e.id == open.first.id), isFalse);
+    });
+
+    test('a date range narrows the result the same way the Registers screen shows it', () async {
+      // The Registers screen keeps its PERIOD chips visible while a STATUS
+      // chip is selected -- they must not be a no-op once one is.
+      final container = await signedInContainer();
+      final open = container.read(openBreakdownsProvider);
+      expect(open, isNotEmpty);
+
+      final excluded = await container.read(
+        pendingFilterEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          hasOpenTicket: true,
+          dateFrom: '2099-01-01',
+          dateTo: null,
+        )).future,
+      );
+      expect(excluded, isEmpty);
+
+      final included = await container.read(
+        pendingFilterEntriesProvider((
+          site: 'MBMT',
+          registerId: 'all',
+          hasOpenTicket: true,
+          dateFrom: null,
+          dateTo: null,
+        )).future,
+      );
+      expect(included.any((e) => e.id == open.first.id), isTrue);
     });
   });
 

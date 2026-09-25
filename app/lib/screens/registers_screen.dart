@@ -81,6 +81,8 @@ class _RegistersScreenState extends ConsumerState<RegistersScreen> {
                   site: site,
                   registerId: filters.registerId,
                   hasOpenTicket: filters.hasOpenTicket!,
+                  dateFrom: filters.serverDateBounds.$1,
+                  dateTo: filters.serverDateBounds.$2,
                 )))
                 .valueOrNull ??
             const <RegisterEntry>[]

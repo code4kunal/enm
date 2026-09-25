@@ -87,6 +87,26 @@ class EntryFilters {
         month: month,
         hasOpenTicket: value,
       );
+
+  /// `dateMode` as a `(dateFrom, dateTo)` pair the server understands --
+  /// same bounds [filteredEntriesProvider]'s `inPeriod` checks client-side,
+  /// for callers (like [pendingFilterEntriesProvider]) that ask the server
+  /// directly instead of filtering the cached page. Either side is `null`
+  /// for "unbounded".
+  (String?, String?) get serverDateBounds {
+    switch (dateMode) {
+      case DateMode.all:
+        return (null, null);
+      case DateMode.today:
+        return (Dates.today(), Dates.today());
+      case DateMode.week:
+        return (Dates.today(-6), Dates.today());
+      case DateMode.month:
+        return ('$month-01', Dates.lastOfMonth(month));
+      case DateMode.custom:
+        return (from.isEmpty ? null : from, to.isEmpty ? null : to);
+    }
+  }
 }
 
 class EntryFiltersController extends Notifier<EntryFilters> {
@@ -389,7 +409,13 @@ final registerMonthEntriesProvider =
 
 /// Key for [pendingFilterEntriesProvider]: which site, which register
 /// (`all` included), Complete (`false`) or Pending (`true`).
-typedef PendingFilterKey = ({String site, String registerId, bool hasOpenTicket});
+typedef PendingFilterKey = ({
+  String site,
+  String registerId,
+  bool hasOpenTicket,
+  String? dateFrom,
+  String? dateTo,
+});
 
 /// Entries matching a Complete/Pending chip, fetched directly from the
 /// server — ticket status isn't part of the cached [entriesProvider] page,
@@ -405,6 +431,8 @@ final pendingFilterEntriesProvider =
         site: key.site,
         registerId: key.registerId == 'all' ? null : key.registerId,
         hasOpenTicket: key.hasOpenTicket,
+        dateFrom: key.dateFrom,
+        dateTo: key.dateTo,
       );
   final needle = ref.watch(
     entryFiltersProvider.select((f) => f.query.trim().toLowerCase()),
