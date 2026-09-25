@@ -489,7 +489,9 @@ class _SiteStage extends ConsumerWidget {
         else
           FilledActionButton(
             label: onboarding ? 'Continue' : 'Continue to ${session.site}',
-            onPressed: session.site.isEmpty ? null : controller.enterApp,
+            onPressed: session.site.isEmpty && !onboarding
+                ? null
+                : controller.enterApp,
             expand: true,
           ),
       ],
