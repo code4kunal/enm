@@ -52,10 +52,29 @@ def upgrade() -> None:
 
     driver_ids: dict[tuple[str, str], str] = {}
     for row in rows:
-        key = (row.site_code, row.text_value.strip())
+        text_value = row.text_value.strip()
+        key = (row.site_code, text_value)
         if key not in driver_ids:
             new_id = uuid.uuid4().hex
             driver_ids[key] = new_id
+            # The old free-text value *is* the driver's identifying code
+            # (the field was labelled "Driver ID", placeholder "e.g.
+            # DRV-2231") -- keep it as driver_code rather than burying it in
+            # `name` behind a synthetic LEGACY-xxxxxxxx code, which is what
+            # every list/CSV/report actually displays. Only fall back to a
+            # generated code on an actual collision (two different rows'
+            # text values coincide after truncation, or a driver with that
+            # code already exists at the site from Task 13's own create-flow).
+            code = text_value[:64]
+            taken = connection.execute(
+                sa.text(
+                    "SELECT 1 FROM drivers WHERE site_code = :site_code "
+                    "AND lower(driver_code) = lower(:code)"
+                ),
+                {"site_code": row.site_code, "code": code},
+            ).first()
+            if taken is not None:
+                code = f"LEGACY-{new_id[:8]}"
             connection.execute(
                 sa.text(
                     "INSERT INTO drivers (id, site_code, driver_code, name, is_active) "
@@ -64,8 +83,8 @@ def upgrade() -> None:
                 {
                     "id": new_id,
                     "site_code": row.site_code,
-                    "driver_code": f"LEGACY-{new_id[:8]}",
-                    "name": row.text_value.strip(),
+                    "driver_code": code,
+                    "name": text_value[:160],
                 },
             )
 
