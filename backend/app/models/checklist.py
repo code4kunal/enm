@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date as date_t
 from datetime import datetime
 from datetime import time as time_t
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -27,6 +28,9 @@ from app.models.enums import (
 )
 from app.models.master import Vehicle, WorkType
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.models.ticket import Ticket
 
 
 class ChecklistTemplate(Base):
@@ -232,3 +236,6 @@ class InspectionResult(Base):
 
     inspection: Mapped[InspectionEntry] = relationship(back_populates="results")
     item: Mapped[ChecklistItem] = relationship(lazy="joined")
+    ticket: Mapped["Ticket | None"] = relationship(
+        lazy="selectin", back_populates="source_inspection_result", uselist=False
+    )

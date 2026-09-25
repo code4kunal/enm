@@ -57,6 +57,15 @@ class TicketStatus(StrEnum):
     completed = "completed"
 
 
+class TicketSourceKind(StrEnum):
+    breakdown = "breakdown"
+    coolant = "coolant"
+    driver_complaint = "driver_complaint"
+    daily_inspection = "daily_inspection"
+    ten_day_inspection = "ten_day_inspection"
+    pm_docking = "pm_docking"
+
+
 class Shift(StrEnum):
     A = "A"
     B = "B"
@@ -225,3 +234,4 @@ SHIFT_ENUM = "shift_enum"
 PLATFORM_ENUM = "platform_enum"
 NOTIFICATION_TYPE_ENUM = "notification_type_enum"
 TICKET_STATUS_ENUM = "ticket_status_enum"
+TICKET_SOURCE_KIND_ENUM = "ticket_source_kind_enum"

@@ -2,11 +2,29 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from tests.conftest import auth_headers
+from app.db import SessionLocal
+from app.models.checklist import ChecklistItem, ChecklistTemplate, InspectionEntry, InspectionResult
+from app.models.enums import CheckResult, TicketSourceKind
+from app.models.master import Vehicle, WorkType
+from app.models.ticket import Ticket
+from app.models.user import User
+from tests.conftest import SUPER_ADMIN, auth_headers
 
 TODAY = date.today().isoformat()
+
+
+def coolant() -> dict:
+    return {
+        "register": "coolant",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {"bus_no": "MH40LY1894"},
+    }
 
 
 def breakdown() -> dict:
@@ -433,3 +451,81 @@ async def test_non_ticketable_register_get_has_no_linked_sessions(
     created = await client.post("/entries", json=work_done(), headers=h)
     got = await client.get(f"/entries/{created.json()['id']}", headers=h)
     assert got.json()["linked_sessions"] is None
+
+
+async def _admin_id(session) -> str:
+    """`SUPER_ADMIN` ("TV1001") is `User.user_id`, the login code — not the
+    primary key a `created_by_id` FK needs."""
+    return await session.scalar(select(User.id).where(User.user_id == SUPER_ADMIN))
+
+
+async def _daily_inspection_result(session, *, not_ok: bool = True) -> InspectionResult:
+    """Direct DB construction — recording an inspection through the API needs
+    a checklist template with items already set up, and `ResultOut` doesn't
+    expose `InspectionResult.id`, so there is no way to get a real result id
+    through the HTTP surface alone. Mirrors test_inspections.py's own
+    `SessionLocal`-direct setup pattern."""
+    work_type = await session.scalar(select(WorkType).where(WorkType.code == "D.I"))
+    if work_type is None:
+        work_type = WorkType(code="D.I", name="Daily inspection", is_inspection=True)
+        session.add(work_type)
+        await session.flush()
+    template = ChecklistTemplate(site_code="MBMT", work_type_id=work_type.id, name="D.I")
+    session.add(template)
+    await session.flush()
+    item = ChecklistItem(template_id=template.id, label="Brakes")
+    session.add(item)
+    await session.flush()
+    vehicle = await session.scalar(
+        select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+    )
+    inspection = InspectionEntry(
+        site_code="MBMT",
+        vehicle_id=vehicle.id,
+        work_type_id=work_type.id,
+        inspected_on=date.today(),
+        created_by_id=await _admin_id(session),
+        results=[],
+    )
+    session.add(inspection)
+    await session.flush()
+    result = InspectionResult(
+        inspection_id=inspection.id,
+        item_id=item.id,
+        result=CheckResult.not_ok if not_ok else CheckResult.ok,
+    )
+    session.add(result)
+    await session.flush()
+    return result
+
+
+async def test_ticket_requires_exactly_one_source(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        session.add(
+            Ticket(
+                source_entry_id=None,
+                source_inspection_result_id=None,
+                source_kind=TicketSourceKind.breakdown,
+                created_by_id=await _admin_id(session),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await session.flush()
+
+
+async def test_ticket_rejects_both_sources_set(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    coolant_entry = (await client.post("/entries", json=coolant(), headers=h)).json()
+
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        session.add(
+            Ticket(
+                source_entry_id=coolant_entry["id"],
+                source_inspection_result_id=result.id,
+                source_kind=TicketSourceKind.daily_inspection,
+                created_by_id=await _admin_id(session),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await session.flush()
