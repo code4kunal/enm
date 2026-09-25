@@ -182,6 +182,8 @@ class InspectionResult {
     this.label = '',
     this.value,
     this.remark,
+    this.ticketId,
+    this.ticketStatus,
   });
 
   final String itemId;
@@ -192,6 +194,11 @@ class InspectionResult {
   /// For a reading line.
   final String? value;
   final String? remark;
+
+  /// Set once this result raised a ticket (a not_ok on a ticketable
+  /// inspection type) -- read-only, the server owns ticket creation.
+  final String? ticketId;
+  final String? ticketStatus;
 
   bool get failed => result == CheckResult.notOk;
 
@@ -210,6 +217,8 @@ class InspectionResult {
         result: CheckResult.fromWire(json['result'] as String?),
         value: json['value'] as String?,
         remark: json['remark'] as String?,
+        ticketId: json['ticket_id'] as String?,
+        ticketStatus: json['ticket_status'] as String?,
       );
 }
 

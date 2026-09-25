@@ -24,6 +24,9 @@ abstract final class RegisterFieldMap {
       'completionTime': 'completion_time',
       'attendeeUserIds': 'attendee_user_ids',
       'sparePartIds': 'spare_part_ids',
+      // Read-only echo, same GET-then-PUT round-trip contract as attendees
+      // and spare parts above (see WorkDoneData.entry_origin on the server).
+      'entryOrigin': 'entry_origin',
     },
     'coolant': <String, String>{
       'bus': 'bus_no',

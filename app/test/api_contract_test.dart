@@ -726,6 +726,29 @@ void main() {
     });
   });
 
+  group('inspection result ticket linkage', () {
+    test('ticket_id and ticket_status parse onto InspectionResult', () {
+      final result = InspectionResult.fromJson(const <String, dynamic>{
+        'item_id': 'it1',
+        'result': 'not_ok',
+        'remark': 'worn',
+        'ticket_id': 't1',
+        'ticket_status': 'open',
+      });
+      expect(result.ticketId, 't1');
+      expect(result.ticketStatus, 'open');
+    });
+
+    test('a result with no ticket parses both as null', () {
+      final result = InspectionResult.fromJson(const <String, dynamic>{
+        'item_id': 'it1',
+        'result': 'ok',
+      });
+      expect(result.ticketId, isNull);
+      expect(result.ticketStatus, isNull);
+    });
+  });
+
   group('inspection batch', () {
     test('a batch submission posts every vehicle in one request body',
         () async {
