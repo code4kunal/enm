@@ -12,6 +12,7 @@ from app.api import (
     master,
     notifications,
     reports,
+    site_masters,
     siteops,
     sites,
     tickets,
@@ -22,6 +23,7 @@ api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(sites.router)
 api_router.include_router(master.router)
+api_router.include_router(site_masters.router)
 api_router.include_router(imports.router)
 api_router.include_router(inspections.router)
 api_router.include_router(checklists.router)

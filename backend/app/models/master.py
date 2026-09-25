@@ -230,3 +230,24 @@ class WorkType(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+
+
+class SparePart(Base):
+    """A depot's own stocked-parts catalogue — site-scoped like Vehicle, not
+    tenant-wide like DefectSource/DefectType/WorkType: a part number one
+    depot stocks means nothing at another."""
+
+    __tablename__ = "spare_parts"
+    __table_args__ = (
+        UniqueConstraint("site_code", "part_no", name="uq_spare_parts_site_code_part_no"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)
+    site_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("sites.code", ondelete="CASCADE"), nullable=False
+    )
+    part_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
