@@ -45701,3 +45701,185 @@ Traceback (most recent call last):
   File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 934, in __connect_addr
     await connected
 asyncpg.exceptions.InvalidCatalogNameError: database "enm_qa" does not exist
+2026-09-25 10:45:04,498 INFO apscheduler.executors.default Running job "scan_breakdown_sla (trigger: interval[0:30:00], next run at: 2026-09-25 11:15:04 IST)" (scheduled at 2026-09-25 10:45:04.493698+05:30)
+2026-09-25 10:45:04,508 INFO apscheduler.executors.default Running job "scan_sites_due_for_sync (trigger: interval[0:05:00], next run at: 2026-09-25 10:50:04 IST)" (scheduled at 2026-09-25 10:45:04.493825+05:30)
+2026-09-25 10:45:04,544 ERROR apscheduler.executors.default Job "scan_breakdown_sla (trigger: interval[0:30:00], next run at: 2026-09-25 11:15:04 IST)" raised an exception
+Traceback (most recent call last):
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/apscheduler/executors/base.py", line 181, in run_coroutine_job
+    retval = await job.func(*job.args, **job.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/app/services/notifications.py", line 176, in scan_breakdown_sla
+    await session.scalars(
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/ext/asyncio/session.py", line 574, in scalars
+    result = await self.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/ext/asyncio/session.py", line 461, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2362, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2237, in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2106, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+           ^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 3278, in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 3302, in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 1263, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 717, in checkout
+    with util.safe_reraise():
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 715, in checkout
+    dbapi_connection = rec.get_connection()
+                       ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 837, in get_connection
+    self.__connect()
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 900, in __connect
+    with util.safe_reraise():
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/create.py", line 643, in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 621, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 949, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 934, in __connect_addr
+    await connected
+asyncpg.exceptions.InvalidCatalogNameError: database "enm_qa" does not exist
+2026-09-25 10:45:04,547 ERROR apscheduler.executors.default Job "scan_sites_due_for_sync (trigger: interval[0:05:00], next run at: 2026-09-25 10:50:04 IST)" raised an exception
+Traceback (most recent call last):
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/apscheduler/executors/base.py", line 181, in run_coroutine_job
+    retval = await job.func(*job.args, **job.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/app/services/odometer.py", line 193, in scan_sites_due_for_sync
+    await session.scalars(
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/ext/asyncio/session.py", line 574, in scalars
+    result = await self.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/ext/asyncio/session.py", line 461, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2362, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2237, in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2106, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+           ^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 3278, in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 146, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 3302, in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 1263, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 717, in checkout
+    with util.safe_reraise():
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 715, in checkout
+    dbapi_connection = rec.get_connection()
+                       ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 837, in get_connection
+    self.__connect()
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 900, in __connect
+    with util.safe_reraise():
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/pool/base.py", line 896, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/create.py", line 643, in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 621, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 949, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kunalsaxena/transvolt-enm/backend/.venv/lib/python3.11/site-packages/asyncpg/connect_utils.py", line 934, in __connect_addr
+    await connected
+asyncpg.exceptions.InvalidCatalogNameError: database "enm_qa" does not exist
