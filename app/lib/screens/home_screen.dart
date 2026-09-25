@@ -216,7 +216,12 @@ class _RegisterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LiftOnHover(
-      onTap: () => context.go(Routes.newEntry(register.id)),
+      // Coolant Topping's day entry (one date, every bus) replaces the old
+      // per-bus form as the primary path — that form stays reachable for
+      // corrections via Registers → Edit.
+      onTap: () => context.go(
+        register.id == 'coolant' ? Routes.coolantDay : Routes.newEntry(register.id),
+      ),
       child: (context, hovered) => AnimatedContainer(
         duration: T.hoverLift,
         curve: T.easeOut,

@@ -273,6 +273,41 @@ class FakeEntryRepository implements EntryRepository {
     if (i == -1) throw ApiException('Entry $entryId not found');
     _store.entries[i] = _store.entries[i].withPhotoUrl(null);
   }
+
+  @override
+  Future<List<RegisterEntry>> createCoolantDay({
+    required String site,
+    required String entryDate,
+    String? supervisor,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    final created = <RegisterEntry>[];
+    for (final row in rows) {
+      final vehicle = _store.vehicles.firstWhere(
+        (v) => v.id == row['vehicle_id'],
+        orElse: () => throw ApiException('Vehicle ${row['vehicle_id']} not found'),
+      );
+      final entry = await createEntry(
+        RegisterEntry(
+          id: '',
+          registerId: 'coolant',
+          date: entryDate,
+          time: '',
+          site: site,
+          enteredBy: '',
+          data: <String, String>{
+            'bus': vehicle.registrationNo,
+            if (row['bcs_litres'] != null) 'bcs': '${row['bcs_litres']}',
+            if (row['tcs_litres'] != null) 'tcs': '${row['tcs_litres']}',
+            if (row['topped_by'] != null) 'employee': '${row['topped_by']}',
+            if (supervisor != null && supervisor.isNotEmpty) 'supervisor': supervisor,
+          },
+        ),
+      );
+      created.add(entry);
+    }
+    return created;
+  }
 }
 
 // ─── Tickets ──────────────────────────────────────────────────────────────

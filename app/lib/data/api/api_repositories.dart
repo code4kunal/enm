@@ -729,6 +729,25 @@ class ApiEntryRepository implements EntryRepository {
   @override
   Future<void> removePhoto(String entryId) =>
       _api.delete('/entries/$entryId/photo');
+
+  @override
+  Future<List<RegisterEntry>> createCoolantDay({
+    required String site,
+    required String entryDate,
+    String? supervisor,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    final json = await _api.post(
+      '/entries/coolant/day',
+      query: <String, String>{'site': site},
+      body: <String, dynamic>{
+        'entry_date': entryDate,
+        if (supervisor != null && supervisor.isNotEmpty) 'supervisor': supervisor,
+        'rows': rows,
+      },
+    );
+    return itemsOf(json).map(_entryFromWire).toList();
+  }
 }
 
 /// Shared by [ApiEntryRepository] and [ApiTicketRepository]: the API's data

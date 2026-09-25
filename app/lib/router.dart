@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/admin_screen.dart';
 import 'screens/breakdowns_screen.dart';
+import 'screens/coolant_day_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/inspection_form_screen.dart';
 import 'screens/login_screen.dart';
@@ -23,6 +24,7 @@ abstract final class Routes {
   static const home = '/home';
   static const registers = '/registers';
   static const breakdowns = '/breakdowns';
+  static const coolantDay = '/coolant/day';
   static const schedule = '/schedule';
   static const vehicleMaster = '/vehicle-master';
   static const reports = '/reports';
@@ -114,6 +116,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => NoTransitionPage<void>(
               key: state.pageKey,
               child: const PageBody(child: BreakdownsScreen()),
+            ),
+          ),
+          GoRoute(
+            path: Routes.coolantDay,
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: CoolantDayScreen()),
             ),
           ),
           GoRoute(

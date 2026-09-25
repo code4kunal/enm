@@ -664,6 +664,17 @@ abstract interface class EntryRepository {
 
   /// Clears whatever photo the entry has, if any.
   Future<void> removePhoto(String entryId);
+
+  /// Coolant Topping's day-based entry: one date, one submitting supervisor,
+  /// every bus in one request. Each row is `{vehicle_id, bcs_litres?,
+  /// tcs_litres?, topped_by?}` — write-only, so it doesn't need its own
+  /// model class the way `SparePart`/`Driver` did.
+  Future<List<RegisterEntry>> createCoolantDay({
+    required String site,
+    required String entryDate,
+    String? supervisor,
+    required List<Map<String, dynamic>> rows,
+  });
 }
 
 // ─── Tickets ──────────────────────────────────────────────────────────────

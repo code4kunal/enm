@@ -131,6 +131,28 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     return created;
   }
 
+  /// Coolant Topping's day-based entry: one date, one submitting supervisor,
+  /// every bus in one request.
+  Future<List<RegisterEntry>> createCoolantDay({
+    required String entryDate,
+    String? supervisor,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    final session = ref.read(sessionProvider);
+    final created = await ref.read(entryRepositoryProvider).createCoolantDay(
+          site: session.site,
+          entryDate: entryDate,
+          supervisor: supervisor,
+          rows: rows,
+        );
+    _replaceAll((list) => <RegisterEntry>[...created, ...list]);
+    ref.invalidate(dmrDayProvider);
+    ref.invalidate(dmrMonthProvider);
+    ref.invalidate(controlChartProvider);
+    ref.invalidate(investigationsProvider);
+    return created;
+  }
+
   /// Updates an existing entry in place, preserving its capture time and
   /// open/resolved status.
   ///

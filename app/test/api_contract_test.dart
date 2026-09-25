@@ -641,6 +641,44 @@ void main() {
     });
   });
 
+  group('coolant day entry', () {
+    test('a 2-row submission posts one request with both rows in the body',
+        () async {
+      late Map<String, dynamic> sent;
+      final fixture1 = jsonDecode(fixture('entry_create')) as Map<String, dynamic>;
+      final fixture2 = Map<String, dynamic>.of(fixture1)..['id'] = 'other-id';
+      final mock = MockClient((http.Request request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'items': <Map<String, dynamic>>[fixture1, fixture2],
+          }),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final created = await ApiEntryRepository(client).createCoolantDay(
+        site: 'MBMT',
+        entryDate: '2026-09-25',
+        supervisor: 'R. Mehta',
+        rows: <Map<String, dynamic>>[
+          <String, dynamic>{'vehicle_id': 'v1', 'bcs_litres': '1.5'},
+          <String, dynamic>{'vehicle_id': 'v2', 'bcs_litres': '2.0'},
+        ],
+      );
+
+      expect(sent['entry_date'], '2026-09-25');
+      expect(sent['supervisor'], 'R. Mehta');
+      final rows = sent['rows'] as List<dynamic>;
+      expect(rows, hasLength(2));
+      expect((rows[0] as Map<String, dynamic>)['vehicle_id'], 'v1');
+      expect((rows[1] as Map<String, dynamic>)['vehicle_id'], 'v2');
+      expect(created, hasLength(2));
+    });
+  });
+
   group('spare parts directory', () {
     test('spare part directory keeps the id the backend returns', () async {
       final mock = MockClient((http.Request request) async {
