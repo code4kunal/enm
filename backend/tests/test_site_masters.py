@@ -48,6 +48,62 @@ async def test_create_and_list_drivers(client: AsyncClient) -> None:
     assert any(d["driver_code"] == "DRV-1001" for d in listed["items"])
 
 
+async def test_spare_part_can_be_reactivated_and_renamed(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    part = (
+        await client.post(
+            "/sites/MBMT/spare-parts",
+            json={"part_no": "SP-4001", "name": "Original name"},
+            headers=h,
+        )
+    ).json()
+
+    deactivated = await client.post(f"/spare-parts/{part['id']}/deactivate", headers=h)
+    assert deactivated.json()["is_active"] is False
+
+    reactivated = await client.post(f"/spare-parts/{part['id']}/activate", headers=h)
+    assert reactivated.status_code == 200, reactivated.text
+    assert reactivated.json()["is_active"] is True
+
+    listed = (await client.get("/sites/MBMT/spare-parts", headers=h)).json()
+    assert any(p["id"] == part["id"] for p in listed["items"])
+
+    renamed = await client.put(
+        f"/spare-parts/{part['id']}", json={"name": "Corrected name"}, headers=h
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Corrected name"
+    assert renamed.json()["part_no"] == "SP-4001"
+
+
+async def test_driver_can_be_reactivated_and_renamed(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    driver = (
+        await client.post(
+            "/sites/MBMT/drivers",
+            json={"driver_code": "DRV-4001", "name": "Original name"},
+            headers=h,
+        )
+    ).json()
+
+    deactivated = await client.post(f"/drivers/{driver['id']}/deactivate", headers=h)
+    assert deactivated.json()["is_active"] is False
+
+    reactivated = await client.post(f"/drivers/{driver['id']}/activate", headers=h)
+    assert reactivated.status_code == 200, reactivated.text
+    assert reactivated.json()["is_active"] is True
+
+    listed = (await client.get("/sites/MBMT/drivers", headers=h)).json()
+    assert any(d["id"] == driver["id"] for d in listed["items"])
+
+    renamed = await client.put(
+        f"/drivers/{driver['id']}", json={"name": "Corrected name"}, headers=h
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Corrected name"
+    assert renamed.json()["driver_code"] == "DRV-4001"
+
+
 async def test_deactivated_spare_part_still_resolves_on_an_existing_entry(
     client: AsyncClient,
 ) -> None:
