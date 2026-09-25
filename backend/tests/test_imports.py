@@ -952,6 +952,44 @@ async def test_snag_import_adds_missing_driver_instead_of_rejecting(
     assert any(d["driver_code"] == "DRVNEW9" for d in drivers)
 
 
+async def test_snag_import_records_part_used_instead_of_dropping_it(
+    client: AsyncClient,
+) -> None:
+    """A Work Done row's PART USED column named a real repair part -- it must
+    land on the entry (as a resolved spare_part_ids reference, auto-created
+    if the catalogue doesn't have it yet), not silently vanish."""
+    h = await auth_headers(client)
+    await _snag_work_types()
+
+    r = await _preview(
+        client,
+        h,
+        target="snagReport",
+        body=(
+            "DATE,VEHICLE NO,TYPE OF WORK,DRIVER COMPLAINT,ACTION TAKEN,"
+            "ATTEND BY,PART USED\n"
+            "2026-08-02,MH40LY1894,Depot,Routine check,Cleaned,Tushar,"
+            "Air filter\n"
+        ),
+        mappings=_mappings({**SNAG_MAP, "spares": "PART USED"}),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["errors"] == []
+    await _commit(client, h, r.json()["token"])
+
+    parts = (await client.get("/sites/MBMT/spare-parts", headers=h)).json()["items"]
+    part = next((p for p in parts if p["name"] == "Air filter"), None)
+    assert part is not None
+
+    entries = (
+        await client.get(
+            "/entries", params={"site": "MBMT", "register": "work_done"}, headers=h
+        )
+    ).json()["items"]
+    entry = next(e for e in entries if e["data"]["bus_no"] == "MH40LY1894")
+    assert entry["data"]["spare_parts"][0]["part_id"] == part["id"]
+
+
 async def test_na_vehicle_on_snag_lands_on_fleetwide_placeholder(
     client: AsyncClient,
 ) -> None:

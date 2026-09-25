@@ -23,7 +23,7 @@ from app.errors import AppError, ValidationError
 from app.models.checklist import InspectionEntry
 from app.models.entry import Entry
 from app.models.enums import DefectCategory, EntryStatus, ImportTarget, Register, Shift
-from app.models.master import DefectSource, DefectType, Driver, Vehicle, WorkType
+from app.models.master import DefectSource, DefectType, Driver, SparePart, Vehicle, WorkType
 from app.models.site_config import ServicePlan
 from app.models.user import User
 from app.schemas.site_import import ColumnMappingIO, RowErrorOut
@@ -407,6 +407,15 @@ async def _drivers(session: AsyncSession, site_code: str) -> dict[str, Driver]:
     return {d.driver_code.strip().lower(): d for d in rows}
 
 
+async def _spare_parts(session: AsyncSession, site_code: str) -> dict[str, SparePart]:
+    """Keyed by name, lowercased -- a snag sheet's PART USED cell is free
+    text describing the part, not a catalogue code the fitter would know."""
+    rows = await session.scalars(
+        select(SparePart).where(SparePart.site_code == site_code)
+    )
+    return {p.name.strip().lower(): p for p in rows}
+
+
 def normalize_work_type(raw: str) -> str:
     """A comparable form of a TYPE OF WORK code.
 
@@ -493,6 +502,7 @@ async def build_preview(
             types=types,
             work_types=work_types,
             drivers=await _drivers(session, site_code),
+        spare_parts=await _spare_parts(session, site_code),
         )
         fleet = await _fleet(session, site_code)
         sources, types = await _master_names(session)
@@ -559,9 +569,10 @@ async def _ensure_snag_dependencies(
     types: dict[str, str],
     work_types: dict[str, WorkType],
     drivers: dict[str, Driver],
+    spare_parts: dict[str, SparePart],
 ) -> None:
-    """Create any work type, defect group, bus or driver the sheet names that
-    we lack.
+    """Create any work type, defect group, bus, driver or spare part the
+    sheet names that we lack.
 
     Snag history is operational truth — rejecting a written row because the
     master list lagged the fitters' vocabulary is data loss. New codes default
@@ -574,6 +585,7 @@ async def _ensure_snag_dependencies(
     seen_types: set[str] = set()
     seen_regs: set[str] = set()
     seen_drivers: set[str] = set()
+    seen_parts: set[str] = set()
     need_fleetwide = False
 
     for values in mapped_rows:
@@ -632,6 +644,23 @@ async def _ensure_snag_dependencies(
                         site_code=site_code,
                         driver_code=raw_driver[:64],
                         name=raw_driver[:160],
+                    )
+                )
+                created = True
+
+        # PART USED is free text describing the part, not a catalogue code --
+        # the whole cell becomes one spare part (not split on commas: no
+        # sample sheet establishes how a depot would write more than one).
+        raw_part = collapse(values.get("spares", ""))
+        if raw_part:
+            key = raw_part.strip().lower()
+            if key and key not in spare_parts and key not in seen_parts:
+                seen_parts.add(key)
+                session.add(
+                    SparePart(
+                        site_code=site_code,
+                        part_no=raw_part[:64],
+                        name=raw_part[:160],
                     )
                 )
                 created = True
@@ -983,9 +1012,11 @@ async def _commit_snag_report(
         types=types,
         work_types=work_types,
         drivers=await _drivers(session, site_code),
+        spare_parts=await _spare_parts(session, site_code),
     )
     work_types = await _work_types(session)
     fleet = await _fleet(session, site_code)
+    spare_parts = await _spare_parts(session, site_code)
 
     # Everything this sheet would write, checked against what the site already
     # has, in one query rather than one per row.
@@ -1037,6 +1068,15 @@ async def _commit_snag_report(
             if values.get(snag_key, "").strip()
         }
         data = _to_register_data(register, translated)
+        # spare_part_ids isn't in REGISTER_FIELD_MAP[work_done] (it's a
+        # catalogue reference, not a raw column) -- resolve the sheet's free
+        # text against the catalogue _ensure_snag_dependencies vivified above.
+        if register is Register.work_done:
+            raw_part = collapse(translated.get("spares", ""))
+            if raw_part:
+                part = spare_parts.get(raw_part.strip().lower())
+                if part is not None:
+                    data["spare_part_ids"] = [part.id]
         if not data:
             continue
 
