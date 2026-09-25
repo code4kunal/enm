@@ -54,6 +54,26 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   bool _multiMode = false;
   List<String> _multiRegistrations = <String>[];
 
+  /// Per-bus odometer reading in multi mode, keyed by registration — the
+  /// single shared [_odometer] field makes no sense once more than one bus
+  /// is involved (each has its own reading), so multi mode collects one per
+  /// selected bus instead. Synced against [_multiRegistrations] in
+  /// [_syncMultiOdometers].
+  final Map<String, TextEditingController> _multiOdometers =
+      <String, TextEditingController>{};
+
+  void _syncMultiOdometers() {
+    final wanted = _multiRegistrations.toSet();
+    for (final reg in _multiOdometers.keys.toList()) {
+      if (!wanted.contains(reg)) {
+        _multiOdometers.remove(reg)!.dispose();
+      }
+    }
+    for (final reg in wanted) {
+      _multiOdometers.putIfAbsent(reg, TextEditingController.new);
+    }
+  }
+
   /// Docking (P.M) KM sheet — null until the mechanic picks one (or a booking
   /// pre-fills it).
   int? _milestoneKm;
@@ -72,6 +92,9 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
     _odometer.dispose();
     _remarks.dispose();
     for (final c in _notes.values) {
+      c.dispose();
+    }
+    for (final c in _multiOdometers.values) {
       c.dispose();
     }
     super.dispose();
@@ -159,18 +182,20 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
   }
 
   Future<void> _saveBatch(Checklist checklist, List<Vehicle> fleet) async {
-    final vehicleIds = <String>[
-      for (final reg in _multiRegistrations)
-        fleet.firstWhere((v) => v.registrationNo == reg).id,
-    ];
-    if (vehicleIds.isEmpty) {
+    final byReg = <String, Vehicle>{for (final v in fleet) v.registrationNo: v};
+    // A fleet refresh between picking these buses and pressing Save can drop
+    // one — report it rather than letting firstWhere throw uncaught.
+    final missing = _multiRegistrations.where((r) => !byReg.containsKey(r)).toList();
+    if (missing.isNotEmpty) {
+      setState(() => _error =
+          '${missing.join(', ')} ${missing.length == 1 ? 'is' : 'are'} no '
+          'longer in the active fleet — re-pick the buses.');
+      return;
+    }
+    if (_multiRegistrations.isEmpty) {
       setState(() => _error = 'Pick at least one bus.');
       return;
     }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
 
     final results = <InspectionResult>[
       for (final item in checklist.items)
@@ -186,6 +211,42 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
         ),
     ];
 
+    // Every selected bus gets the identical checklist result -- deliberate
+    // for a fast routine sweep, but a not_ok raises the same ticket on all
+    // of them, including any that are actually fine. Confirm rather than
+    // let that be a silent surprise.
+    if (results.any((r) => r.failed) && _multiRegistrations.length > 1) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Same failure on every bus?'),
+          content: Text(
+            'A failed check here raises one ticket per bus. This will open '
+            '${_multiRegistrations.length} tickets for the same issue, on '
+            '${_multiRegistrations.join(', ')}. If only some of these buses '
+            'actually have this problem, go back and record them '
+            'separately instead.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Go back'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Raise on all'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
     try {
       final entries = await ref.read(inspectionControllerProvider).recordBatch(
             workTypeId: checklist.workTypeId,
@@ -193,8 +254,14 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
             entryTime: Dates.nowClock(),
             supervisor: _supervisor,
             items: <InspectionBatchItem>[
-              for (final vehicleId in vehicleIds)
-                InspectionBatchItem(vehicleId: vehicleId, results: results),
+              for (final reg in _multiRegistrations)
+                InspectionBatchItem(
+                  vehicleId: byReg[reg]!.id,
+                  results: results,
+                  odometerKm: int.tryParse(
+                    _multiOdometers[reg]?.text.trim() ?? '',
+                  ),
+                ),
             ],
           );
       final failed = entries.where((e) => !e.isClean).length;
@@ -239,6 +306,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
         _supervisor = '';
         _milestoneKm = null;
         _multiRegistrations = <String>[];
+        _syncMultiOdometers();
         _clearAnswers();
       });
     });
@@ -336,6 +404,7 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                             _vehicleId = '';
                           } else {
                             _multiRegistrations = <String>[];
+                            _syncMultiOdometers();
                           }
                           _clearAnswers();
                         }),
@@ -350,8 +419,39 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                         options: active.map((v) => v.registrationNo).toList(),
                         placeholder: 'Select buses…',
                         emptyHint: 'No active buses',
-                        onChanged: (v) => setState(() => _multiRegistrations = v),
+                        onChanged: (v) => setState(() {
+                          _multiRegistrations = v;
+                          _syncMultiOdometers();
+                        }),
                       ),
+                      if (_multiRegistrations.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 12),
+                        const FieldLabel(
+                          label: 'Odometer per bus',
+                          hint: 'km, optional',
+                        ),
+                        const SizedBox(height: 6),
+                        for (final reg in _multiRegistrations)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 110,
+                                  child: Text(reg, style: AppText.mono(size: 13)),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: AppTextField(
+                                    controller: _multiOdometers[reg]!,
+                                    placeholder: 'e.g. 121000',
+                                    numeric: true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                       const SizedBox(height: 16),
                     ] else ...<Widget>[
                       const FieldLabel(label: 'Bus No', required: true),
@@ -442,24 +542,30 @@ class _InspectionFormScreenState extends ConsumerState<InspectionFormScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              const FieldLabel(
-                                label: 'Odometer',
-                                hint: 'km',
-                              ),
-                              const SizedBox(height: 6),
-                              AppTextField(
-                                controller: _odometer,
-                                placeholder: 'e.g. 121000',
-                                numeric: true,
-                              ),
-                            ],
+                        // Multi mode collects one odometer per bus (above,
+                        // next to each registration) instead of one shared
+                        // value — a group of buses doesn't share an
+                        // odometer.
+                        if (!_multiMode) ...<Widget>[
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                const FieldLabel(
+                                  label: 'Odometer',
+                                  hint: 'km',
+                                ),
+                                const SizedBox(height: 6),
+                                AppTextField(
+                                  controller: _odometer,
+                                  placeholder: 'e.g. 121000',
+                                  numeric: true,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 16),

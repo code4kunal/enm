@@ -822,5 +822,43 @@ void main() {
       expect(entries, hasLength(2));
       expect(entries[1].failedCount, 1);
     });
+
+    test('each vehicle carries its own odometer reading', () async {
+      // Multi-bus mode shares one checklist across every selected bus, but
+      // the odometer is per-bus -- a shared value would misreport every bus
+      // but one.
+      late Map<String, dynamic> sent;
+      final mock = MockClient((http.Request request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{'items': <Map<String, dynamic>>[]}),
+          201,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      await ApiChecklistRepository(client).recordInspectionBatch(
+        siteCode: 'MBMT',
+        workTypeId: 1,
+        inspectedOn: '2026-09-25',
+        items: const <InspectionBatchItem>[
+          InspectionBatchItem(
+            vehicleId: 'v1',
+            results: <InspectionResult>[],
+            odometerKm: 100000,
+          ),
+          InspectionBatchItem(
+            vehicleId: 'v2',
+            results: <InspectionResult>[],
+            odometerKm: 205000,
+          ),
+        ],
+      );
+
+      final items = sent['items'] as List<dynamic>;
+      expect((items[0] as Map<String, dynamic>)['odometer_km'], 100000);
+      expect((items[1] as Map<String, dynamic>)['odometer_km'], 205000);
+    });
   });
 }
