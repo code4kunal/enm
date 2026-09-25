@@ -115,6 +115,52 @@ async def test_deactivated_driver_still_resolves_on_an_existing_entry(
     assert refetched["data"]["driver_id"] == driver["driver_code"]
 
 
+async def test_a_spare_part_from_another_site_is_rejected_not_resolved(
+    client: AsyncClient,
+) -> None:
+    """resolve_spare_parts scopes its lookup by site_code, so another site's
+    part id is simply not found here -- write access to MBMT says nothing
+    about UMT's catalogue."""
+    from tests.test_entries import work_done
+
+    h = await auth_headers(client)
+    umt_part = (
+        await client.post(
+            "/sites/UMT/spare-parts",
+            json={"part_no": "SP-UMT1", "name": "UMT-only part"},
+            headers=h,
+        )
+    ).json()
+
+    payload = work_done()
+    payload["data"]["spare_part_ids"] = [umt_part["id"]]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400, r.text
+    assert "unknown spare part" in r.json()["error"]["message"]
+
+
+async def test_a_driver_from_another_site_is_rejected_not_resolved(
+    client: AsyncClient,
+) -> None:
+    """Same rule as spare parts, for resolve_driver."""
+    from tests.test_entries import breakdown
+
+    h = await auth_headers(client)
+    umt_driver = (
+        await client.post(
+            "/sites/UMT/drivers",
+            json={"driver_code": "DRV-UMT1", "name": "UMT-only driver"},
+            headers=h,
+        )
+    ).json()
+
+    payload = breakdown()
+    payload["data"]["driver_id"] = umt_driver["driver_code"]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400, r.text
+    assert "Unknown driver" in r.json()["error"]["message"]
+
+
 async def test_driver_code_is_unique_per_site(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post(
