@@ -381,14 +381,11 @@ async def raise_ticket(
 ) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_permission(user, entry.site_code, "em_entry:write")
-    if entry.register not in (
-        Register.coolant,
-        Register.driver_complaint,
-        Register.pm_schedule,
-    ):
+    if entry.register not in (Register.coolant, Register.driver_complaint):
         raise Conflict(
-            "Only coolant, driver complaint, and PM/docking entries can raise "
-            "a ticket here — breakdowns raise theirs automatically"
+            "Only coolant and driver complaint entries can raise a ticket "
+            "here — breakdowns raise theirs automatically, and PM/Docking "
+            "now raises one from its inspection checklist"
         )
 
     await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)

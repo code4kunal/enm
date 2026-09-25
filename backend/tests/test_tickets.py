@@ -643,6 +643,30 @@ async def test_search_tickets_scopes_inspection_source_by_site(client: AsyncClie
         assert umt_result.id not in found_ids
 
 
+async def test_search_tickets_matches_inspection_by_label_or_bus(client: AsyncClient) -> None:
+    """An inspection-sourced ticket's title comes from the checklist item's
+    label and the bus registration (ticket_title above) -- q must be able to
+    match either, not just the optional remark, which the batch UI never
+    sets and is None on most real failures."""
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        ticket = await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        ticket_id = ticket.id
+
+        by_label = await tickets.search_tickets(
+            session, site_code="MBMT", source_kind=None, q="brakes"
+        )
+        assert ticket_id in {t.id for t in by_label}
+
+        by_bus = await tickets.search_tickets(
+            session, site_code="MBMT", source_kind=None, q="MH40LY1894"
+        )
+        assert ticket_id in {t.id for t in by_bus}
+
+
 async def test_search_endpoint_accepts_source_kind(client: AsyncClient) -> None:
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)

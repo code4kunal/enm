@@ -6,9 +6,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import Conflict
-from app.models.checklist import InspectionEntry, InspectionResult
+from app.models.checklist import ChecklistItem, InspectionEntry, InspectionResult
 from app.models.entry import BreakdownEntry, Entry
 from app.models.enums import EntryStatus, Register, TicketSourceKind, TicketStatus
+from app.models.master import Vehicle
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -128,6 +129,8 @@ async def search_tickets(
         select(Ticket)
         .join(InspectionResult, InspectionResult.id == Ticket.source_inspection_result_id)
         .join(InspectionEntry, InspectionEntry.id == InspectionResult.inspection_id)
+        .join(ChecklistItem, ChecklistItem.id == InspectionResult.item_id)
+        .join(Vehicle, Vehicle.id == InspectionEntry.vehicle_id)
         .where(InspectionEntry.site_code == site_code, Ticket.status == TicketStatus.open)
     )
     if source_kind is not None:
@@ -139,7 +142,12 @@ async def search_tickets(
             or_(Entry.search_text.like(needle), Ticket.id == q.strip(), Entry.id == q.strip())
         )
         inspection_stmt = inspection_stmt.where(
-            or_(InspectionResult.remark.ilike(needle), Ticket.id == q.strip())
+            or_(
+                InspectionResult.remark.ilike(needle),
+                ChecklistItem.label.ilike(needle),
+                Vehicle.registration_no.ilike(needle),
+                Ticket.id == q.strip(),
+            )
         )
     entry_tickets = (await session.scalars(entry_stmt)).unique().all()
     inspection_tickets = (

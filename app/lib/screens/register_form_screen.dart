@@ -755,10 +755,8 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
     final site = ref.watch(sessionProvider.select((s) => s.site));
     final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const <StaffMember>[];
     final searchKey = (site: site, register: _registerFilter, q: _query);
-    final results = _query.trim().length < 2
-        ? const <TicketSearchResult>[]
-        : ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
-            const <TicketSearchResult>[];
+    final results = ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
+        const <TicketSearchResult>[];
 
     final selectedIds = widget.values['attendeeUserIds']
             ?.split(',')
@@ -813,7 +811,14 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
           else ...<Widget>[
             AppSelect(
               value: _registerFilter,
-              options: const <String>['breakdown', 'coolant', 'complaint', 'pm'],
+              options: const <String>[
+                'breakdown',
+                'coolant',
+                'complaint',
+                'daily_inspection',
+                'ten_day_inspection',
+                'pm',
+              ],
               placeholder: 'Which register…',
               onChanged: (v) => setState(() => _registerFilter = v),
             ),

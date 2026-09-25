@@ -495,11 +495,13 @@ void main() {
       expect(results.first.title, contains('MH40LY1895'));
     });
 
-    test('the register filter is sent as the wire id, not the app id', () async {
-      // The picker offers the app-side ids from `registers.dart`; the backend
-      // binds `register` to its `Register` enum and 422s on anything that
-      // isn't one of its values. `complaint` and `pm` are the two that differ,
-      // so they are the two that broke.
+    test('the register filter is sent as source_kind, in TicketSourceKind wire values', () async {
+      // GET /tickets/search binds its filter to `source_kind`, a
+      // `TicketSourceKind` enum -- a different vocabulary from the
+      // `Register` enum entries use (a ticket's source can be an inspection
+      // result with no register at all). Sending the old `register` key, or
+      // an app id translated through the wrong map, is a silent no-op: the
+      // backend just ignores an unrecognized query param.
       Map<String, String>? sent;
       final mock = MockClient((http.Request request) async {
         sent = request.url.queryParameters;
@@ -513,21 +515,15 @@ void main() {
         ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock),
       );
 
-      await repo.search(site: 'MBMT', register: 'complaint');
-      expect(sent!['register'], 'driver_complaint');
-
-      await repo.search(site: 'MBMT', register: 'pm');
-      expect(sent!['register'], 'pm_schedule');
-
-      // The three whose app id already is the wire value go through unchanged.
-      for (final id in <String>['breakdown', 'coolant', 'work']) {
-        await repo.search(site: 'MBMT', register: id);
-        expect(sent!['register'], registerToWire[id], reason: id);
+      for (final entry in ticketSourceKindWire.entries) {
+        await repo.search(site: 'MBMT', register: entry.key);
+        expect(sent!.containsKey('register'), isFalse, reason: entry.key);
+        expect(sent!['source_kind'], entry.value, reason: entry.key);
       }
 
       // No filter means no parameter at all — not an empty one.
       await repo.search(site: 'MBMT');
-      expect(sent!.containsKey('register'), isFalse);
+      expect(sent!.containsKey('source_kind'), isFalse);
     });
   });
 

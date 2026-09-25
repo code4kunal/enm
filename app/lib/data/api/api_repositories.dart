@@ -34,6 +34,20 @@ final Map<String, String> _registerFromWire = <String, String>{
   for (final e in registerToWire.entries) e.value: e.key,
 };
 
+/// The ticket picker's "which register" filter, app-side id -> the
+/// backend's `TicketSourceKind` wire value (`GET /tickets/search`'s
+/// `source_kind` param) -- a *different* enum from [registerToWire]'s
+/// `Register`, since a ticket's source can be an inspection result with no
+/// register at all.
+const Map<String, String> ticketSourceKindWire = <String, String>{
+  'breakdown': 'breakdown',
+  'coolant': 'coolant',
+  'complaint': 'driver_complaint',
+  'daily_inspection': 'daily_inspection',
+  'ten_day_inspection': 'ten_day_inspection',
+  'pm': 'pm_docking',
+};
+
 // ─── Master data ──────────────────────────────────────────────────────────
 
 const String _technicianRoleId = 'b7b3c31a-2c6d-4258-8743-dc6b858b10a2';
@@ -809,10 +823,9 @@ class ApiTicketRepository implements TicketRepository {
       '/tickets/search',
       query: <String, String>{
         'site': site,
-        // App-side ids in, wire values out — `complaint`/`pm` are
-        // `driver_complaint`/`pm_schedule` on the wire, and the backend's
-        // `Register` enum 422s on anything else.
-        if (register != null) 'register': registerToWire[register] ?? register,
+        // App-side ids in, wire values out — see ticketSourceKindWire.
+        if (register != null)
+          'source_kind': ticketSourceKindWire[register] ?? register,
         if (q != null && q.isNotEmpty) 'q': q,
       },
     );

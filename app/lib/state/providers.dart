@@ -307,7 +307,11 @@ final siteConfigProvider = FutureProvider<SiteConfig>((ref) {
 final ticketSearchProvider = FutureProvider.family<
     List<TicketSearchResult>, ({String site, String? register, String q})>(
   (ref, key) async {
-    if (key.site.isEmpty || key.q.trim().length < 2) {
+    // An empty query is a real request, not "nothing typed yet" -- it asks
+    // the backend for every open ticket at this site (bounded, since a
+    // depot's open-ticket count is small), so the picker has something to
+    // show before the user types anything.
+    if (key.site.isEmpty) {
       return const <TicketSearchResult>[];
     }
     return ref.watch(ticketRepositoryProvider).search(
