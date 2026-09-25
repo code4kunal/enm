@@ -8,11 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import SessionLocal
+from app.errors import Conflict
 from app.models.checklist import ChecklistItem, ChecklistTemplate, InspectionEntry, InspectionResult
-from app.models.enums import CheckResult, TicketSourceKind
+from app.models.entry import Entry, PMScheduleEntry
+from app.models.enums import CheckResult, EntryStatus, Register, TicketSourceKind
 from app.models.master import Vehicle, WorkType
 from app.models.ticket import Ticket
 from app.models.user import User
+from app.services import tickets
 from tests.conftest import SUPER_ADMIN, auth_headers
 
 TODAY = date.today().isoformat()
@@ -459,44 +462,84 @@ async def _admin_id(session) -> str:
     return await session.scalar(select(User.id).where(User.user_id == SUPER_ADMIN))
 
 
-async def _daily_inspection_result(session, *, not_ok: bool = True) -> InspectionResult:
+async def _daily_inspection_result(
+    session,
+    *,
+    not_ok: bool = True,
+    site_code: str = "MBMT",
+    vehicle_registration: str = "MH40LY1894",
+    work_type_code: str = "D.I",
+) -> InspectionResult:
     """Direct DB construction — recording an inspection through the API needs
     a checklist template with items already set up, and `ResultOut` doesn't
     expose `InspectionResult.id`, so there is no way to get a real result id
     through the HTTP surface alone. Mirrors test_inspections.py's own
     `SessionLocal`-direct setup pattern."""
-    work_type = await session.scalar(select(WorkType).where(WorkType.code == "D.I"))
+    work_type = await session.scalar(select(WorkType).where(WorkType.code == work_type_code))
     if work_type is None:
-        work_type = WorkType(code="D.I", name="Daily inspection", is_inspection=True)
+        work_type = WorkType(code=work_type_code, name=work_type_code, is_inspection=True)
         session.add(work_type)
         await session.flush()
-    template = ChecklistTemplate(site_code="MBMT", work_type_id=work_type.id, name="D.I")
-    session.add(template)
-    await session.flush()
-    item = ChecklistItem(template_id=template.id, label="Brakes")
-    session.add(item)
-    await session.flush()
+    template = await session.scalar(
+        select(ChecklistTemplate).where(
+            ChecklistTemplate.site_code == site_code, ChecklistTemplate.work_type_id == work_type.id
+        )
+    )
+    if template is None:
+        template = ChecklistTemplate(site_code=site_code, work_type_id=work_type.id, name=work_type_code)
+        session.add(template)
+        await session.flush()
+        session.add(ChecklistItem(template_id=template.id, label="Brakes"))
+        await session.flush()
+    item = await session.scalar(select(ChecklistItem).where(ChecklistItem.template_id == template.id))
     vehicle = await session.scalar(
-        select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+        select(Vehicle).where(Vehicle.registration_no == vehicle_registration)
     )
     inspection = InspectionEntry(
-        site_code="MBMT",
-        vehicle_id=vehicle.id,
-        work_type_id=work_type.id,
+        site_code=site_code,
+        vehicle=vehicle,
+        work_type=work_type,
         inspected_on=date.today(),
         created_by_id=await _admin_id(session),
         results=[],
     )
     session.add(inspection)
     await session.flush()
+    # Assigning the relationship (not just item_id), and appending rather
+    # than a bare session.add, matches how record_inspection (Task 4) builds
+    # results and populates InspectionResult.inspection in memory for free —
+    # avoids a lazy load of .inspection/.work_type outside the async
+    # greenlet context when a caller reads them synchronously right after.
     result = InspectionResult(
-        inspection_id=inspection.id,
-        item_id=item.id,
+        item=item,
         result=CheckResult.not_ok if not_ok else CheckResult.ok,
     )
-    session.add(result)
+    inspection.results.append(result)
     await session.flush()
     return result
+
+
+async def _seeded_pm_entry(session) -> Entry:
+    """A pre-existing PM Schedule row — the register is retired for new
+    writes via the API (`RETIRED_REGISTERS`), but old rows exist in real
+    depot data and must still resolve/read correctly, which is exactly what
+    `create_ticket_for_entry` rejecting it (rather than 500ing) proves."""
+    vehicle = await session.scalar(
+        select(Vehicle).where(Vehicle.registration_no == "MH40LY1894")
+    )
+    entry = Entry(
+        register=Register.pm_schedule,
+        site_code="MBMT",
+        bus_id=vehicle.id,
+        entry_date=date.today(),
+        status=EntryStatus.done,
+        created_by_id=await _admin_id(session),
+    )
+    session.add(entry)
+    await session.flush()
+    session.add(PMScheduleEntry(entry_id=entry.id, defects_noticed="legacy row"))
+    await session.flush()
+    return entry
 
 
 async def test_ticket_requires_exactly_one_source(client: AsyncClient) -> None:
@@ -529,3 +572,46 @@ async def test_ticket_rejects_both_sources_set(client: AsyncClient) -> None:
         )
         with pytest.raises(IntegrityError):
             await session.flush()
+
+
+async def test_inspection_result_cannot_get_two_tickets(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        with pytest.raises(Conflict):
+            await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+
+
+async def test_pm_schedule_is_no_longer_ticketable(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        entry = await _seeded_pm_entry(session)
+        admin = await session.get(User, await _admin_id(session))
+        with pytest.raises(Conflict):
+            await tickets.create_ticket_for_entry(session, entry=entry, creator=admin)
+
+
+async def test_ticket_title_for_inspection_source(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        ticket = await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        title = tickets.ticket_title(ticket)
+        assert result.item.label[:20] in title
+        assert result.inspection.vehicle.registration_no in title
+
+
+async def test_search_tickets_scopes_inspection_source_by_site(client: AsyncClient) -> None:
+    async with SessionLocal() as session:
+        mbmt_result = await _daily_inspection_result(session)
+        umt_result = await _daily_inspection_result(
+            session, site_code="UMT", vehicle_registration="MH05GX4410"
+        )
+        admin = await session.get(User, await _admin_id(session))
+        await tickets.create_ticket_for_inspection_result(session, result=mbmt_result, creator=admin)
+        await tickets.create_ticket_for_inspection_result(session, result=umt_result, creator=admin)
+
+        results = await tickets.search_tickets(session, site_code="MBMT", source_kind=None, q=None)
+        found_ids = {r.source_inspection_result_id for r in results}
+        assert mbmt_result.id in found_ids
+        assert umt_result.id not in found_ids
