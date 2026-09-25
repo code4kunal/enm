@@ -36,13 +36,13 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
     }
 
 
-def breakdown() -> dict:
+def breakdown(bus: str = "MH40LY1895") -> dict:
     return {
         "register": "breakdown",
         "site": "MBMT",
         "date": TODAY,
         "data": {
-            "bus_no": "MH40LY1895",
+            "bus_no": bus,
             "driver_id": "DRV221",
             "route": "7",
             "location": "Kashimira signal",
@@ -799,3 +799,22 @@ async def test_origin_filter_matches_only_imported(client: AsyncClient) -> None:
     ids = {e["id"] for e in r.json()["items"]}
     assert imported["id"] in ids
     assert manual["id"] not in ids
+
+
+async def test_has_open_ticket_true_matches_only_open(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    open_entry = (await client.post("/entries", json=breakdown(bus="MH40LY1894"), headers=h)).json()
+    completed_source = (
+        await client.post("/entries", json=breakdown(bus="MH40LY1895"), headers=h)
+    ).json()
+    resolved = await client.post(f"/entries/{completed_source['id']}/resolve", headers=h)
+    assert resolved.status_code == 200, resolved.text
+    unticketed = (await client.post("/entries", json=work_done(), headers=h)).json()
+
+    r = await client.get(
+        "/entries", params={"site": "MBMT", "has_open_ticket": "true"}, headers=h
+    )
+    ids = {e["id"] for e in r.json()["items"]}
+    assert open_entry["id"] in ids
+    assert completed_source["id"] not in ids
+    assert unticketed["id"] not in ids

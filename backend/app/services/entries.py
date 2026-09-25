@@ -836,6 +836,7 @@ def apply_filters(
     q: str | None,
     status: EntryStatus | None,
     origin: str | None = None,
+    has_open_ticket: bool | None = None,
 ) -> Select:
     stmt = stmt.where(Entry.site_code == site_code)
     if register is not None:
@@ -865,6 +866,13 @@ def apply_filters(
             )
         elif origin == "linked":
             stmt = stmt.where(Entry.id.in_(linked_ids))
+    if has_open_ticket is not None:
+        exists_open = (
+            select(Ticket.id)
+            .where(Ticket.source_entry_id == Entry.id, Ticket.status == TicketStatus.open)
+            .exists()
+        )
+        stmt = stmt.where(exists_open if has_open_ticket else ~exists_open)
     return stmt
 
 
