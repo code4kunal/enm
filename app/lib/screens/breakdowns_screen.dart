@@ -7,7 +7,6 @@ import '../models/entry.dart';
 import '../router.dart';
 import '../state/entries.dart';
 import '../state/providers.dart';
-import '../state/toast.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/dates.dart';
@@ -84,11 +83,6 @@ class _BreakdownCard extends ConsumerWidget {
         ref.watch(entryDetailProvider(entry.id)).valueOrNull?.linkedSessions ??
             const <Map<String, dynamic>>[];
 
-    Future<void> resolve() async {
-      await ref.read(entriesProvider.notifier).resolveBreakdown(entry.id);
-      ref.read(toastProvider.notifier).show('Breakdown marked resolved');
-    }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       decoration: BoxDecoration(
@@ -123,8 +117,11 @@ class _BreakdownCard extends ConsumerWidget {
               if (open) ...<Widget>[
                 const SizedBox(width: 10),
                 OutlineActionButton(
-                  label: 'Mark resolved',
-                  onPressed: resolve,
+                  // Resolving is a side effect of completing a linked Work
+                  // Done session — there is no direct "mark resolved" here,
+                  // so this opens the form to record that session instead.
+                  label: 'Resolve via Work Done',
+                  onPressed: () => context.go(Routes.newEntry('work')),
                   foreground: T.green,
                   borderColor: T.green,
                   accent: T.green,

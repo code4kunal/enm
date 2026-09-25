@@ -291,10 +291,9 @@ async def test_resolving_a_breakdown_closes_its_alert(client: AsyncClient) -> No
     )
     await _generate()
 
-    resolved = await client.post(
-        f"/entries/{created.json()['id']}/resolve", headers=h
-    )
-    assert resolved.status_code == 200, resolved.text
+    from tests.test_entries import resolve_via_work_done
+
+    await resolve_via_work_done(client, h, created.json()["id"])
 
     await _generate()
     async with SessionLocal() as session:

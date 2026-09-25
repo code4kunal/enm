@@ -238,6 +238,20 @@ class FakeEntryRepository implements EntryRepository {
       photoUrl: entry.photoUrl,
     );
     _store.entries.insert(0, created);
+    // A Work Done session that completes a ticket is the only way a
+    // breakdown resolves now (see EntriesController -- there is no direct
+    // "mark resolved" path any more). FakeTicketRepository.search sets
+    // ticketId to the source entry's own id, so that's the join key here.
+    if (entry.registerId == 'work' &&
+        entry.data['completesTicket'] == 'true' &&
+        (entry.data['ticketId'] ?? '').isNotEmpty) {
+      final sourceId = entry.data['ticketId']!;
+      final i = _store.entries.indexWhere((e) => e.id == sourceId);
+      if (i != -1) {
+        _store.entries[i] =
+            _store.entries[i].copyWith(status: EntryStatus.resolved);
+      }
+    }
     return created;
   }
 
@@ -249,16 +263,6 @@ class FakeEntryRepository implements EntryRepository {
     if (i == -1) throw ApiException('Entry ${entry.id} not found');
     _store.entries[i] = entry;
     return entry;
-  }
-
-  @override
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
-    await Future<void>.delayed(_latency);
-    final i = _store.entries.indexWhere((e) => e.id == entryId);
-    if (i == -1) throw ApiException('Entry $entryId not found');
-    final updated = _store.entries[i].copyWith(status: status);
-    _store.entries[i] = updated;
-    return updated;
   }
 
   @override

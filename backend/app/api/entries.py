@@ -20,7 +20,6 @@ from app.deps import (
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import Entry
 from app.models.enums import AuditAction, EntryStatus, Register
-from app.models.ticket import Ticket
 from app.schemas.common import Page
 from app.schemas.entry import (
     CoolantDayCreate,
@@ -337,40 +336,6 @@ async def update_entry(
         before=before,
         after=svc.audit_snapshot(entry),
     )
-    result = svc.serialize_entry(entry)
-    await session.commit()
-    return EntryOut(**result)
-
-
-@router.post("/{entry_id}/resolve", response_model=EntryOut)
-async def resolve_breakdown(
-    entry_id: str, user: CurrentUser, session: SessionDep
-) -> EntryOut:
-    entry = await _load(session, entry_id)
-    assert_site_permission(user, entry.site_code, "em_entry:write")
-    if entry.register is not Register.breakdown:
-        raise Conflict("Only breakdown entries can be resolved")
-
-    ticket = await session.scalar(
-        select(Ticket).where(Ticket.source_entry_id == entry.id)
-    )
-    if ticket is None:
-        raise Conflict("This breakdown has no ticket")
-
-    await tickets_svc.complete_ticket(
-        session, ticket=ticket, completed_by=user, completed_at=datetime.now(UTC)
-    )
-    entry.updated_at = datetime.now(UTC)
-
-    await audit.record(
-        session,
-        actor_id=user.id,
-        action=AuditAction.entry_resolved,
-        object_type="entry",
-        object_id=entry.id,
-        after=svc.audit_snapshot(entry, extra={"status": "resolved"}),
-    )
-    await notifications.notify_breakdown_resolved(session, entry, user)
     result = svc.serialize_entry(entry)
     await session.commit()
     return EntryOut(**result)

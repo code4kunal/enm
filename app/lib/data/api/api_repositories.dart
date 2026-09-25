@@ -717,15 +717,6 @@ class ApiEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
-    if (status != EntryStatus.resolved) {
-      throw const ApiException('Only resolving a breakdown is supported');
-    }
-    final json = await _api.post('/entries/$entryId/resolve');
-    return _entryFromWire(json as Map<String, dynamic>);
-  }
-
-  @override
   Future<String> attachPhoto(
     String entryId, {
     required String filename,

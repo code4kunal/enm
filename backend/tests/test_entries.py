@@ -62,6 +62,29 @@ def coolant() -> dict:
     }
 
 
+async def resolve_via_work_done(
+    client: AsyncClient,
+    headers: dict,
+    bd_id: str,
+    *,
+    completion_time: str = "16:00",
+) -> dict:
+    """The only path a breakdown's ticket can be resolved through: a Work
+    Done session linked to it with completes_ticket=true. Mirrors what the
+    form does -- find the ticket, then submit a session against it."""
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": bd_id}, headers=headers
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = completion_time
+    r = await client.post("/entries", json=payload, headers=headers)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
 async def test_create_work_done_normalizes_bus_no(client: AsyncClient) -> None:
     h = await auth_headers(client)
     r = await client.post("/entries", json=work_done(), headers=h)
@@ -122,13 +145,16 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     # `breakdown_entries` had a column for it.
     assert entry["data"]["route"] == "7"
 
-    resolved = await client.post(f"/entries/{entry['id']}/resolve", headers=h)
-    assert resolved.status_code == 200
-    assert resolved.json()["status"] == "resolved"
+    completed = await resolve_via_work_done(client, h, entry["id"])
+    assert completed["status"] == "done"
+    bd_after = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
+    assert bd_after["status"] == "resolved"
 
-    again = await client.post(f"/entries/{entry['id']}/resolve", headers=h)
-    assert again.status_code == 409
-    assert again.json()["error"]["code"] == "CONFLICT"
+    # A second Work Done session can't complete an already-completed ticket.
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": entry["id"]}, headers=h
+    )
+    assert found.json() == []
 
 
 async def test_breakdown_requires_reported_time(client: AsyncClient) -> None:
@@ -177,9 +203,7 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
     """The regression only showed up once `resolved_at` had a value."""
     h = await auth_headers(client)
     entry = (await client.post("/entries", json=breakdown(), headers=h)).json()
-    assert (
-        await client.post(f"/entries/{entry['id']}/resolve", headers=h)
-    ).status_code == 200
+    await resolve_via_work_done(client, h, entry["id"])
 
     fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
     assert fetched["status"] == "resolved"
@@ -394,7 +418,7 @@ async def test_work_done_rejects_an_already_completed_ticket(
     h = await auth_headers(client)
     bd = await client.post("/entries", json=breakdown(), headers=h)
     bd_id = bd.json()["id"]
-    await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    await resolve_via_work_done(client, h, bd_id)
     tickets = await client.get(
         "/tickets/search",
         params={"site": "MBMT", "register": "breakdown", "q": bd_id},
@@ -830,8 +854,7 @@ async def test_has_open_ticket_true_matches_only_open(client: AsyncClient) -> No
     completed_source = (
         await client.post("/entries", json=breakdown(bus="MH40LY1895"), headers=h)
     ).json()
-    resolved = await client.post(f"/entries/{completed_source['id']}/resolve", headers=h)
-    assert resolved.status_code == 200, resolved.text
+    await resolve_via_work_done(client, h, completed_source["id"])
     unticketed = (await client.post("/entries", json=work_done(), headers=h)).json()
 
     r = await client.get(

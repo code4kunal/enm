@@ -231,15 +231,24 @@ void main() {
     });
   });
 
-  group('resolveBreakdown', () {
-    test('clears the entry from the open list', () async {
+  group('resolving a breakdown', () {
+    test('a linked Work Done session that completes the ticket clears it from the open list', () async {
+      // There is no direct "mark resolved" any more -- a breakdown only
+      // resolves as a side effect of completing its linked ticket through a
+      // Work Done session.
       final container = await signedInContainer();
       final open = container.read(openBreakdownsProvider);
       expect(open, isNotEmpty);
 
-      await container
-          .read(entriesProvider.notifier)
-          .resolveBreakdown(open.first.id);
+      await container.read(entriesProvider.notifier).create(
+        registerId: 'work',
+        data: <String, String>{
+          'bus': 'MH40LY1721',
+          'date': Dates.today(),
+          'ticketId': open.first.id,
+          'completesTicket': 'true',
+        },
+      );
 
       final after = container.read(openBreakdownsProvider);
       expect(after.any((e) => e.id == open.first.id), isFalse);
@@ -416,7 +425,15 @@ void main() {
       expect(pending.every((e) => e.status == EntryStatus.open), isTrue);
       expect(pending.any((e) => e.id == openId), isTrue);
 
-      await container.read(entriesProvider.notifier).resolveBreakdown(openId);
+      await container.read(entriesProvider.notifier).create(
+        registerId: 'work',
+        data: <String, String>{
+          'bus': 'MH40LY1721',
+          'date': Dates.today(),
+          'ticketId': openId,
+          'completesTicket': 'true',
+        },
+      );
       final afterResolve = await container.read(
         pendingFilterEntriesProvider((
           site: 'MBMT',

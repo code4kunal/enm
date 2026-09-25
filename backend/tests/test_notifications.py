@@ -46,11 +46,13 @@ async def test_creator_is_not_notified_of_own_breakdown(client: AsyncClient) -> 
 
 
 async def test_resolution_notifies_original_reporter(client: AsyncClient) -> None:
+    from tests.test_entries import resolve_via_work_done
+
     sup = await auth_headers(client, "TV4102")
     entry = (await client.post("/entries", json=BREAKDOWN, headers=sup)).json()
 
     mgr = await auth_headers(client)
-    await client.post(f"/entries/{entry['id']}/resolve", headers=mgr)
+    await resolve_via_work_done(client, mgr, entry["id"])
 
     inbox = (await client.get("/notifications", headers=sup)).json()["items"]
     assert any(n["type"] == "breakdown_resolved" for n in inbox)

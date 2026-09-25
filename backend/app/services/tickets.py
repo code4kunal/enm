@@ -12,6 +12,7 @@ from app.models.enums import EntryStatus, Register, TicketSourceKind, TicketStat
 from app.models.master import Vehicle
 from app.models.ticket import Ticket
 from app.models.user import User
+from app.services import notifications
 
 #: Which register types may ever have a ticket automatically or via "Raise
 #: ticket". PM/Docking's ticket path now runs through InspectionEntry (see
@@ -179,7 +180,7 @@ def mark_attended(ticket: Ticket, at: datetime) -> None:
 
 
 async def complete_ticket(
-    _session: AsyncSession, *, ticket: Ticket, completed_by: User, completed_at: datetime
+    session: AsyncSession, *, ticket: Ticket, completed_by: User, completed_at: datetime
 ) -> None:
     if ticket.status is TicketStatus.completed:
         raise Conflict("This ticket is already completed")
@@ -200,3 +201,7 @@ async def complete_ticket(
         detail: BreakdownEntry = source.breakdown
         detail.resolved_at = completed_at
         detail.resolved_by_id = completed_by.id
+        # The only path a breakdown resolves through now — there is no
+        # standalone "mark resolved" endpoint, so this is the one place the
+        # notification can fire.
+        await notifications.notify_breakdown_resolved(session, source, completed_by)

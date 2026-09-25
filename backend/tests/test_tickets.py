@@ -216,16 +216,29 @@ async def test_editing_a_work_done_entry_after_it_completed_its_ticket_is_not_a_
     assert r.json()["data"]["attended_details"] == "Confirmed fix held on next inspection"
 
 
-async def test_resolve_endpoint_still_works_and_completes_the_ticket(
-    client: AsyncClient,
-) -> None:
+async def test_direct_resolve_endpoint_is_gone(client: AsyncClient) -> None:
+    """A breakdown can no longer be resolved except through a linked Work
+    Done session -- there is no standalone shortcut that skips it."""
     h = await auth_headers(client)
     bd = await client.post("/entries", json=breakdown(), headers=h)
     bd_id = bd.json()["id"]
-    resolved = await client.post(f"/entries/{bd_id}/resolve", headers=h)
-    assert resolved.status_code == 200
-    again = await client.post(f"/entries/{bd_id}/resolve", headers=h)
-    assert again.status_code == 409
+    r = await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    assert r.status_code == 404
+
+
+async def test_completing_a_ticket_twice_is_rejected(client: AsyncClient) -> None:
+    from tests.test_entries import resolve_via_work_done
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    completed = await resolve_via_work_done(client, h, bd_id)
+    assert completed["data"]["completes_ticket"] is True
+
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": bd_id}, headers=h
+    )
+    assert found.json() == []  # already completed, no longer open
 
 
 async def test_breakdown_get_lists_its_linked_work_done_sessions(

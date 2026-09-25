@@ -173,6 +173,23 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
 
     final created = await ref.read(entryRepositoryProvider).createEntry(draft);
     _replaceAll((list) => <RegisterEntry>[created, ...list]);
+
+    // A Work Done session that completes a ticket resolves whatever raised
+    // it (a breakdown, most visibly) as a side effect on the server -- but
+    // the response above is this new session, not that other entry. Without
+    // re-fetching it, the cached list here (and anything reading it, like
+    // the Breakdowns screen's open-count) would keep showing it as open
+    // until the next full reload.
+    if (normalised['completesTicket'] == 'true') {
+      final ticketId = normalised['ticketId'];
+      if (ticketId != null && ticketId.isNotEmpty) {
+        final resolved = await ref.read(entryRepositoryProvider).fetchEntry(ticketId);
+        _replaceAll(
+          (list) => list.map((e) => e.id == resolved.id ? resolved : e).toList(),
+        );
+      }
+    }
+
     // DMR / charts / investigations read these registers.
     ref.invalidate(dmrDayProvider);
     ref.invalidate(dmrMonthProvider);
@@ -235,18 +252,6 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
   Future<void> raiseTicket(String entryId) async {
     final saved = await ref.read(ticketRepositoryProvider).raiseTicket(entryId);
     _replaceAll((list) => list.map((e) => e.id == saved.id ? saved : e).toList());
-    ref.invalidate(pendingFilterEntriesProvider);
-  }
-
-  Future<void> resolveBreakdown(String entryId) async {
-    final saved = await ref
-        .read(entryRepositoryProvider)
-        .setStatus(entryId, EntryStatus.resolved);
-    _replaceAll(
-      (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
-    );
-    // A live Complete/Pending filter reads this directly from the server,
-    // not from the list just replaced above.
     ref.invalidate(pendingFilterEntriesProvider);
   }
 

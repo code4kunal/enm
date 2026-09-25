@@ -652,9 +652,6 @@ abstract interface class EntryRepository {
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);
 
-  /// Used by the breakdown tracker's "Mark resolved".
-  Future<RegisterEntry> setStatus(String entryId, EntryStatus status);
-
   /// Uploads (replacing any existing one) the entry's photo. Returns the
   /// stored photo's URL.
   Future<String> attachPhoto(
