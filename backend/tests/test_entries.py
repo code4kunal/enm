@@ -550,6 +550,29 @@ async def test_csv_export(client: AsyncClient) -> None:
     assert "Rahul Sharma (TV4021)" in lines[1]
 
 
+async def test_csv_export_renders_spare_parts_as_names_not_raw_dicts(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    part = (
+        await client.post(
+            "/sites/MBMT/spare-parts",
+            json={"part_no": "SP-CSV1", "name": "Brake pad"},
+            headers=h,
+        )
+    ).json()
+    payload = work_done()
+    payload["data"]["spare_part_ids"] = [part["id"]]
+    await client.post("/entries", json=payload, headers=h)
+
+    r = await client.get("/entries/export", params={"site": "MBMT"}, headers=h)
+    assert r.status_code == 200
+    body = r.text
+    assert "SP-CSV1" in body
+    assert "'part_id'" not in body
+    assert "{" not in body
+
+
 async def test_coolant_register(client: AsyncClient) -> None:
     h = await auth_headers(client)
     coolant = await client.post(

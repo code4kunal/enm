@@ -805,15 +805,38 @@ DETAIL_COLUMNS = {
 }
 
 
+def _csv_cell_value(value: Any) -> str | None:
+    """A list of `{name/part_no/...}` dicts (attendees, spare_parts) renders
+    as readable names, not Python's raw repr of the list."""
+    if isinstance(value, list):
+        if not value:
+            return None
+        if all(isinstance(v, dict) for v in value):
+            labels = []
+            for v in value:
+                if v.get("part_no") and v.get("name"):
+                    labels.append(f"{v['part_no']} · {v['name']}")
+                else:
+                    labels.append(
+                        str(v.get("name") or v.get("user_id") or v)
+                    )
+            return ", ".join(labels)
+        return ", ".join(str(v) for v in value)
+    return str(value)
+
+
 def csv_details(entry: Entry) -> str:
     """Flatten the register payload into one human-readable CSV cell."""
     data = serialize_data(entry)
     skip = {"bus_no"}
-    parts = [
-        f"{k.replace('_', ' ').title()}: {v}"
-        for k, v in data.items()
-        if k not in skip and v not in (None, "")
-    ]
+    parts = []
+    for k, v in data.items():
+        if k in skip or v in (None, ""):
+            continue
+        rendered = _csv_cell_value(v)
+        if rendered is None:
+            continue
+        parts.append(f"{k.replace('_', ' ').title()}: {rendered}")
     return " | ".join(parts)
 
 

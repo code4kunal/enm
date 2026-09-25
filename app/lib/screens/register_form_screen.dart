@@ -488,11 +488,12 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   onPickTime: _pickTime,
                 ),
               ],
-              if (!widget.readOnly && register.id == 'work') ...<Widget>[
+              if (register.id == 'work') ...<Widget>[
                 const SizedBox(height: 16),
                 _SparePartsSection(
                   values: _values,
                   onSet: (k, v) => setState(() => _set(k, v)),
+                  readOnly: widget.readOnly,
                 ),
               ],
               const SizedBox(height: 16),
@@ -899,10 +900,15 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
 /// new part" affordance when the typed text matches nothing. Structurally
 /// mirrors [_TicketLinkSection]'s attendee picker.
 class _SparePartsSection extends ConsumerStatefulWidget {
-  const _SparePartsSection({required this.values, required this.onSet});
+  const _SparePartsSection({
+    required this.values,
+    required this.onSet,
+    this.readOnly = false,
+  });
 
   final Map<String, String> values;
   final void Function(String key, String value) onSet;
+  final bool readOnly;
 
   @override
   ConsumerState<_SparePartsSection> createState() => _SparePartsSectionState();
@@ -985,6 +991,39 @@ class _SparePartsSectionState extends ConsumerState<_SparePartsSection> {
                     p.name.toLowerCase().contains(needle)))
             .toList();
     final exactMatch = parts.any((p) => p.partNo.toLowerCase() == needle);
+
+    if (widget.readOnly) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        decoration: BoxDecoration(
+          color: T.card,
+          borderRadius: T.cardShape,
+          border: Border.all(color: T.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const FieldLabel(label: 'Spare Parts Used'),
+            const SizedBox(height: 6),
+            if (selectedParts.isEmpty)
+              Text('None', style: AppText.sans(size: 13.5, color: T.muted))
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final p in selectedParts)
+                    TagBadge(
+                      label: '${p.partNo} · ${p.name}',
+                      background: T.subtleFill,
+                      foreground: T.secondary,
+                    ),
+                ],
+              ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
