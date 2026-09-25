@@ -33,6 +33,7 @@ from app.schemas.entry import REGISTER_DATA_SCHEMAS
 from app.services.masters import (
     resolve_defect_source,
     resolve_defect_type,
+    resolve_driver,
     resolve_spare_parts,
     resolve_vehicle,
 )
@@ -267,12 +268,14 @@ async def _build_detail(
 
     if register is Register.driver_complaint:
         typ = await resolve_defect_type(session, data.defect_type)
+        driver = await resolve_driver(session, data.driver_id, site_code=site_code)
         row = DriverComplaintEntry(
             defect_type=typ,
             complaint=data.complaint,
             rectification_action=data.rectification_action,
             mechanic=data.mechanic,
             supervisor=data.supervisor,
+            driver=driver,
         )
         return row, [
             data.complaint,
@@ -283,9 +286,10 @@ async def _build_detail(
 
     if register is Register.breakdown:
         typ = await resolve_defect_type(session, data.defect_type)
+        driver = await resolve_driver(session, data.driver_id, site_code=site_code)
         row = BreakdownEntry(
             defect_type=typ,
-            driver_id=data.driver_id,
+            driver=driver,
             route=data.route,
             location=data.location,
             complaint=data.complaint,
@@ -598,12 +602,13 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "rectification_action": d.rectification_action,
             "mechanic": d.mechanic,
             "supervisor": d.supervisor,
+            "driver_id": d.driver.driver_code if d.driver else None,
         }
     if entry.register is Register.breakdown:
         return {
             "bus_no": bus_no,
             "defect_type": d.defect_type.name if d.defect_type else None,
-            "driver_id": d.driver_id,
+            "driver_id": d.driver.driver_code if d.driver else None,
             "route": d.route,
             "location": d.location,
             "complaint": d.complaint,

@@ -27,7 +27,7 @@ from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.models.enums import Role  # noqa: E402
-from app.models.master import DefectSource, DefectType, Site, Vehicle  # noqa: E402
+from app.models.master import DefectSource, DefectType, Driver, Site, Vehicle  # noqa: E402
 from app.models.user import User, UserSiteAccess  # noqa: E402
 from app.security import hash_password  # noqa: E402
 
@@ -161,6 +161,10 @@ async def _seed() -> None:
                 DefectType(name="Electrical / HV", sort_order=1),
             ]
         )
+        # Matches tests/test_entries.py's breakdown() helper, which posts
+        # this code on every call — seeded once here rather than touching
+        # every one of that helper's ~13 call sites.
+        session.add_all([Driver(site_code="MBMT", driver_code="DRV221", name="Test Driver")])
         session.add_all(
             [
                 User(

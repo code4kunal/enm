@@ -76,6 +76,7 @@ class DriverComplaintData(_DataBase):
     rectification_action: OptText = None
     mechanic: OptText = None
     supervisor: OptText = None
+    driver_id: OptText = None
 
 
 class BreakdownData(_DataBase):

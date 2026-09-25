@@ -651,3 +651,40 @@ async def test_work_done_rejects_unknown_spare_part_id(client: AsyncClient) -> N
     payload["data"]["spare_part_ids"] = ["not-real"]
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 400
+
+
+async def test_driver_complaint_persists_driver_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    driver = (
+        await client.post(
+            "/sites/MBMT/drivers",
+            json={"driver_code": "DRV-9001", "name": "Rakesh Yadav"},
+            headers=h,
+        )
+    ).json()
+
+    created = (
+        await client.post(
+            "/entries",
+            json={
+                "register": "driver_complaint",
+                "site": "MBMT",
+                "date": TODAY,
+                "data": {
+                    "bus_no": "MH40LY1894",
+                    "complaint": "harsh braking",
+                    "driver_id": driver["driver_code"],
+                },
+            },
+            headers=h,
+        )
+    ).json()
+    assert created["data"]["driver_id"] == driver["driver_code"]
+
+
+async def test_breakdown_rejects_unknown_driver_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    payload["data"]["driver_id"] = "NOT-REAL"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400

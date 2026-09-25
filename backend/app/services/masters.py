@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ValidationError
-from app.models.master import DefectSource, DefectType, SparePart, Vehicle
+from app.models.master import DefectSource, DefectType, Driver, SparePart, Vehicle
 from app.services import siteops
 
 
@@ -350,3 +350,24 @@ async def resolve_spare_parts(
             seen.add(pid)
             ordered.append(by_id[pid])
     return ordered
+
+
+async def resolve_driver(
+    session: AsyncSession, driver_code: str | None, *, site_code: str
+) -> Driver | None:
+    """Resolve by code, ignoring `is_active` — same rule as
+    `resolve_defect_source`/`resolve_spare_parts`: hiding a driver from the
+    picker must not break entries that already reference it."""
+    if not driver_code:
+        return None
+    row = await session.scalar(
+        select(Driver).where(
+            func.lower(Driver.driver_code) == driver_code.strip().lower(),
+            Driver.site_code == site_code,
+        )
+    )
+    if row is None:
+        raise ValidationError(
+            f"Unknown driver: {driver_code}", {"driver_id": "not in driver master"}
+        )
+    return row

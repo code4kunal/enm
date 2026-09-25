@@ -31,7 +31,7 @@ from app.models.enums import (
     Shift,
     UnitStatus,
 )
-from app.models.master import DefectSource, DefectType, SparePart, Vehicle, WorkType
+from app.models.master import DefectSource, DefectType, Driver, SparePart, Vehicle, WorkType
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -280,9 +280,13 @@ class DriverComplaintEntry(Base):
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    driver_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("drivers.id", ondelete="SET NULL"), nullable=True
+    )
 
     entry: Mapped[Entry] = relationship(back_populates="driver_complaint")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
+    driver: Mapped["Driver | None"] = relationship(lazy="joined")
 
 
 class BreakdownEntry(Base):
@@ -295,7 +299,9 @@ class BreakdownEntry(Base):
     defect_type_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("defect_types.id", ondelete="RESTRICT"), nullable=True
     )
-    driver_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    driver_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("drivers.id", ondelete="SET NULL"), nullable=True
+    )
     # The service route the bus was running when it failed. The snag report
     # writes it in its own ROUTE column, and a breakdown is the only register
     # where the bus was out on the road rather than on the depot floor.
@@ -319,6 +325,7 @@ class BreakdownEntry(Base):
 
     entry: Mapped[Entry] = relationship(back_populates="breakdown")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
+    driver: Mapped["Driver | None"] = relationship(lazy="joined")
     resolved_by: Mapped[User | None] = relationship(
         lazy="joined", foreign_keys=[resolved_by_id]
     )
