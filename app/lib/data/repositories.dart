@@ -9,6 +9,8 @@ import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
 import '../models/site.dart';
+import '../models/staff.dart';
+import '../models/ticket.dart';
 import '../models/site_config.dart';
 import '../models/checklist.dart';
 import '../models/inspection.dart';
@@ -185,6 +187,10 @@ abstract interface class MasterDataRepository {
 
   /// Active staff at a site, for the "attended by" and "supervisor" pickers.
   Future<List<String>> staff({required String siteCode});
+
+  /// The site's staff, with ids — for the Work Done attending-mechanics
+  /// multi-select, which needs an FK to post, not just a display name.
+  Future<List<StaffMember>> staffDirectory({required String siteCode});
 
   /// Active technicians for Daily Work Done's "Attended By" picker.
   Future<List<String>> technicianStaff({required String siteName, String? siteId});
@@ -595,6 +601,11 @@ abstract interface class EntryRepository {
     String? dateTo,
   });
 
+  /// One entry with its full detail, including [RegisterEntry.linkedSessions]
+  /// — the list fetch above never carries that field, since the server only
+  /// computes it on the single-entry response.
+  Future<RegisterEntry> fetchEntry(String id);
+
   Future<RegisterEntry> createEntry(RegisterEntry entry);
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);
@@ -612,6 +623,21 @@ abstract interface class EntryRepository {
 
   /// Clears whatever photo the entry has, if any.
   Future<void> removePhoto(String entryId);
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+/// Search for an open ticket to link a Work Done session to, and raise a new
+/// ticket on a source entry that doesn't have one yet (breakdowns get theirs
+/// automatically and never need [raiseTicket]).
+abstract interface class TicketRepository {
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  });
+
+  Future<RegisterEntry> raiseTicket(String entryId);
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────

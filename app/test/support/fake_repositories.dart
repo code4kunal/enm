@@ -1,7 +1,12 @@
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
+import 'package:transvolt_em/models/staff.dart';
+import 'package:transvolt_em/models/ticket.dart';
+import 'package:transvolt_em/data/api/api_repositories.dart' show registerToWire;
 import 'package:transvolt_em/data/repositories.dart';
+import 'package:transvolt_em/data/registers.dart';
+import 'package:transvolt_em/state/entries.dart' show entrySummary;
 import 'fake_store.dart';
 import 'seed.dart';
 import 'package:transvolt_em/data/auth/ms_sso.dart';
@@ -49,6 +54,15 @@ class FakeMasterDataRepository implements MasterDataRepository {
           .where((u) => u.active && u.canAccess(siteCode))
           .map((u) => u.name)
           .toList();
+
+  @override
+  Future<List<StaffMember>> staffDirectory({required String siteCode}) async {
+    await Future<void>.delayed(_latency);
+    return _store.users
+        .where((u) => u.active && u.canAccess(siteCode))
+        .map((u) => StaffMember(id: u.id, name: u.name))
+        .toList();
+  }
 
   @override
   Future<List<String>> technicianStaff({required String siteName, String? siteId}) async =>
@@ -145,6 +159,14 @@ class FakeEntryRepository implements EntryRepository {
   }
 
   @override
+  Future<RegisterEntry> fetchEntry(String id) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == id);
+    if (i == -1) throw ApiException('Entry $id not found');
+    return _store.entries[i];
+  }
+
+  @override
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     await Future<void>.delayed(_latency);
     // Mirrors the server's rule: a dropdown value must exist on its master list.
@@ -204,6 +226,61 @@ class FakeEntryRepository implements EntryRepository {
     final i = _store.entries.indexWhere((e) => e.id == entryId);
     if (i == -1) throw ApiException('Entry $entryId not found');
     _store.entries[i] = _store.entries[i].withPhotoUrl(null);
+  }
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+/// A simplification: the fake store has no separate ticket concept, so the
+/// source entry's own id stands in for the ticket id. Good enough for
+/// widget/provider tests that only need a plausible round trip, not real
+/// ticket semantics.
+class FakeTicketRepository implements TicketRepository {
+  FakeTicketRepository(this._store);
+
+  final FakeStore _store;
+
+  @override
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final needle = (q ?? '').toLowerCase();
+    // `ApiTicketRepository.search` translates the app-side register id to its
+    // wire value before sending, and the backend's `Register` enum 422s on
+    // anything else. Match on the wire value here for the same reason: a fake
+    // that quietly accepted `complaint` where the real API sends
+    // `driver_complaint` is a fake that hides the bug.
+    final wanted = register == null ? null : registerToWire[register];
+    if (register != null && wanted == null) {
+      throw ApiException('register: $register is not a register id');
+    }
+    return _store.entries
+        .where((e) => e.site == site)
+        .where((e) => e.isOpen || e.registerId != kBreakdownRegisterId)
+        .where((e) => wanted == null || registerToWire[e.registerId] == wanted)
+        .where((e) => needle.isEmpty || entrySummary(e).toLowerCase().contains(needle))
+        .map(
+          (e) => TicketSearchResult(
+            ticketId: e.id,
+            title: '${entrySummary(e)} · ${e.busNumber}',
+            entryDate: e.date,
+            status: 'open',
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Future<RegisterEntry> raiseTicket(String entryId) async {
+    await Future<void>.delayed(_latency);
+    final i = _store.entries.indexWhere((e) => e.id == entryId);
+    if (i == -1) throw ApiException('Entry $entryId not found');
+    final updated = _store.entries[i].copyWith(status: EntryStatus.open);
+    _store.entries[i] = updated;
+    return updated;
   }
 }
 

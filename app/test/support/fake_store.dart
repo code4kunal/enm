@@ -192,7 +192,7 @@ class FakeStore {
               id: newId(),
               registerId: registerId,
               date: row['date'] ?? Dates.today(),
-              time: row['t_bd'] ?? '00:00',
+              time: row['t_reported'] ?? '00:00',
               site: profile.siteCode,
               enteredBy: row['entered_by'] ?? currentUserName,
               data: data,

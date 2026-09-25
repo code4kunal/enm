@@ -121,22 +121,23 @@ Expected: FAIL — `breakdown_time`/`mechanic_reported_time` are still the live 
 
 - [ ] **Step 4: Create the `Ticket` model**
 
-Create `backend/app/models/ticket.py`:
+Create `backend/app/models/ticket.py`. **`Entry` is imported under `TYPE_CHECKING` only, never at module level** — Task 5 makes `entry.py` import `Ticket` at module level (for `WorkDoneEntry.ticket`), and if `ticket.py` also imported `entry.py` eagerly, that would be a circular import that crashes the app the moment Task 5 lands. `from __future__ import annotations` (already used throughout this codebase, including `entry.py`) makes every annotation a lazy string, so SQLAlchemy resolves `Mapped["Entry"]` against the module's namespace at mapper-configuration time — long after both modules have finished importing — not at class-body-execution time. This is why the type-only import is sufficient and the relationship still works at runtime:
 
 ```python
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime, created_at_col, new_uuid
-from app.models.entry import Entry
-from app.models.enums import ENTRY_STATUS_ENUM  # noqa: F401  (re-export not needed; see below)
 from app.models.enums import TICKET_STATUS_ENUM, TicketStatus
 from app.models.user import User
-from sqlalchemy import Enum
+
+if TYPE_CHECKING:
+    from app.models.entry import Entry
 
 
 class Ticket(Base):
@@ -176,7 +177,7 @@ class Ticket(Base):
         String(32), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
 
-    source_entry: Mapped[Entry] = relationship(
+    source_entry: Mapped["Entry"] = relationship(
         lazy="joined", foreign_keys=[source_entry_id]
     )
     completed_by: Mapped[User | None] = relationship(
@@ -185,11 +186,7 @@ class Ticket(Base):
     created_by: Mapped[User] = relationship(lazy="joined", foreign_keys=[created_by_id])
 ```
 
-Drop the stray `ENTRY_STATUS_ENUM` import — it isn't used; the working version should only import `TICKET_STATUS_ENUM` and `TicketStatus`. Fix the import block accordingly before running anything:
-
-```python
-from app.models.enums import TICKET_STATUS_ENUM, TicketStatus
-```
+`entry.py` itself is **not** modified in this task — it gets its `from app.models.ticket import Ticket` top-level import in Task 5, once `WorkDoneEntry.ticket_id` actually needs it. Adding that import now, before anything references `Ticket` from `entry.py`, would be dead code.
 
 - [ ] **Step 5: Write the migration**
 
@@ -1227,7 +1224,14 @@ Update the call site in `backend/app/api/entries.py`'s `update_entry` route to p
 
 - [ ] **Step 6: Refactor `/resolve` to delegate to `complete_ticket`**
 
-In `backend/app/api/entries.py`, rewrite `resolve_breakdown`:
+In `backend/app/api/entries.py`, add `Ticket` to the top-level model imports alongside the existing ones — this is safe because `ticket.py` only imports `Entry` under `TYPE_CHECKING` (Task 1), so there's no cycle:
+
+```python
+from app.models.entry import BreakdownEntry, Entry
+from app.models.ticket import Ticket
+```
+
+Rewrite `resolve_breakdown`:
 
 ```python
 @router.post("/{entry_id}/resolve", response_model=EntryOut)
@@ -1239,10 +1243,8 @@ async def resolve_breakdown(
     if entry.register is not Register.breakdown:
         raise Conflict("Only breakdown entries can be resolved")
 
-    from app.models.ticket import Ticket as TicketModel  # local import avoids a cycle at module load
-
     ticket = await session.scalar(
-        select(TicketModel).where(TicketModel.source_entry_id == entry.id)
+        select(Ticket).where(Ticket.source_entry_id == entry.id)
     )
     if ticket is None:
         raise Conflict("This breakdown has no ticket")
@@ -1266,40 +1268,6 @@ async def resolve_breakdown(
     return EntryOut(**result)
 ```
 
-Move the `from app.models.ticket import Ticket as TicketModel` to a top-level import instead of a local one if `app/models/ticket.py` importing `app/models/entry.py` (for `Entry`) doesn't create a circular import — check by running the app; `entry.py` now imports `Ticket` from `ticket.py` (Task 5), and `ticket.py` imports `Entry` from `entry.py`, which **is** a circular import. Resolve it the way the codebase already does for similar cases: keep the `Entry` import in `ticket.py` as a `TYPE_CHECKING`-only import and use a string annotation, since `Ticket.source_entry`'s relationship only needs the class name at mapper-configuration time, not at import time:
-
-```python
-from __future__ import annotations
-
-from datetime import datetime
-from typing import TYPE_CHECKING
-
-from sqlalchemy import Enum, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.models.base import Base, TZDateTime, created_at_col, new_uuid
-from app.models.enums import TICKET_STATUS_ENUM, TicketStatus
-from app.models.user import User
-
-if TYPE_CHECKING:
-    from app.models.entry import Entry
-
-
-class Ticket(Base):
-    ...
-    source_entry: Mapped["Entry"] = relationship(
-        lazy="joined", foreign_keys=[source_entry_id]
-    )
-    ...
-```
-
-And in `entry.py`, keep `from app.models.ticket import Ticket` as a normal top-level import (this direction is fine — `ticket.py` no longer imports `entry.py` at runtime). With that fixed, `resolve_breakdown` can import `Ticket` normally at the top of `entries.py` alongside the existing `BreakdownEntry, Entry` import:
-
-```python
-from app.models.entry import BreakdownEntry, Entry
-from app.models.ticket import Ticket
-```
-
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `.venv/bin/pytest tests/test_tickets.py tests/test_entries.py -v`
@@ -1308,8 +1276,7 @@ Expected: PASS, including the `again.status_code == 409` case (now raised by `co
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/app/models/ticket.py backend/app/models/entry.py \
-  backend/app/services/tickets.py backend/app/services/entries.py \
+git add backend/app/services/tickets.py backend/app/services/entries.py \
   backend/app/api/entries.py backend/tests/test_tickets.py
 git commit -m "Complete tickets from either the resolve endpoint or a Work Done session"
 ```

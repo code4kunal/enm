@@ -37,6 +37,8 @@ abstract final class Routes {
   static String newInspection(int workTypeId) => '/inspection/new/$workTypeId';
 
   static String editEntry(String entryId) => '/entry/edit/$entryId';
+
+  static String viewEntry(String entryId) => '/entry/view/$entryId';
 }
 
 /// Bridges Riverpod's session state to GoRouter's refresh mechanism so the
@@ -186,6 +188,18 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: PageBody(
                 child: RegisterFormScreen(
                   entryId: state.pathParameters['entryId'],
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/entry/view/:entryId',
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: RegisterFormScreen(
+                  entryId: state.pathParameters['entryId'],
+                  readOnly: true,
                 ),
               ),
             ),

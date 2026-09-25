@@ -19,8 +19,11 @@ abstract final class RegisterFieldMap {
       'defectType': 'defect_type',
       'attended': 'attended_details',
       'spares': 'spare_parts_used',
-      'employee': 'employee',
       'supervisor': 'supervisor',
+      'ticketId': 'ticket_id',
+      'completesTicket': 'completes_ticket',
+      'completionTime': 'completion_time',
+      'attendeeUserIds': 'attendee_user_ids',
     },
     'coolant': <String, String>{
       'bus': 'bus_no',
@@ -44,8 +47,7 @@ abstract final class RegisterFieldMap {
       'route': 'route',
       'loc': 'location',
       'complaint': 'complaint',
-      't_bd': 'breakdown_time',
-      't_mech': 'mechanic_reported_time',
+      't_reported': 'reported_time',
       't_att': 'attended_time',
       'loss': 'loss_km',
       'attended': 'attended_details',
@@ -79,6 +81,14 @@ abstract final class RegisterFieldMap {
     'loss_km',
   };
 
+  /// Fields the API sends/accepts as a JSON boolean, not a string.
+  static const Set<String> _boolWireKeys = <String>{'completes_ticket'};
+
+  /// Fields the API sends/accepts as a JSON array — the form stores them as
+  /// a single comma-joined string, same trick `_numericWireKeys` uses for
+  /// numbers.
+  static const Set<String> _listWireKeys = <String>{'attendee_user_ids'};
+
   /// Converts the form's values into the register's API payload.
   ///
   /// Blank values are dropped rather than sent as empty strings — the API's
@@ -102,6 +112,14 @@ abstract final class RegisterFieldMap {
         if (number != null) out[wireKey] = number;
         continue;
       }
+      if (_boolWireKeys.contains(wireKey)) {
+        out[wireKey] = value == 'true';
+        continue;
+      }
+      if (_listWireKeys.contains(wireKey)) {
+        out[wireKey] = value.split(',').where((s) => s.isNotEmpty).toList();
+        continue;
+      }
       out[wireKey] = value;
     }
     return out;
@@ -120,10 +138,21 @@ abstract final class RegisterFieldMap {
     if (map == null) return out;
 
     for (final entry in data.entries) {
+      if (registerId == 'work' && entry.key == 'attendees') {
+        final ids = (entry.value as List<dynamic>? ?? <dynamic>[])
+            .map((a) => (a as Map<String, dynamic>)['user_id'] as String)
+            .join(',');
+        out['attendeeUserIds'] = ids;
+        continue;
+      }
       final appKey = map[entry.key];
       if (appKey == null) continue;
       final value = entry.value;
       if (value == null) continue;
+      if (value is bool) {
+        out[appKey] = value.toString();
+        continue;
+      }
       out[appKey] = value is String ? value : _printNumber(value);
     }
     return out;

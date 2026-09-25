@@ -6,6 +6,7 @@ from datetime import time as time_t
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     Date,
     Enum,
     ForeignKey,
@@ -31,6 +32,7 @@ from app.models.enums import (
     UnitStatus,
 )
 from app.models.master import DefectSource, DefectType, Vehicle, WorkType
+from app.models.ticket import Ticket
 from app.models.user import User
 
 
@@ -193,14 +195,42 @@ class WorkDoneEntry(Base):
     )
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     spare_parts_used: Mapped[str | None] = mapped_column(Text, nullable=True)
-    employee: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ticket_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True
+    )
+    completes_ticket: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    completion_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="work_done")
     defect_source: Mapped[DefectSource | None] = relationship(lazy="joined")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
+    ticket: Mapped["Ticket | None"] = relationship(lazy="joined")
+    attendees: Mapped[list[WorkDoneAttendee]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class WorkDoneAttendee(Base):
+    """One engineer/mechanic who worked a Work Done session — a multi-select,
+    replacing the old single free-text `employee` column."""
+
+    __tablename__ = "work_done_attendees"
+
+    work_done_entry_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("work_done_entries.entry_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+
+    user: Mapped[User] = relationship(lazy="joined")
 
 
 class CoolantEntry(Base):
@@ -252,8 +282,7 @@ class BreakdownEntry(Base):
     route: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
-    breakdown_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
-    mechanic_reported_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
+    reported_time: Mapped[time_t] = mapped_column(Time, nullable=False)
     attended_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     loss_km: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)

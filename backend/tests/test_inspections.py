@@ -251,7 +251,7 @@ async def test_an_open_breakdown_raises_one_alert_not_one_a_night(
             "register": "breakdown",
             "site": "MBMT",
             "date": TODAY.isoformat(),
-            "data": {"bus_no": "MH40LY1894", "complaint": "No traction"},
+            "data": {"bus_no": "MH40LY1894", "complaint": "No traction", "reported_time": "09:00"},
         },
         headers=h,
     )
@@ -285,7 +285,7 @@ async def test_resolving_a_breakdown_closes_its_alert(client: AsyncClient) -> No
             "register": "breakdown",
             "site": "MBMT",
             "date": TODAY.isoformat(),
-            "data": {"bus_no": "MH40LY1894", "complaint": "No traction"},
+            "data": {"bus_no": "MH40LY1894", "complaint": "No traction", "reported_time": "09:00"},
         },
         headers=h,
     )
@@ -423,7 +423,7 @@ async def test_alerts_can_be_listed_and_acknowledged(client: AsyncClient) -> Non
             "register": "breakdown",
             "site": "MBMT",
             "date": TODAY.isoformat(),
-            "data": {"bus_no": "MH40LY1894", "complaint": "No traction"},
+            "data": {"bus_no": "MH40LY1894", "complaint": "No traction", "reported_time": "09:00"},
         },
         headers=h,
     )

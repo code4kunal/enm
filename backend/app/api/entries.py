@@ -18,11 +18,12 @@ from app.deps import (
     assert_site_permission,
 )
 from app.errors import Conflict, Forbidden, NotFound
-from app.models.entry import BreakdownEntry, Entry
+from app.models.entry import Entry
 from app.models.enums import AuditAction, EntryStatus, Register
+from app.models.ticket import Ticket
 from app.schemas.common import Page
 from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
-from app.services import audit, notifications, storage
+from app.services import audit, notifications, storage, tickets as tickets_svc
 from app.services import entries as svc
 from app.services.common import today_ist
 from app.services.sites import (
@@ -147,6 +148,7 @@ async def create_entry(
         after=svc.audit_snapshot(entry),
     )
     if payload.register is Register.breakdown:
+        await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
         await notifications.notify_breakdown_opened(session, entry)
     result = svc.serialize_entry(entry)
     await session.commit()
@@ -248,7 +250,9 @@ async def get_entry(
 ) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_permission(user, entry.site_code, "em_entry:read")
-    return EntryOut(**svc.serialize_entry(entry))
+    result = svc.serialize_entry(entry)
+    result["linked_sessions"] = await svc.load_linked_sessions(session, entry)
+    return EntryOut(**result)
 
 
 @router.put("/{entry_id}", response_model=EntryOut)
@@ -270,6 +274,7 @@ async def update_entry(
         entry_date=payload.date,
         entry_time=payload.entry_time,
         raw_data=payload.data,
+        actor=user,
     )
     await audit.record(
         session,
@@ -293,15 +298,17 @@ async def resolve_breakdown(
     assert_site_permission(user, entry.site_code, "em_entry:write")
     if entry.register is not Register.breakdown:
         raise Conflict("Only breakdown entries can be resolved")
-    if entry.status is EntryStatus.resolved:
-        raise Conflict("Breakdown is already resolved")
 
-    now = datetime.now(UTC)
-    entry.status = EntryStatus.resolved
-    entry.updated_at = now
-    detail: BreakdownEntry = entry.breakdown
-    detail.resolved_at = now
-    detail.resolved_by_id = user.id
+    ticket = await session.scalar(
+        select(Ticket).where(Ticket.source_entry_id == entry.id)
+    )
+    if ticket is None:
+        raise Conflict("This breakdown has no ticket")
+
+    await tickets_svc.complete_ticket(
+        session, ticket=ticket, completed_by=user, completed_at=datetime.now(UTC)
+    )
+    entry.updated_at = datetime.now(UTC)
 
     await audit.record(
         session,
@@ -312,6 +319,39 @@ async def resolve_breakdown(
         after=svc.audit_snapshot(entry, extra={"status": "resolved"}),
     )
     await notifications.notify_breakdown_resolved(session, entry, user)
+    result = svc.serialize_entry(entry)
+    await session.commit()
+    return EntryOut(**result)
+
+
+@router.post("/{entry_id}/raise_ticket", response_model=EntryOut)
+async def raise_ticket(
+    entry_id: str, user: CurrentUser, session: SessionDep
+) -> EntryOut:
+    entry = await _load(session, entry_id)
+    assert_site_permission(user, entry.site_code, "em_entry:write")
+    if entry.register not in (
+        Register.coolant,
+        Register.driver_complaint,
+        Register.pm_schedule,
+    ):
+        raise Conflict(
+            "Only coolant, driver complaint, and PM/docking entries can raise "
+            "a ticket here — breakdowns raise theirs automatically"
+        )
+
+    await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
+    entry.status = EntryStatus.open
+    entry.updated_at = datetime.now(UTC)
+
+    await audit.record(
+        session,
+        actor_id=user.id,
+        action=AuditAction.ticket_raised,
+        object_type="entry",
+        object_id=entry.id,
+        after=svc.audit_snapshot(entry, extra={"status": "open"}),
+    )
     result = svc.serialize_entry(entry)
     await session.commit()
     return EntryOut(**result)

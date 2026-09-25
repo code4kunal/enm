@@ -425,7 +425,7 @@ async def test_a_bad_month_is_refused(client: AsyncClient) -> None:
 
 
 async def test_hv_batteries_replaced_is_now_derived(client: AsyncClient) -> None:
-    """Line 30 used to be typed in because nothing observed it. A pack coming
+    """Line 32 used to be typed in because nothing observed it. A pack coming
     off the bus is that event, and it is now written down."""
     h = await auth_headers(client)
     types = await _unit_types()
@@ -441,7 +441,7 @@ async def test_hv_batteries_replaced_is_now_derived(client: AsyncClient) -> None
             "/sites/MBMT/reports/dmr", params={"date": "2026-08-04"}, headers=h
         )
     ).json()
-    line = next(x for x in body["lines"] if x["number"] == 30)
+    line = next(x for x in body["lines"] if x["number"] == 32)
     assert line["derived"] is True
     assert line["value"] == 1
 
@@ -450,7 +450,7 @@ async def test_hv_batteries_replaced_is_now_derived(client: AsyncClient) -> None
             "/sites/MBMT/reports/dmr", params={"date": "2026-08-05"}, headers=h
         )
     ).json()
-    assert next(x for x in quiet["lines"] if x["number"] == 30)["value"] == 0
+    assert next(x for x in quiet["lines"] if x["number"] == 32)["value"] == 0
 
 
 # --- the bus history card ----------------------------------------------------

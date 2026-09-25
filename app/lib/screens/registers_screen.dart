@@ -518,6 +518,14 @@ class _ResultRow extends ConsumerWidget {
               ),
               const SizedBox(width: 10),
               OutlineActionButton(
+                label: 'View',
+                onPressed: () => context.go(Routes.viewEntry(entry.id)),
+                fontSize: 12.5,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+              ),
+              const SizedBox(width: 8),
+              OutlineActionButton(
                 label: 'Edit',
                 onPressed: () => context.go(Routes.editEntry(entry.id)),
                 accent: T.green,
@@ -525,6 +533,31 @@ class _ResultRow extends ConsumerWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
               ),
+              // `done` only, never `resolved`: a resolved entry's ticket has
+              // already been raised *and* completed, and the server refuses a
+              // second one. `!isOpen` covered both and put the button back
+              // after completion, where it could only ever 409.
+              if (<String>['coolant', 'complaint', 'pm'].contains(entry.registerId) &&
+                  entry.status == EntryStatus.done) ...<Widget>[
+                const SizedBox(width: 8),
+                OutlineActionButton(
+                  label: 'Raise ticket',
+                  onPressed: () async {
+                    final toast = ref.read(toastProvider.notifier);
+                    try {
+                      await ref
+                          .read(entriesProvider.notifier)
+                          .raiseTicket(entry.id);
+                      toast.show('Ticket raised');
+                    } catch (e) {
+                      toast.show('Could not raise ticket — $e');
+                    }
+                  },
+                  fontSize: 12.5,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 7),

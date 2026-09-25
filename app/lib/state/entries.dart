@@ -157,10 +157,15 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     return saved;
   }
 
+  Future<void> raiseTicket(String entryId) async {
+    final saved = await ref.read(ticketRepositoryProvider).raiseTicket(entryId);
+    _replaceAll((list) => list.map((e) => e.id == saved.id ? saved : e).toList());
+  }
+
   Future<void> resolveBreakdown(String entryId) async {
     final saved = await ref
         .read(entryRepositoryProvider)
-        .setStatus(entryId, EntryStatus.done);
+        .setStatus(entryId, EntryStatus.resolved);
     _replaceAll(
       (list) => list.map((e) => e.id == saved.id ? saved : e).toList(),
     );
@@ -223,6 +228,15 @@ final entriesProvider =
     AsyncNotifierProvider<EntriesController, List<RegisterEntry>>(
   EntriesController.new,
 );
+
+/// One entry with its full detail — [RegisterEntry.linkedSessions] included,
+/// which the bulk [entriesProvider] fetch never carries (the server only
+/// computes it on the single-entry response). Used by the Breakdowns screen,
+/// whose cards are few enough that one fetch per card is proportionate.
+final entryDetailProvider =
+    FutureProvider.family<RegisterEntry, String>((ref, entryId) {
+  return ref.watch(entryRepositoryProvider).fetchEntry(entryId);
+});
 
 // ─── Derived views ────────────────────────────────────────────────────────
 

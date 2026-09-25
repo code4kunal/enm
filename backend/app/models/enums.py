@@ -52,6 +52,11 @@ class EntryStatus(StrEnum):
     resolved = "resolved"
 
 
+class TicketStatus(StrEnum):
+    open = "open"
+    completed = "completed"
+
+
 class Shift(StrEnum):
     A = "A"
     B = "B"
@@ -155,6 +160,7 @@ class AuditAction(StrEnum):
     entry_resolved = "entry_resolved"
     entry_photo_set = "entry_photo_set"
     entry_photo_deleted = "entry_photo_deleted"
+    ticket_raised = "ticket_raised"
     user_created = "user_created"
     user_updated = "user_updated"
     user_activated = "user_activated"
@@ -218,3 +224,4 @@ ENTRY_STATUS_ENUM = "entry_status_enum"
 SHIFT_ENUM = "shift_enum"
 PLATFORM_ENUM = "platform_enum"
 NOTIFICATION_TYPE_ENUM = "notification_type_enum"
+TICKET_STATUS_ENUM = "ticket_status_enum"

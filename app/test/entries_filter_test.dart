@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 import 'support/seed.dart';
+import 'package:transvolt_em/data/api_exception.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/state/entries.dart';
+import 'package:transvolt_em/state/providers.dart';
 import 'package:transvolt_em/state/session.dart';
 import 'package:transvolt_em/utils/dates.dart';
 
@@ -334,6 +336,47 @@ void main() {
       );
       expect(searched, hasLength(1));
       expect(searched.first.data['defects'], contains('HVAC filter'));
+    });
+  });
+
+  group('ticketSearchProvider', () {
+    // The ticket picker offers the app-side register ids from
+    // `registers.dart`; the API translates them to the backend's `Register`
+    // values on the way out. The fake has to speak the same vocabulary, or
+    // the screens pass it something the real service would 422 on and no test
+    // notices.
+    test('the picker\'s own register ids filter the results', () async {
+      final container = await signedInContainer();
+
+      final complaints = await container.read(
+        ticketSearchProvider(
+          (site: 'MBMT', register: 'complaint', q: 'wiper'),
+        ).future,
+      );
+      expect(complaints, hasLength(1));
+      expect(complaints.first.title, contains('Wiper blade'));
+
+      // Same query, wrong register: the filter has to actually bite.
+      final none = await container.read(
+        ticketSearchProvider(
+          (site: 'MBMT', register: 'breakdown', q: 'wiper'),
+        ).future,
+      );
+      expect(none, isEmpty);
+    });
+
+    test('a wire register id is not a register id here', () async {
+      final container = await signedInContainer();
+      // `driver_complaint` is what goes on the wire, not what the repository
+      // takes. Accepting it would mean the fake had drifted back to guessing.
+      await expectLater(
+        container.read(
+          ticketSearchProvider(
+            (site: 'MBMT', register: 'driver_complaint', q: 'wiper'),
+          ).future,
+        ),
+        throwsA(isA<ApiException>()),
+      );
     });
   });
 }

@@ -77,7 +77,7 @@ async def _breakdown(client: AsyncClient, h: dict, **data):
             "register": "breakdown",
             "site": "MBMT",
             "date": DAY.isoformat(),
-            "data": {"bus_no": BUS, **data},
+            "data": {"bus_no": BUS, "reported_time": "09:00", **data},
         },
         headers=h,
     )

@@ -67,14 +67,6 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'Part name & qty, or NIL',
       ),
       FieldDef(
-        key: 'employee',
-        label: 'Attended By',
-        type: FieldType.select,
-        optionsFrom: MasterList.staff,
-        master: true,
-        width: FieldWidth.half,
-      ),
-      FieldDef(
         key: 'supervisor',
         label: 'Supervisor (Floor)',
         type: FieldType.select,
@@ -250,23 +242,18 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'As reported over phone / app',
       ),
       FieldDef(
-        key: 't_bd',
-        label: 'B/Down Time',
+        key: 't_reported',
+        label: 'Reported Time',
         type: FieldType.time,
-        width: FieldWidth.third,
+        required: true,
+        width: FieldWidth.half,
       ),
-      FieldDef(
-        key: 't_mech',
-        label: 'Mechanic Reported Time',
-        type: FieldType.time,
-        width: FieldWidth.third,
-      ),
-      FieldDef(
-        key: 't_att',
-        label: 'Bus Attended Time',
-        type: FieldType.time,
-        width: FieldWidth.third,
-      ),
+      // No `t_att` (Bus Attended Time) field: it is server-computed, stamped
+      // when the first Work Done session is logged against this breakdown's
+      // ticket, exactly like `resolved_at`. It still arrives in the entry's
+      // `data` and the Breakdowns screen shows it — there is simply nothing
+      // for the form to edit, and an editable control here only offered a
+      // value the server would throw away.
       FieldDef(
         key: 'loss',
         label: 'Loss KM',

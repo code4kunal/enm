@@ -22,7 +22,6 @@ def work_done(bus: str = "mh40 ly1894") -> dict:
             "defect_type": "Brakes & air system",
             "attended_details": "Replaced air dryer cartridge",
             "spare_parts_used": "Air dryer cartridge x1",
-            "employee": "S. Pawar",
         },
     }
 
@@ -38,10 +37,18 @@ def breakdown() -> dict:
             "route": "7",
             "location": "Kashimira signal",
             "complaint": "HV contactor tripped, bus immobile",
-            "breakdown_time": "14:20",
-            "mechanic_reported_time": "14:45",
+            "reported_time": "14:45",
             "loss_km": 18.5,
         },
+    }
+
+
+def coolant() -> dict:
+    return {
+        "register": "coolant",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {"bus_no": "MH40LY1894", "bcs_litres": 2.5},
     }
 
 
@@ -99,7 +106,7 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert created.status_code == 201
     entry = created.json()
     assert entry["status"] == "open"
-    assert entry["data"]["breakdown_time"] == "14:20"
+    assert entry["data"]["reported_time"] == "14:45"
     assert entry["data"]["loss_km"] == 18.5
     # The route the bus was running when it failed. Read and thrown away until
     # `breakdown_entries` had a column for it.
@@ -114,30 +121,41 @@ async def test_breakdown_opens_and_resolves_once(client: AsyncClient) -> None:
     assert again.json()["error"]["code"] == "CONFLICT"
 
 
+async def test_breakdown_requires_reported_time(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    del payload["data"]["reported_time"]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400
+    assert r.json()["error"]["fields"].get("reported_time") == "required"
+
+
 async def test_a_breakdown_can_be_written_back_unchanged(
     client: AsyncClient,
 ) -> None:
     """What GET returns, PUT has to accept.
 
-    An edit form reads an entry, changes one field and writes it back. The
-    serialised `data` used to carry `resolved_at`, which `BreakdownData`
-    forbids, so a round trip 400ed on a key the client never set. Lifecycle
-    state belongs to the entry — `status` already carries it — not to the
-    register payload, which mirrors a paper column.
+    An edit form reads an entry, changes one field and writes it back.
+    `resolved_at` and `attended_time` ride along in the serialised `data`
+    (read-only — set by resolving or attending the ticket, never by the form),
+    so `BreakdownData` accepts and ignores both rather than 400ing on keys the
+    client never set itself. The form writes the whole `data` object back
+    verbatim, so nothing may need stripping.
     """
     h = await auth_headers(client)
     created = await client.post("/entries", json=breakdown(), headers=h)
     assert created.status_code == 201, created.text
     entry = created.json()
-    assert "resolved_at" not in entry["data"]
+    assert entry["data"]["resolved_at"] is None
 
+    data = dict(entry["data"])
     echoed = await client.put(
         f"/entries/{entry['id']}",
         json={
             "register": "breakdown",
             "site": "MBMT",
             "date": entry["date"],
-            "data": entry["data"],
+            "data": data,
         },
         headers=h,
     )
@@ -155,19 +173,25 @@ async def test_a_resolved_breakdown_still_round_trips(client: AsyncClient) -> No
 
     fetched = (await client.get(f"/entries/{entry['id']}", headers=h)).json()
     assert fetched["status"] == "resolved"
-    assert "resolved_at" not in fetched["data"]
+    assert fetched["data"]["resolved_at"] is not None
 
+    data = dict(fetched["data"])
     again = await client.put(
         f"/entries/{entry['id']}",
         json={
             "register": "breakdown",
             "site": "MBMT",
             "date": fetched["date"],
-            "data": fetched["data"],
+            "data": data,
         },
         headers=h,
     )
     assert again.status_code == 200, again.text
+    # Accepted-and-ignored must not mean lost: the edit rebuilds the detail
+    # row from the form, and the server-owned stamps have to survive it or a
+    # resolved breakdown quietly forgets when it was resolved.
+    assert again.json()["status"] == "resolved"
+    assert again.json()["data"]["resolved_at"] == fetched["data"]["resolved_at"]
 
 
 async def test_resolve_notifies_supervisors_on_open(client: AsyncClient) -> None:
@@ -337,6 +361,171 @@ async def test_photo_rejects_wrong_type(client: AsyncClient) -> None:
     assert r.status_code == 400
 
 
+async def test_work_done_can_link_to_an_open_ticket(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": "contactor"},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["ticket_id"] == ticket_id
+
+
+async def test_work_done_rejects_an_already_completed_ticket(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    await client.post(f"/entries/{bd_id}/resolve", headers=h)
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": bd_id},
+        headers=h,
+    )
+    # A resolved breakdown's ticket is completed, so it no longer shows up in
+    # an open-tickets search — confirm that, then confirm linking to its id
+    # directly (as if a stale client cached it) is rejected.
+    assert tickets.json() == []
+
+
+async def test_two_sessions_same_ticket_date_shift_is_rejected(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    tickets = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "register": "breakdown", "q": bd_id},
+        headers=h,
+    )
+    ticket_id = tickets.json()[0]["ticket_id"]
+
+    first = work_done()
+    first["data"]["ticket_id"] = ticket_id
+    r1 = await client.post("/entries", json=first, headers=h)
+    assert r1.status_code == 201, r1.text
+
+    second = work_done()
+    second["data"]["ticket_id"] = ticket_id  # same shift ("A"), same date, same ticket
+    r2 = await client.post("/entries", json=second, headers=h)
+    assert r2.status_code == 409, r2.text
+
+
+async def test_two_tickets_same_bus_same_shift_both_get_sessions(
+    client: AsyncClient,
+) -> None:
+    """Ticket-scoped, not vehicle-scoped — resolves the same-shift limitation."""
+    h = await auth_headers(client)
+    bd1 = await client.post("/entries", json=breakdown(), headers=h)
+    coolant_payload = coolant()
+    coolant_payload["data"]["bus_no"] = "MH40LY1895"  # same bus as the breakdown
+    bd2_source = await client.post("/entries", json=coolant_payload, headers=h)
+    raised = await client.post(
+        f"/entries/{bd2_source.json()['id']}/raise_ticket", headers=h
+    )
+    assert raised.status_code == 200
+
+    t1 = (
+        await client.get(
+            "/tickets/search",
+            params={"site": "MBMT", "register": "breakdown", "q": bd1.json()["id"]},
+            headers=h,
+        )
+    ).json()[0]["ticket_id"]
+    t2 = (
+        await client.get(
+            "/tickets/search",
+            params={"site": "MBMT", "register": "coolant", "q": bd2_source.json()["id"]},
+            headers=h,
+        )
+    ).json()[0]["ticket_id"]
+
+    wd1 = work_done(bus="MH40LY1895")
+    wd1["data"]["ticket_id"] = t1
+    wd2 = work_done(bus="MH40LY1895")
+    wd2["data"]["ticket_id"] = t2
+
+    r1 = await client.post("/entries", json=wd1, headers=h)
+    r2 = await client.post("/entries", json=wd2, headers=h)
+    assert r1.status_code == 201, r1.text
+    assert r2.status_code == 201, r2.text
+
+
+async def test_work_done_attendees_round_trip_by_user_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    me = await client.get("/auth/me", headers=h)
+    my_id = me.json()["id"]
+
+    payload = work_done()
+    payload["data"]["attendee_user_ids"] = [my_id]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    attendees = r.json()["data"]["attendees"]
+    assert attendees == [{"user_id": my_id, "name": me.json()["name"]}]
+
+
+async def test_work_done_attendees_preserve_submission_order(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    mgr = await client.get("/auth/me", headers=h)
+    mgr_id, mgr_name = mgr.json()["id"], mgr.json()["name"]
+
+    sup_h = await auth_headers(client, "TV4102")
+    sup = await client.get("/auth/me", headers=sup_h)
+    sup_id, sup_name = sup.json()["id"], sup.json()["name"]
+
+    # Submitted supervisor-first, manager-second — an `IN (...)` fetch alone
+    # would come back in whatever order Postgres feels like, so this ordering
+    # is only preserved if the service explicitly re-sorts to match input.
+    payload = work_done()
+    payload["data"]["attendee_user_ids"] = [sup_id, mgr_id]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["attendees"] == [
+        {"user_id": sup_id, "name": sup_name},
+        {"user_id": mgr_id, "name": mgr_name},
+    ]
+
+
+async def test_attendee_without_access_to_the_site_is_rejected(
+    client: AsyncClient,
+) -> None:
+    """An attendee is an attribution on a site-scoped entry.
+
+    TV4105 works at MBMT only. TV4021 (the manager) reaches both MBMT and UMT,
+    so it can write a UMT entry — but it may not name an MBMT-only colleague
+    on it. Existing-and-active was the only check; site membership is the one
+    that matters, and it's the same list `/master/staff` offers the picker.
+    """
+    mgr = await auth_headers(client)
+    other = await client.get("/auth/me", headers=await auth_headers(client, "TV4105"))
+    mbmt_only_id = other.json()["id"]
+
+    payload = work_done(bus="MH05GX4410")  # a UMT bus
+    payload["site"] = "UMT"
+    payload["data"]["attendee_user_ids"] = [mbmt_only_id]
+    r = await client.post("/entries", json=payload, headers=mgr)
+    assert r.status_code == 400, r.text
+    assert "attendee_user_ids" in r.json()["error"]["fields"]
+
+    # …and the same person on their own site is fine, so this isn't just
+    # rejecting every attendee.
+    same_site = work_done()
+    same_site["data"]["attendee_user_ids"] = [mbmt_only_id]
+    ok = await client.post("/entries", json=same_site, headers=mgr)
+    assert ok.status_code == 201, ok.text
+
+
 async def test_csv_export(client: AsyncClient) -> None:
     h = await auth_headers(client)
     await client.post("/entries", json=work_done(), headers=h)
@@ -423,3 +612,12 @@ async def test_pagination(client: AsyncClient) -> None:
         "/entries", params={"site": "MBMT", "page_size": 500}, headers=h
     )
     assert too_big.status_code == 400
+
+
+async def test_work_done_no_longer_accepts_employee(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = work_done()
+    payload["data"]["employee"] = "S. Pawar"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400
+    assert "employee" in r.json()["error"]["fields"] or "employee" in r.json()["error"]["message"]

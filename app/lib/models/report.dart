@@ -253,8 +253,7 @@ class Investigation {
     this.defectType = '',
     this.breakdownReason = '',
     this.location,
-    this.breakdownTime,
-    this.mechanicReportedTime,
+    this.reportedTime,
     this.attendedTime,
     this.lossKm,
     this.attendedDetails,
@@ -276,8 +275,7 @@ class Investigation {
   final String defectType;
   final String breakdownReason;
   final String? location;
-  final String? breakdownTime;
-  final String? mechanicReportedTime;
+  final String? reportedTime;
   final String? attendedTime;
   final double? lossKm;
   final String? attendedDetails;
@@ -306,8 +304,7 @@ class Investigation {
         defectType: json['defect_type'] as String? ?? '',
         breakdownReason: json['breakdown_reason'] as String? ?? '',
         location: json['location'] as String?,
-        breakdownTime: json['breakdown_time'] as String?,
-        mechanicReportedTime: json['mechanic_reported_time'] as String?,
+        reportedTime: json['reported_time'] as String?,
         attendedTime: json['attended_time'] as String?,
         lossKm: (json['loss_km'] as num?)?.toDouble(),
         attendedDetails: json['attended_details'] as String?,

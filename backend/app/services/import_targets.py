@@ -31,7 +31,6 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "attended": "attended_details",
         "spares": "spare_parts_used",
         "supervisor": "supervisor",
-        "employee": "employee",
     },
     Register.coolant: {
         "bus": "bus_no",
@@ -55,9 +54,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
         "route": "route",
         "loc": "location",
         "complaint": "complaint",
-        "t_bd": "breakdown_time",
-        "t_mech": "mechanic_reported_time",
-        "t_att": "attended_time",
+        "t_reported": "reported_time",
         "loss": "loss_km",
         "attended": "attended_details",
         "supervisor": "supervisor",
@@ -77,9 +74,7 @@ REGISTER_FIELD_MAP: dict[Register, dict[str, str]] = {
 
 #: Values the API expects as numbers rather than strings.
 NUMERIC_WIRE_KEYS = frozenset({"bcs_litres", "tcs_litres", "loss_km"})
-TIME_WIRE_KEYS = frozenset(
-    {"breakdown_time", "mechanic_reported_time", "attended_time"}
-)
+TIME_WIRE_KEYS = frozenset({"reported_time"})
 
 #: Register field definitions, in the order the paper register reads.
 _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
@@ -92,7 +87,6 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("defectType", "Type of Defect"),
         TargetField("attended", "Attended Details"),
         TargetField("spares", "Spare Parts Used"),
-        TargetField("employee", "Name & No. of Employee"),
         TargetField("supervisor", "Supervisor (floor)"),
     ],
     Register.coolant: [
@@ -120,9 +114,7 @@ _REGISTER_FIELDS: dict[Register, list[TargetField]] = {
         TargetField("route", "Route"),
         TargetField("loc", "Location of Breakdown"),
         TargetField("complaint", "Complaint Reported by the Driver", required=True),
-        TargetField("t_bd", "B/Down Time"),
-        TargetField("t_mech", "Mechanic Reported Time"),
-        TargetField("t_att", "Bus Attended Time"),
+        TargetField("t_reported", "Reported Time", required=True),
         TargetField("loss", "Loss KM"),
         TargetField("attended", "Bus Attended Details"),
         TargetField("remarks", "Remarks"),
@@ -185,9 +177,12 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
         "driver": "driver",
         "route": "route",
         "loc": "loc",
-        "t_bd": "t_bd",
-        "t_mech": "t_mech",
-        "t_att": "t_att",
+        # The breakdown register's "reported time" is when the driver called
+        # it in — the sheet's REPORTING TIME (`t_bd`), not MECH. ATTEND TIME
+        # (`t_mech`, which is when someone got there; the ticket stamps that
+        # itself now) and not COMPLAINT RESOLVING TIME (`t_att`, which
+        # completing the ticket stamps).
+        "t_bd": "t_reported",
         "loss": "loss",
         "action": "attended",
         "remarks": "remarks",
@@ -207,7 +202,6 @@ SNAG_TO_REGISTER: dict[Register, dict[str, str]] = {
         "complaint": "defects",
         "action": "attended",
         "spares": "spares",
-        "employee": "employee",
     },
     Register.pm_schedule: {
         "bus": "bus",

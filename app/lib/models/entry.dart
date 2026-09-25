@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-/// Lifecycle of a register entry. Only breakdown entries are ever [open];
-/// every other register writes [done] on save.
-enum EntryStatus { open, done }
+/// Lifecycle of a register entry. Only breakdown entries are ever [open] or
+/// [resolved]; every other register writes [done] on save.
+enum EntryStatus { open, done, resolved }
 
 /// One row of one physical register, digitised.
 ///
@@ -21,6 +21,7 @@ class RegisterEntry {
     required this.data,
     this.status = EntryStatus.done,
     this.photoUrl,
+    this.linkedSessions = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -39,6 +40,10 @@ class RegisterEntry {
 
   /// Null when no photo is attached.
   final String? photoUrl;
+
+  /// Work Done sessions raised against this entry's ticket, breakdown only.
+  /// Read-only display data — the server owns the linkage.
+  final List<Map<String, dynamic>> linkedSessions;
 
   String get busNumber => data['bus'] ?? '';
 
@@ -62,6 +67,7 @@ class RegisterEntry {
       data: data ?? this.data,
       status: status ?? this.status,
       photoUrl: photoUrl,
+      linkedSessions: linkedSessions,
     );
   }
 
@@ -79,6 +85,7 @@ class RegisterEntry {
       data: data,
       status: status,
       photoUrl: photoUrl,
+      linkedSessions: linkedSessions,
     );
   }
 
@@ -92,6 +99,7 @@ class RegisterEntry {
         'data': data,
         'status': status.name,
         'photoUrl': photoUrl,
+        'linkedSessions': linkedSessions,
       };
 
   factory RegisterEntry.fromJson(Map<String, dynamic> json) {
@@ -108,6 +116,9 @@ class RegisterEntry {
         orElse: () => EntryStatus.done,
       ),
       photoUrl: json['photoUrl'] as String?,
+      linkedSessions: (json['linkedSessions'] as List<dynamic>? ?? <dynamic>[])
+          .map((s) => Map<String, dynamic>.from(s as Map))
+          .toList(),
     );
   }
 }

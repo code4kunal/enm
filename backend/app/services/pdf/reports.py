@@ -365,7 +365,7 @@ def investigations(*, site_code: str, day: date_t, items: list) -> Story:
             [
                 Paragraph(f"<b>{i}. {item.registration_no}</b>", CELL),
                 Paragraph(
-                    f"{item.breakdown_time or '—'} · {item.location or '—'}", CELL
+                    f"{item.reported_time or '—'} · {item.location or '—'}", CELL
                 ),
             ],
             [

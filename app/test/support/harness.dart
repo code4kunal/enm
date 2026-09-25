@@ -13,7 +13,7 @@ import 'fake_store.dart';
 /// exist only so the state layer — session scoping, filters, site and user
 /// rules, import mapping — can be exercised without a server.
 ///
-/// One [FakeStore] backs all eight, deliberately: an import has to change what
+/// One [FakeStore] backs all nine, deliberately: an import has to change what
 /// the entry form's bus dropdown offers, and signing in has to scope what is
 /// visible. Per-repository stubs reproduce neither.
 List<Override> fakeOverrides([FakeStore? store]) {
@@ -23,6 +23,7 @@ List<Override> fakeOverrides([FakeStore? store]) {
       FakeMasterDataRepository(db),
     ),
     entryRepositoryProvider.overrideWithValue(FakeEntryRepository(db)),
+    ticketRepositoryProvider.overrideWithValue(FakeTicketRepository(db)),
     userRepositoryProvider.overrideWithValue(FakeUserRepository(db)),
     authRepositoryProvider.overrideWithValue(FakeAuthRepository(db)),
     siteRepositoryProvider.overrideWithValue(FakeSiteRepository(db)),

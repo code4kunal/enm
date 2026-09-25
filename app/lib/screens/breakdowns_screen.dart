@@ -75,6 +75,14 @@ class _BreakdownCard extends ConsumerWidget {
     final open = entry.isOpen;
     final d = entry.data;
     final busName = ref.watch(vehicleNameProvider(entry.busNumber));
+    // The list fetch backing [entry] never carries linkedSessions — only the
+    // single-entry response does — so this card fetches its own detail. A
+    // breakdown tracker is a short, filtered list, so one fetch per card is
+    // proportionate (unlike the paginated Registers list, which would need a
+    // bulk endpoint the way fitted units already do).
+    final linkedSessions =
+        ref.watch(entryDetailProvider(entry.id)).valueOrNull?.linkedSessions ??
+            const <Map<String, dynamic>>[];
 
     Future<void> resolve() async {
       await ref.read(entriesProvider.notifier).resolveBreakdown(entry.id);
@@ -138,15 +146,51 @@ class _BreakdownCard extends ConsumerWidget {
             spacing: 16,
             runSpacing: 6,
             children: <Widget>[
-              _Metric(label: 'B/Down', value: d['t_bd'] ?? '—'),
+              _Metric(label: 'Reported', value: d['t_reported'] ?? '—'),
               _Metric(label: 'Attended', value: d['t_att'] ?? '—'),
               _Metric(
                 label: 'Time taken',
-                value: Dates.elapsed(d['t_bd'], d['t_att']),
+                value: Dates.elapsed(d['t_reported'], d['t_att']),
               ),
               _Metric(label: 'Loss KM', value: '${d['loss'] ?? '0'} km'),
             ],
           ),
+          if (linkedSessions.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: T.border),
+            const SizedBox(height: 10),
+            Text(
+              'LINKED WORK DONE',
+              style: AppText.sans(size: 10, color: T.muted),
+            ),
+            const SizedBox(height: 6),
+            for (final session in linkedSessions)
+              InkWell(
+                onTap: () => context.go(
+                  Routes.editEntry(session['entry_id'] as String),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          '${session['entry_date']} · Shift ${session['shift'] ?? '—'} · '
+                          '${(session['attendees'] as List<dynamic>).map((a) => (a as Map)['name']).join(', ')}',
+                          style: AppText.sans(size: 13),
+                        ),
+                      ),
+                      if (session['completes_ticket'] == true)
+                        const TagBadge(
+                          label: 'Resolved this',
+                          background: T.greenTint,
+                          foreground: T.green,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );

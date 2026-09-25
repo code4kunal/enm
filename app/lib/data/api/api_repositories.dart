@@ -10,6 +10,8 @@ import '../../models/report.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
+import '../../models/staff.dart';
+import '../../models/ticket.dart';
 import '../repositories.dart';
 import 'api_client.dart';
 import 'field_map.dart';
@@ -18,7 +20,7 @@ import '../auth/ms_sso.dart';
 
 /// Register id translation. The app uses the short ids from `registers.dart`;
 /// the API uses the `Register` enum values.
-const Map<String, String> _registerToWire = <String, String>{
+const Map<String, String> registerToWire = <String, String>{
   'work': 'work_done',
   'coolant': 'coolant',
   'complaint': 'driver_complaint',
@@ -27,7 +29,7 @@ const Map<String, String> _registerToWire = <String, String>{
 };
 
 final Map<String, String> _registerFromWire = <String, String>{
-  for (final e in _registerToWire.entries) e.value: e.key,
+  for (final e in registerToWire.entries) e.value: e.key,
 };
 
 // ─── Master data ──────────────────────────────────────────────────────────
@@ -135,6 +137,17 @@ class ApiMasterDataRepository implements MasterDataRepository {
       query: <String, String>{'site': siteCode},
     );
     return itemsOf(json).map((j) => j['name'] as String).toList();
+  }
+
+  @override
+  Future<List<StaffMember>> staffDirectory({required String siteCode}) async {
+    final json = await _api.get(
+      '/master/staff',
+      query: <String, String>{'site': siteCode},
+    );
+    return itemsOf(json)
+        .map((j) => StaffMember.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   @override
@@ -609,24 +622,30 @@ class ApiEntryRepository implements EntryRepository {
       query: <String, String>{
         'site': site,
         'page_size': '200',
-        if (registerId != null) 'register': _registerToWire[registerId] ?? registerId,
+        if (registerId != null) 'register': registerToWire[registerId] ?? registerId,
         if (dateFrom != null) 'date_from': dateFrom,
         if (dateTo != null) 'date_to': dateTo,
       },
     );
-    return itemsOf(json).map(_fromWire).toList();
+    return itemsOf(json).map(_entryFromWire).toList();
+  }
+
+  @override
+  Future<RegisterEntry> fetchEntry(String id) async {
+    final json = await _api.get('/entries/$id');
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
   Future<RegisterEntry> createEntry(RegisterEntry entry) async {
     final json = await _api.post('/entries', body: <String, dynamic>{
-      'register': _registerToWire[entry.registerId],
+      'register': registerToWire[entry.registerId],
       'site': entry.site,
       'date': entry.date,
       'entry_time': entry.time,
       'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
     });
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
@@ -638,16 +657,16 @@ class ApiEntryRepository implements EntryRepository {
         'data': RegisterFieldMap.toWire(entry.registerId, entry.data),
       },
     );
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
   Future<RegisterEntry> setStatus(String entryId, EntryStatus status) async {
-    if (status != EntryStatus.done) {
+    if (status != EntryStatus.resolved) {
       throw const ApiException('Only resolving a breakdown is supported');
     }
     final json = await _api.post('/entries/$entryId/resolve');
-    return _fromWire(json as Map<String, dynamic>);
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 
   @override
@@ -668,41 +687,81 @@ class ApiEntryRepository implements EntryRepository {
   @override
   Future<void> removePhoto(String entryId) =>
       _api.delete('/entries/$entryId/photo');
+}
 
-  RegisterEntry _fromWire(Map<String, dynamic> json) {
-    final createdBy = json['created_by'];
-    final registerId = _registerFromWire[json['register'] as String] ?? 'work';
+/// Shared by [ApiEntryRepository] and [ApiTicketRepository]: the API's data
+/// object uses each register's own column names; translate it back into the
+/// keys the form and the register definitions use.
+RegisterEntry _entryFromWire(Map<String, dynamic> json) {
+  final createdBy = json['created_by'];
+  final registerId = _registerFromWire[json['register'] as String] ?? 'work';
 
-    // The API's data object uses each register's own column names; translate
-    // it back into the keys the form and the register definitions use.
-    final data = RegisterFieldMap.fromWire(
-      registerId,
-      json['data'] as Map<String, dynamic>? ?? <String, dynamic>{},
+  final data = RegisterFieldMap.fromWire(
+    registerId,
+    json['data'] as Map<String, dynamic>? ?? <String, dynamic>{},
+  );
+  final busNo = json['bus_no'] as String?;
+  if (busNo != null && !data.containsKey('bus')) data['bus'] = busNo;
+
+  return RegisterEntry(
+    id: json['id'] as String,
+    registerId: registerId,
+    date: json['date'] as String,
+    time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
+    site: json['site'] as String,
+    // Who did the work, per the register — not the account that typed it.
+    // The server resolves it and falls back to the author itself.
+    enteredBy: (json['entered_by'] as String?)?.trim().isNotEmpty ?? false
+        ? json['entered_by'] as String
+        : (createdBy is Map<String, dynamic>
+            ? (createdBy['name'] as String? ?? '')
+            : (createdBy?.toString() ?? '')),
+    data: data,
+    status: switch (json['status'] as String?) {
+      'open' => EntryStatus.open,
+      'resolved' => EntryStatus.resolved,
+      _ => EntryStatus.done,
+    },
+    photoUrl: json['photo_url'] as String?,
+    linkedSessions: (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])
+        .map((s) => s as Map<String, dynamic>)
+        .toList(),
+  );
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────
+
+class ApiTicketRepository implements TicketRepository {
+  ApiTicketRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+  }) async {
+    final json = await _api.get(
+      '/tickets/search',
+      query: <String, String>{
+        'site': site,
+        // App-side ids in, wire values out — `complaint`/`pm` are
+        // `driver_complaint`/`pm_schedule` on the wire, and the backend's
+        // `Register` enum 422s on anything else.
+        if (register != null) 'register': registerToWire[register] ?? register,
+        if (q != null && q.isNotEmpty) 'q': q,
+      },
     );
-    final busNo = json['bus_no'] as String?;
-    if (busNo != null && !data.containsKey('bus')) data['bus'] = busNo;
+    return (json as List<dynamic>)
+        .map((j) => TicketSearchResult.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
 
-    return RegisterEntry(
-      id: json['id'] as String,
-      registerId: registerId,
-      date: json['date'] as String,
-      time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
-      site: json['site'] as String,
-      // Who did the work, per the register — not the account that typed it.
-      // The server resolves it and falls back to the author itself.
-      enteredBy: (json['entered_by'] as String?)?.trim().isNotEmpty ?? false
-          ? json['entered_by'] as String
-          : (createdBy is Map<String, dynamic>
-              ? (createdBy['name'] as String? ?? '')
-              : (createdBy?.toString() ?? '')),
-      data: data,
-      // The API distinguishes done from resolved; the tracker only cares
-      // whether a breakdown is still open.
-      status: (json['status'] as String?) == 'open'
-          ? EntryStatus.open
-          : EntryStatus.done,
-      photoUrl: json['photo_url'] as String?,
-    );
+  @override
+  Future<RegisterEntry> raiseTicket(String entryId) async {
+    final json = await _api.post('/entries/$entryId/raise_ticket');
+    return _entryFromWire(json as Map<String, dynamic>);
   }
 }
 

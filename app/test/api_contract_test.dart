@@ -11,6 +11,8 @@ import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/staff.dart';
+import 'package:transvolt_em/models/ticket.dart';
 
 /// Contract tests against responses captured from a running backend.
 ///
@@ -98,6 +100,27 @@ void main() {
       expect(created.data['bcs'], '1.5');
     });
 
+    test('a resolved breakdown parses as EntryStatus.resolved, not done',
+        () async {
+      final mock = MockClient((http.Request request) async {
+        final body = jsonDecode(fixture('entry_create')) as Map<String, dynamic>;
+        body['status'] = 'resolved';
+        return http.Response(
+          jsonEncode(body), 200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final entry = await ApiEntryRepository(client).createEntry(
+        const RegisterEntry(
+          id: '', registerId: 'breakdown', date: '2026-08-13', time: '09:29',
+          site: 'MBMT', enteredBy: '', data: <String, String>{'bus': 'MH40LY1894'},
+        ),
+      );
+      expect(entry.status, EntryStatus.resolved);
+    });
+
     test('the create body uses the API field names', () async {
       late Map<String, dynamic> sent;
       final mock = MockClient((http.Request request) async {
@@ -147,7 +170,6 @@ void main() {
           'defectType': 'AC & HVAC',
           'attended': 'Fixed',
           'spares': 'Fuse',
-          'employee': 'R. Sharma',
         },
         'complaint': <String, String>{
           'bus': 'MH1',
@@ -162,8 +184,7 @@ void main() {
           'route': '7',
           'loc': 'SV Road',
           'complaint': 'No traction',
-          't_bd': '06:32',
-          't_mech': '06:50',
+          't_reported': '06:50',
           't_att': '07:35',
           'loss': '18',
           'attended': 'Reset',
@@ -201,6 +222,38 @@ void main() {
         <String, dynamic>{'bcs_litres': 2.0},
       );
       expect(back['bcs'], '2');
+    });
+
+    test('work done ticket-link keys round-trip, including the attendee list', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{
+        'ticketId': 't1',
+        'completesTicket': 'true',
+        'completionTime': '16:00',
+        'attendeeUserIds': 'u1,u2',
+      });
+      expect(wire['ticket_id'], 't1');
+      expect(wire['completes_ticket'], true);
+      expect(wire['completion_time'], '16:00');
+      expect(wire['attendee_user_ids'], <String>['u1', 'u2']);
+
+      final back = RegisterFieldMap.fromWire('work', <String, dynamic>{
+        'ticket_id': 't1',
+        'completes_ticket': true,
+        'completion_time': '16:00',
+        'attendees': <dynamic>[
+          <String, dynamic>{'user_id': 'u1', 'name': 'A'},
+          <String, dynamic>{'user_id': 'u2', 'name': 'B'},
+        ],
+      });
+      expect(back['ticketId'], 't1');
+      expect(back['completesTicket'], 'true');
+      expect(back['completionTime'], '16:00');
+      expect(back['attendeeUserIds'], 'u1,u2');
+    });
+
+    test('employee is no longer a work-done field-map key', () {
+      final wire = RegisterFieldMap.toWire('work', <String, String>{'employee': 'X'});
+      expect(wire.containsKey('employee'), isFalse);
     });
   });
 
@@ -394,6 +447,177 @@ void main() {
       await ApiAuthRepository(client)
           .signInWithCredentials(userId: ' kunal ', password: 'x');
       expect(sent['user_id'], 'KUNAL');
+    });
+  });
+
+  group('ticket search', () {
+    test('a ticket search result parses onto TicketSearchResult', () async {
+      final mock = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<dynamic>[
+            <String, dynamic>{
+              'ticket_id': 't1',
+              'title': 'HV contactor tripped · MH40LY1895',
+              'entry_date': '2026-09-24',
+              'status': 'open',
+            },
+          ]),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client =
+          ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final List<TicketSearchResult> results =
+          await ApiTicketRepository(client).search(site: 'MBMT');
+      expect(results, hasLength(1));
+      expect(results.first.title, contains('MH40LY1895'));
+    });
+
+    test('the register filter is sent as the wire id, not the app id', () async {
+      // The picker offers the app-side ids from `registers.dart`; the backend
+      // binds `register` to its `Register` enum and 422s on anything that
+      // isn't one of its values. `complaint` and `pm` are the two that differ,
+      // so they are the two that broke.
+      Map<String, String>? sent;
+      final mock = MockClient((http.Request request) async {
+        sent = request.url.queryParameters;
+        return http.Response(
+          '[]',
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final repo = ApiTicketRepository(
+        ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock),
+      );
+
+      await repo.search(site: 'MBMT', register: 'complaint');
+      expect(sent!['register'], 'driver_complaint');
+
+      await repo.search(site: 'MBMT', register: 'pm');
+      expect(sent!['register'], 'pm_schedule');
+
+      // The three whose app id already is the wire value go through unchanged.
+      for (final id in <String>['breakdown', 'coolant', 'work']) {
+        await repo.search(site: 'MBMT', register: id);
+        expect(sent!['register'], registerToWire[id], reason: id);
+      }
+
+      // No filter means no parameter at all — not an empty one.
+      await repo.search(site: 'MBMT');
+      expect(sent!.containsKey('register'), isFalse);
+    });
+  });
+
+  group('breakdown edit round trip', () {
+    /// Everything `BreakdownData` on the server accepts as input. Anything
+    /// else in a PUT body is a 400: the schema is `extra="forbid"`.
+    const accepted = <String>{
+      'bus_no',
+      'defect_type',
+      'driver_id',
+      'route',
+      'location',
+      'complaint',
+      'reported_time',
+      'loss_km',
+      'attended_details',
+      'remarks',
+      'supervisor',
+      'attended_time',
+      'resolved_at',
+    };
+
+    test('an attended breakdown writes back exactly what the server sent',
+        () async {
+      // The edit form is GET-then-PUT-the-whole-form-back. Once a Work Done
+      // session has attended the ticket the server echoes a real
+      // `attended_time`, and `_fromWire` puts it in the form's data — so the
+      // PUT carries it whether or not any control is bound to it.
+      final fetched = <String, dynamic>{
+        'id': 'e1',
+        'register': 'breakdown',
+        'site': 'MBMT',
+        'date': '2026-09-24',
+        'entry_time': '06:50',
+        'status': 'resolved',
+        'created_by': <String, dynamic>{'id': 'u1', 'name': 'R. Sharma'},
+        'data': <String, dynamic>{
+          'bus_no': 'MH40LY1895',
+          'defect_type': 'Electrical / HV',
+          'driver_id': 'DRV221',
+          'route': '7',
+          'location': 'Kashimira signal',
+          'complaint': 'HV contactor tripped',
+          'reported_time': '06:50',
+          'attended_time': '07:35',
+          'loss_km': 18.5,
+          'attended_details': 'Contactor replaced',
+          'remarks': null,
+          'supervisor': 'S. Pawar',
+          'resolved_at': '2026-09-24T08:10:00+05:30',
+        },
+      };
+
+      Map<String, dynamic>? put;
+      final mock = MockClient((http.Request request) async {
+        if (request.method == 'PUT') {
+          put = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return http.Response(
+          jsonEncode(fetched),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final repo = ApiEntryRepository(
+        ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock),
+      );
+
+      final entry = await repo.fetchEntry('e1');
+      expect(entry.data['t_att'], '07:35', reason: 'still shown to the user');
+
+      await repo.updateEntry(entry);
+      final data = (put!['data'] as Map<String, dynamic>);
+      // The assertion that would have caught it: every key the form writes
+      // back has to be one the server's schema accepts.
+      expect(
+        data.keys.toSet().difference(accepted),
+        isEmpty,
+        reason: 'PUT sent a key BreakdownData forbids',
+      );
+      expect(data['attended_time'], '07:35');
+      expect(data['reported_time'], '06:50');
+    });
+  });
+
+  group('staff directory', () {
+    test('staff directory keeps the id the backend returns', () async {
+      final mock = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'items': <dynamic>[
+              <String, dynamic>{
+                'id': 'u1',
+                'name': 'S. Pawar',
+                'user_id': 'TV4022',
+                'role': 'executive',
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final client = ApiClient(baseUrl: 'http://api.test/api/v1', httpClient: mock);
+
+      final staff = await ApiMasterDataRepository(client)
+          .staffDirectory(siteCode: 'MBMT');
+      expect(staff, hasLength(1));
+      expect(staff.first.id, 'u1');
+      expect(staff.first.name, 'S. Pawar');
     });
   });
 }
