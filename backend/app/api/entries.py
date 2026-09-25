@@ -22,7 +22,15 @@ from app.models.entry import Entry
 from app.models.enums import AuditAction, EntryStatus, Register
 from app.models.ticket import Ticket
 from app.schemas.common import Page
-from app.schemas.entry import EntryCreate, EntryOut, EntryUpdate, PhotoOut, SummaryOut
+from app.schemas.entry import (
+    CoolantDayCreate,
+    CoolantDayOut,
+    EntryCreate,
+    EntryOut,
+    EntryUpdate,
+    PhotoOut,
+    SummaryOut,
+)
 from app.services import audit, notifications, storage, tickets as tickets_svc
 from app.services import entries as svc
 from app.services.common import today_ist
@@ -153,6 +161,41 @@ async def create_entry(
     result = svc.serialize_entry(entry)
     await session.commit()
     return EntryOut(**result)
+
+
+@router.post("/coolant/day", response_model=CoolantDayOut, status_code=status.HTTP_201_CREATED)
+async def create_coolant_day(
+    payload: CoolantDayCreate,
+    user: CurrentUser,
+    session: SessionDep,
+    site: Annotated[str, Query(min_length=1, max_length=50)],
+) -> CoolantDayOut:
+    """Multiple Bus Inspection's Coolant Topping counterpart: one date, one
+    submitting supervisor, every bus in one transaction."""
+    site_code = assert_site_permission(user, site, "em_entry:write")
+    site_row = await assert_site_accepts_entries(session, site_code)
+    assert_date_is_plausible(site_row, payload.entry_date, today_ist())
+
+    entries = await svc.create_coolant_day(
+        session,
+        site_code=site_code,
+        entry_date=payload.entry_date,
+        supervisor=payload.supervisor,
+        rows=payload.rows,
+        creator=user,
+    )
+    for entry in entries:
+        await audit.record(
+            session,
+            actor_id=user.id,
+            action=AuditAction.entry_created,
+            object_type="entry",
+            object_id=entry.id,
+            after=svc.audit_snapshot(entry),
+        )
+    results = [svc.serialize_entry(entry) for entry in entries]
+    await session.commit()
+    return CoolantDayOut(items=[EntryOut(**r) for r in results])
 
 
 # --- static sub-paths (declared before /{id}) ------------------------------

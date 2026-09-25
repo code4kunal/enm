@@ -69,6 +69,19 @@ class CoolantData(_DataBase):
     supervisor: OptText = None
 
 
+class CoolantDayRow(BaseModel):
+    vehicle_id: str = Field(min_length=1, max_length=64)
+    bcs_litres: Decimal | None = Field(default=None, ge=0, le=999999)
+    tcs_litres: Decimal | None = Field(default=None, ge=0, le=999999)
+    topped_by: OptText = None
+
+
+class CoolantDayCreate(BaseModel):
+    entry_date: date_t
+    supervisor: OptText = None
+    rows: list[CoolantDayRow] = Field(min_length=1, max_length=500)
+
+
 class DriverComplaintData(_DataBase):
     bus_no: BusNo
     defect_type: OptText = None
@@ -165,6 +178,10 @@ class EntryOut(BaseModel):
     #: complaint, PM/docking); null everywhere else, including work_done
     #: entries themselves.
     linked_sessions: list[dict[str, Any]] | None = None
+
+
+class CoolantDayOut(BaseModel):
+    items: list[EntryOut]
 
 
 class PhotoOut(BaseModel):

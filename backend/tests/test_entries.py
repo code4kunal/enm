@@ -3,8 +3,19 @@ from __future__ import annotations
 from datetime import date
 
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from app.db import SessionLocal
+from app.models.master import Vehicle
 from tests.conftest import auth_headers
+
+
+async def _vehicle_id(reg: str) -> str:
+    async with SessionLocal() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == reg)
+        )
+        return vehicle.id
 
 TODAY = date.today().isoformat()
 
@@ -688,3 +699,55 @@ async def test_breakdown_rejects_unknown_driver_id(client: AsyncClient) -> None:
     payload["data"]["driver_id"] = "NOT-REAL"
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 400
+
+
+async def test_coolant_day_entry_creates_one_row_per_vehicle(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.post(
+        "/entries/coolant/day",
+        params={"site": "MBMT"},
+        json={
+            "entry_date": "2026-09-25",
+            "supervisor": "R. Mehta",
+            "rows": [
+                {
+                    "vehicle_id": await _vehicle_id("MH40LY1894"),
+                    "bcs_litres": "1.5",
+                    "tcs_litres": "0.5",
+                    "topped_by": "A",
+                },
+                {
+                    "vehicle_id": await _vehicle_id("MH40LY1895"),
+                    "bcs_litres": "2.0",
+                    "topped_by": "B",
+                },
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    assert len(r.json()["items"]) == 2
+
+
+async def test_coolant_day_entry_rolls_back_on_one_bad_vehicle(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.post(
+        "/entries/coolant/day",
+        params={"site": "MBMT"},
+        json={
+            "entry_date": "2026-09-25",
+            "rows": [
+                {"vehicle_id": await _vehicle_id("MH40LY1894"), "bcs_litres": "1.5"},
+                {"vehicle_id": "not-a-real-vehicle", "bcs_litres": "2.0"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 400
+
+    listing = await client.get(
+        "/entries",
+        params={"site": "MBMT", "register": "coolant"},
+        headers=h,
+    )
+    assert listing.json()["total"] == 0

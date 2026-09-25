@@ -29,7 +29,7 @@ from app.models.enums import EntryStatus, Register, TicketStatus
 from app.models.ticket import Ticket
 from app.models.master import Vehicle
 from app.models.user import User, UserSiteAccess
-from app.schemas.entry import REGISTER_DATA_SCHEMAS
+from app.schemas.entry import REGISTER_DATA_SCHEMAS, CoolantDayRow
 from app.services.masters import (
     resolve_defect_source,
     resolve_defect_type,
@@ -472,6 +472,46 @@ async def create_entry(
         await session.flush()
     await _apply_ticket_side_effects(session, entry, detail, creator)
     return entry
+
+
+async def create_coolant_day(
+    session: AsyncSession,
+    *,
+    site_code: str,
+    entry_date: date_t,
+    supervisor: str | None,
+    rows: list[CoolantDayRow],
+    creator: User,
+) -> list[Entry]:
+    """One submit action, N per-bus Coolant rows sharing one date — a bad
+    vehicle anywhere in the list fails the whole day's submission, same
+    reasoning as the inspection batch: a partial day would misreport as
+    "not yet topped" for buses that should have recorded but didn't."""
+    out: list[Entry] = []
+    for row in rows:
+        vehicle = await session.get(Vehicle, row.vehicle_id)
+        if vehicle is None or vehicle.site_code != site_code:
+            raise ValidationError(
+                f"Vehicle {row.vehicle_id} not found on this site",
+                {"vehicle_id": "unknown vehicle"},
+            )
+        entry = await create_entry(
+            session,
+            register=Register.coolant,
+            site_code=site_code,
+            entry_date=entry_date,
+            entry_time=None,
+            creator=creator,
+            raw_data={
+                "bus_no": vehicle.registration_no,
+                "bcs_litres": str(row.bcs_litres) if row.bcs_litres is not None else None,
+                "tcs_litres": str(row.tcs_litres) if row.tcs_litres is not None else None,
+                "topped_by": row.topped_by,
+                "supervisor": supervisor,
+            },
+        )
+        out.append(entry)
+    return out
 
 
 async def update_entry(
