@@ -8,6 +8,7 @@ import 'auth/ms_sso.dart';
 import '../models/admin_estate.dart';
 import '../models/app_user.dart';
 import '../models/entry.dart';
+import '../models/driver.dart';
 import '../models/site.dart';
 import '../models/spare_part.dart';
 import '../models/staff.dart';
@@ -213,6 +214,19 @@ abstract interface class MasterDataRepository {
   /// Active mechanics for Driver Complaints' "Name of the Mechanic" picker.
   Future<List<String>> mechanicStaff({required String siteName, String? siteId});
 
+  /// Driver codes for the Breakdown/Driver Complaint "Driver" picker —
+  /// resolved server-side by code, same as `defectSources()`/`defectTypes()`,
+  /// not id-carrying like `staffDirectory()`.
+  Future<List<String>> drivers({required String siteCode});
+
+  /// Adds a new driver to the site's roster — the picker's inline "add as
+  /// new driver" affordance when a typed search matches nothing.
+  Future<Driver> createDriver({
+    required String siteCode,
+    required String driverCode,
+    required String name,
+  });
+
   /// Full rows, including inactive, for the master-data editor.
   Future<List<MasterListItem>> masterList(MasterListKind kind);
 
@@ -237,6 +251,7 @@ class MasterData {
     this.technicianStaff = const <String>[],
     this.supervisorStaff = const <String>[],
     this.mechanicStaff = const <String>[],
+    this.drivers = const <String>[],
   });
 
   /// E&M depot this bundle was fetched for. Forms discard a stale bundle when
@@ -262,6 +277,9 @@ class MasterData {
 
   /// Mechanic names for Driver Complaints' mechanic dropdown.
   final List<String> mechanicStaff;
+
+  /// Driver codes for the Breakdown/Driver Complaint driver dropdown.
+  final List<String> drivers;
 
   static const empty = MasterData(
     siteCode: '',

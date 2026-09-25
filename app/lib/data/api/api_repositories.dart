@@ -7,6 +7,7 @@ import '../../models/entry.dart';
 import '../../models/checklist.dart';
 import '../../models/inspection.dart';
 import '../../models/report.dart';
+import '../../models/driver.dart';
 import '../../models/site.dart';
 import '../../models/site_config.dart';
 import '../../models/site_import.dart';
@@ -204,6 +205,25 @@ class ApiMasterDataRepository implements MasterDataRepository {
     );
     if (fromSiteOps.isNotEmpty) return fromSiteOps;
     return staff(siteCode: siteName);
+  }
+
+  @override
+  Future<List<String>> drivers({required String siteCode}) async {
+    final json = await _api.get('/sites/$siteCode/drivers');
+    return itemsOf(json).map((j) => j['driver_code'] as String).toList();
+  }
+
+  @override
+  Future<Driver> createDriver({
+    required String siteCode,
+    required String driverCode,
+    required String name,
+  }) async {
+    final json = await _api.post(
+      '/sites/$siteCode/drivers',
+      body: <String, dynamic>{'driver_code': driverCode, 'name': name},
+    );
+    return Driver.fromJson(json as Map<String, dynamic>);
   }
 
   Future<List<String>> _siteOpsStaff({

@@ -33,7 +33,7 @@ enum FieldType {
 /// [staff] is the site's own people — the mechanics and supervisors on its
 /// roster — so "attended by" and "supervisor" are picked, not typed. Typed
 /// names drift ("R.Sharma", "Rahul S") and stop matching each other.
-enum MasterList { defectSources, defectTypes, staff }
+enum MasterList { defectSources, defectTypes, staff, drivers }
 
 /// Layout slot within the wrapped two-column form grid.
 ///

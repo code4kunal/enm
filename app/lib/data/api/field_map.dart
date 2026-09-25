@@ -39,6 +39,7 @@ abstract final class RegisterFieldMap {
       'action': 'rectification_action',
       'mechanic': 'mechanic',
       'supervisor': 'supervisor',
+      'driver': 'driver_id',
     },
     'breakdown': <String, String>{
       'bus': 'bus_no',

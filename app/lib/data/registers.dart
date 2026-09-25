@@ -163,6 +163,14 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'Action taken',
       ),
       FieldDef(
+        key: 'driver',
+        label: 'Driver',
+        type: FieldType.select,
+        optionsFrom: MasterList.drivers,
+        master: true,
+        width: FieldWidth.half,
+      ),
+      FieldDef(
         key: 'mechanic',
         label: 'Name of the Mechanic',
         type: FieldType.select,
@@ -209,9 +217,10 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
       ),
       FieldDef(
         key: 'driver',
-        label: 'Driver ID',
-        type: FieldType.text,
-        placeholder: 'e.g. DRV-2231',
+        label: 'Driver',
+        type: FieldType.select,
+        optionsFrom: MasterList.drivers,
+        master: true,
         width: FieldWidth.third,
       ),
       FieldDef(

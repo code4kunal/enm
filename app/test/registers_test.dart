@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:transvolt_em/data/api/field_map.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/models/register.dart';
 
@@ -96,5 +97,21 @@ void main() {
   test('registerById returns null for an unknown id', () {
     expect(registerById('nope'), isNull);
     expect(() => requireRegister('nope'), throwsArgumentError);
+  });
+
+  test('Breakdown and Driver Complaint pick a driver from the master list', () {
+    for (final registerId in <String>['breakdown', 'complaint']) {
+      final field = requireRegister(registerId).field('driver');
+      expect(field, isNotNull, reason: registerId);
+      expect(field!.type, FieldType.select, reason: registerId);
+      expect(field.optionsFrom, MasterList.drivers, reason: registerId);
+    }
+  });
+
+  test('driver field posts under driver_id for both registers', () {
+    for (final registerId in <String>['breakdown', 'complaint']) {
+      final wire = RegisterFieldMap.toWire(registerId, <String, String>{'driver': 'DRV-1001'});
+      expect(wire['driver_id'], 'DRV-1001', reason: registerId);
+    }
   });
 }

@@ -1209,6 +1209,8 @@ class _Field extends StatelessWidget {
         return master.defectTypes;
       case MasterList.staff:
         return master.staff;
+      case MasterList.drivers:
+        return master.drivers;
       case null:
         return const <String>[];
     }

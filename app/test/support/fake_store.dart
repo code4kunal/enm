@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/driver.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/models/site_config.dart';
@@ -42,6 +43,7 @@ class FakeStore {
   final List<MasterListItem> defectSources = <MasterListItem>[];
   final List<MasterListItem> defectTypes = <MasterListItem>[];
   final List<SparePart> spareParts = <SparePart>[];
+  final List<Driver> drivers = <Driver>[];
   final Map<String, SiteConfig> configs = <String, SiteConfig>{};
   final List<ImportProfile> profiles = <ImportProfile>[];
   final List<ImportRun> runs = <ImportRun>[];

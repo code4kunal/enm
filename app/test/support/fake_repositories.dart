@@ -1,4 +1,5 @@
 import 'package:transvolt_em/models/app_user.dart';
+import 'package:transvolt_em/models/driver.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/models/spare_part.dart';
@@ -107,6 +108,28 @@ class FakeMasterDataRepository implements MasterDataRepository {
           .where((u) => u.active && u.role == UserRole.executive) // or filter appropriately
           .map((u) => u.name)
           .toList();
+
+  @override
+  Future<List<String>> drivers({required String siteCode}) async {
+    await Future<void>.delayed(_latency);
+    return _store.drivers.map((d) => d.driverCode).toList();
+  }
+
+  @override
+  Future<Driver> createDriver({
+    required String siteCode,
+    required String driverCode,
+    required String name,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final normalized = driverCode.trim().toUpperCase();
+    if (_store.drivers.any((d) => d.driverCode == normalized)) {
+      throw ApiException('"$normalized" already exists');
+    }
+    final driver = Driver(id: _store.newId(), driverCode: normalized, name: name.trim());
+    _store.drivers.add(driver);
+    return driver;
+  }
 
   @override
   Future<List<MasterListItem>> masterList(MasterListKind kind) async {

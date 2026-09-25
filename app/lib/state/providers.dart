@@ -216,6 +216,7 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     safe(() => repo.technicianStaff(siteName: site, siteId: siteOpsSiteId)),
     safe(() => repo.supervisorStaff(siteName: site, siteId: siteOpsSiteId)),
     safe(() => repo.mechanicStaff(siteName: site, siteId: siteOpsSiteId)),
+    safe(() => repo.drivers(siteCode: site)),
   ]);
 
   return MasterData(
@@ -228,6 +229,7 @@ final masterDataProvider = FutureProvider<MasterData>((ref) async {
     technicianStaff: results[5],
     supervisorStaff: results[6],
     mechanicStaff: results[7],
+    drivers: results[8],
   );
 });
 
