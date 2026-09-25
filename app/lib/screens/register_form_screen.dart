@@ -751,10 +751,30 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
     super.dispose();
   }
 
+  /// The entry's own echo of every selected attendee's name (`user_id|name`,
+  /// records joined by `;;` -- see field_map.dart's `attendees` handling),
+  /// keyed by id. staffDirectoryProvider is active-rows-only, so this is the
+  /// only source left for someone who's since been deactivated.
+  Map<String, String> _echoedAttendeeNames() {
+    final raw = widget.values['attendeeLabels'];
+    if (raw == null || raw.isEmpty) return const <String, String>{};
+    final out = <String, String>{};
+    for (final record in raw.split(';;')) {
+      final fields = record.split('|');
+      if (fields.length != 2) continue;
+      out[fields[0]] = fields[1];
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final site = ref.watch(sessionProvider.select((s) => s.site));
     final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const <StaffMember>[];
+    final nameById = <String, String>{
+      ..._echoedAttendeeNames(),
+      for (final s in staff) s.id: s.name,
+    };
     final searchKey = (site: site, register: _registerFilter, q: _query);
     final results = ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
         const <TicketSearchResult>[];
@@ -849,21 +869,13 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
           const SizedBox(height: 16),
           const FieldLabel(label: 'Attending mechanic(s)'),
           const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              for (final s in staff)
-                FilterChip(
-                  label: Text(s.name),
-                  selected: selectedIds.contains(s.id),
-                  onSelected: (picked) => setState(() {
-                    final next = Set<String>.of(selectedIds);
-                    picked ? next.add(s.id) : next.remove(s.id);
-                    widget.onSet('attendeeUserIds', next.join(','));
-                  }),
-                ),
-            ],
+          AppMultiSelect(
+            values: selectedIds.toList(),
+            options: staff.map((s) => s.id).toList(),
+            optionLabel: (id) => nameById[id] ?? id,
+            placeholder: 'Search mechanics…',
+            emptyHint: 'No staff loaded',
+            onChanged: (ids) => widget.onSet('attendeeUserIds', ids.join(',')),
           ),
           if (hasTicket) ...<Widget>[
             const SizedBox(height: 16),

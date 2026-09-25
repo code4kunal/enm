@@ -466,6 +466,7 @@ class AppMultiSelect extends StatefulWidget {
     required this.onChanged,
     this.placeholder = 'Search and select…',
     this.emptyHint = 'No options loaded',
+    this.optionLabel,
   });
 
   final List<String> values;
@@ -473,6 +474,13 @@ class AppMultiSelect extends StatefulWidget {
   final ValueChanged<List<String>> onChanged;
   final String placeholder;
   final String emptyHint;
+
+  /// [values]/[options] stay id-based (what the form actually stores and
+  /// what the search matches against as a fallback) — this only changes
+  /// what's *displayed* for each id, for callers like staff pickers where
+  /// the id isn't the name. Omit it when the option string already is the
+  /// display value (bus registrations, work types, ...).
+  final String Function(String option)? optionLabel;
 
   @override
   State<AppMultiSelect> createState() => _AppMultiSelectState();
@@ -487,13 +495,15 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
     super.dispose();
   }
 
+  String _label(String option) => widget.optionLabel?.call(option) ?? option;
+
   List<String> get _filtered {
     final needle = _query.text.trim().toLowerCase();
     final pool = widget.options
         .where((o) => !widget.values.contains(o))
         .toList();
     if (needle.isEmpty) return pool;
-    return pool.where((o) => o.toLowerCase().contains(needle)).toList();
+    return pool.where((o) => _label(o).toLowerCase().contains(needle)).toList();
   }
 
   void _toggle(String name) {
@@ -523,7 +533,7 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
               children: <Widget>[
                 for (final v in widget.values)
                   InputChip(
-                    label: Text(v, style: AppText.sans(size: 13)),
+                    label: Text(_label(v), style: AppText.sans(size: 13)),
                     onDeleted: () => _toggle(v),
                     backgroundColor: T.greenTint,
                     deleteIconColor: T.greenInk,
@@ -579,7 +589,7 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
                       final o = filtered[i];
                       return ListTile(
                         dense: true,
-                        title: Text(o, style: AppText.input),
+                        title: Text(_label(o), style: AppText.input),
                         onTap: () {
                           _toggle(o);
                           _query.clear();

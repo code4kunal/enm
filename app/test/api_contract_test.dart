@@ -250,6 +250,18 @@ void main() {
       expect(back['attendeeUserIds'], 'u1,u2');
     });
 
+    test('attendee labels round-trip so a deactivated staff member still renders', () {
+      // staffDirectoryProvider is active-rows-only, so a deactivated
+      // attendee's name can only come from the entry's own echo -- same
+      // reasoning as sparePartLabels.
+      final back = RegisterFieldMap.fromWire('work', <String, dynamic>{
+        'attendees': <dynamic>[
+          <String, dynamic>{'user_id': 'u1', 'name': 'Ravi Kumar'},
+        ],
+      });
+      expect(back['attendeeLabels'], 'u1|Ravi Kumar');
+    });
+
     test('employee is no longer a work-done field-map key', () {
       final wire = RegisterFieldMap.toWire('work', <String, String>{'employee': 'X'});
       expect(wire.containsKey('employee'), isFalse);

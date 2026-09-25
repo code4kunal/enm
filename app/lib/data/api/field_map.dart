@@ -146,10 +146,16 @@ abstract final class RegisterFieldMap {
 
     for (final entry in data.entries) {
       if (registerId == 'work' && entry.key == 'attendees') {
-        final ids = (entry.value as List<dynamic>? ?? <dynamic>[])
-            .map((a) => (a as Map<String, dynamic>)['user_id'] as String)
-            .join(',');
-        out['attendeeUserIds'] = ids;
+        final rows = (entry.value as List<dynamic>? ?? <dynamic>[])
+            .map((a) => a as Map<String, dynamic>)
+            .toList();
+        out['attendeeUserIds'] = rows.map((a) => a['user_id'] as String).join(',');
+        // staffDirectoryProvider is active-rows-only, so a deactivated
+        // attendee's name would otherwise vanish from the form -- the
+        // entry's own echo is the only place it survives. Same pattern as
+        // sparePartLabels below.
+        out['attendeeLabels'] =
+            rows.map((a) => '${a['user_id']}|${a['name']}').join(';;');
         continue;
       }
       if (registerId == 'work' && entry.key == 'spare_parts') {
