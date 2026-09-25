@@ -62,9 +62,17 @@ async def create_ticket_for_entry(
 
 async def create_ticket_for_inspection_result(
     session: AsyncSession, *, result: InspectionResult, creator: User
-) -> Ticket:
+) -> Ticket | None:
     """Automatic — called for every `not_ok` result when an inspection is
-    recorded. One ticket per failed check line, not per inspection."""
+    recorded. One ticket per failed check line, not per inspection.
+
+    Returns `None`, rather than raising, when the work type's code isn't one
+    of the fixed ticketable ones (D.I / 10 DAYS SERVICE / P.M) — a master-data
+    rename can move a code out of that set at any time (`is_inspection` stays
+    true), and the recorded failure is real regardless; it just can't be
+    turned into a ticket automatically. The caller (`record_inspection`) must
+    not let one unmapped code abort the whole inspection.
+    """
     existing = await session.scalar(
         select(Ticket).where(Ticket.source_inspection_result_id == result.id)
     )
@@ -73,7 +81,7 @@ async def create_ticket_for_inspection_result(
     work_type_code = result.inspection.work_type.code
     source_kind = _INSPECTION_WORK_TYPE_SOURCE_KIND.get(work_type_code)
     if source_kind is None:
-        raise Conflict(f"{work_type_code} is not a ticketable inspection type")
+        return None
     ticket = Ticket(
         source_inspection_result=result,
         source_kind=source_kind,

@@ -161,6 +161,47 @@ async def test_an_inspection_records_a_result_per_line(
     assert failed["remark"] == "RHS blade worn"
 
 
+async def test_not_ok_on_a_renamed_inspection_type_still_records(
+    client: AsyncClient,
+) -> None:
+    """A manager can rename a work type's code via PUT /master/work-types/{id}
+    while is_inspection stays true. create_ticket_for_inspection_result maps
+    tickets by a fixed code whitelist (D.I / 10 DAYS SERVICE / P.M), so a
+    renamed code falls outside it -- recording a failed check on one must
+    still succeed (no ticket, degrade rather than 500 the whole inspection)."""
+    ids = await _work_types()
+    h = await auth_headers(client)
+    saved = await _save_checklist(client, h, ids["D.I"])
+    items = saved.json()["items"]
+
+    renamed = await client.put(
+        f"/master/work-types/{ids['D.I']}", json={"code": "D.I-2"}, headers=h
+    )
+    assert renamed.status_code == 200, renamed.text
+
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {"item_id": items[0]["id"], "result": "ok"},
+                {
+                    "item_id": items[1]["id"],
+                    "result": "not_ok",
+                    "remark": "RHS blade worn",
+                },
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    failed = next(x for x in r.json()["results"] if x["result"] == "not_ok")
+    assert failed["ticket_id"] is None
+    assert failed["ticket_status"] is None
+
+
 async def test_every_required_line_must_be_answered(client: AsyncClient) -> None:
     ids = await _work_types()
     h = await auth_headers(client)
