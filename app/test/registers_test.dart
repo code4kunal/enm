@@ -26,7 +26,10 @@ void main() {
     expect(registerById('pm'), isNull);
   });
 
-  test('Daily Work Done columns match the paper register', () {
+  test(
+      'Daily Work Done columns match the paper register, plus Attended Time '
+      '(a deliberate digital-only addition -- the paper register never had '
+      'an explicit attend-moment column, only "Attended Details" text)', () {
     expect(
       requireRegister('work').fields.map((f) => f.label).toList(),
       <String>[
@@ -37,6 +40,7 @@ void main() {
         'Source of Defect',
         'Type of Defect',
         'Attended Details',
+        'Attended Time',
         'Supervisor (Floor)',
       ],
     );

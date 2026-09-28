@@ -250,6 +250,20 @@ void main() {
       expect(back['attendeeUserIds'], 'u1,u2');
     });
 
+    test('work done attended_time round-trips, mirroring completion_time', () {
+      final wire = RegisterFieldMap.toWire(
+        'work',
+        <String, String>{'attendedTime': '11:05'},
+      );
+      expect(wire['attended_time'], '11:05');
+
+      final back = RegisterFieldMap.fromWire(
+        'work',
+        <String, dynamic>{'attended_time': '11:05'},
+      );
+      expect(back['attendedTime'], '11:05');
+    });
+
     test('attendee labels round-trip so a deactivated staff member still renders', () {
       // staffDirectoryProvider is active-rows-only, so a deactivated
       // attendee's name can only come from the entry's own echo -- same

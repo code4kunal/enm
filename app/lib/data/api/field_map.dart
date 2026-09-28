@@ -18,6 +18,7 @@ abstract final class RegisterFieldMap {
       'source': 'defect_source',
       'defectType': 'defect_type',
       'attended': 'attended_details',
+      'attendedTime': 'attended_time',
       'supervisor': 'supervisor',
       'ticketId': 'ticket_id',
       'completesTicket': 'completes_ticket',

@@ -61,6 +61,12 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         placeholder: 'What was done to rectify',
       ),
       FieldDef(
+        key: 'attendedTime',
+        label: 'Attended Time',
+        type: FieldType.time,
+        width: FieldWidth.half,
+      ),
+      FieldDef(
         key: 'supervisor',
         label: 'Supervisor (Floor)',
         type: FieldType.select,
