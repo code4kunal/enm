@@ -199,7 +199,7 @@ void main() {
       );
       expect(created.photoUrl, isNull);
 
-      final url = await notifier.attachPhoto(
+      final photos = await notifier.attachPhoto(
         entryId: created.id,
         filename: 'leak.jpg',
         bytes: <int>[1, 2, 3],
@@ -207,7 +207,7 @@ void main() {
 
       final entries = container.read(entriesProvider).requireValue;
       final updated = entries.firstWhere((e) => e.id == created.id);
-      expect(updated.photoUrl, url);
+      expect(updated.photoUrl, photos.first.url);
       expect(updated.photoUrl, isNotNull);
     });
 
@@ -218,13 +218,13 @@ void main() {
         registerId: 'coolant',
         data: <String, String>{'bus': 'MH40LY1721', 'date': Dates.today()},
       );
-      await notifier.attachPhoto(
+      final photos = await notifier.attachPhoto(
         entryId: created.id,
         filename: 'leak.jpg',
         bytes: <int>[1, 2, 3],
       );
 
-      await notifier.removePhoto(created.id);
+      await notifier.removePhoto(created.id, photos.first.id);
 
       final entries = container.read(entriesProvider).requireValue;
       expect(entries.firstWhere((e) => e.id == created.id).photoUrl, isNull);

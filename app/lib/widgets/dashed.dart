@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../models/entry_photo.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
@@ -202,6 +203,148 @@ class _PhotoAttachButtonState extends State<PhotoAttachButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The multi-photo gallery for Breakdown/Driver Complaint/Work Done —
+/// [PhotoAttachButton] generalized from a single on/off toggle to a list.
+/// Every other register keeps using [PhotoAttachButton] itself, unchanged.
+class PhotoGalleryPicker extends StatefulWidget {
+  const PhotoGalleryPicker({
+    super.key,
+    required this.existingPhotos,
+    required this.pendingCount,
+    required this.onAdd,
+    required this.onRemoveExisting,
+    required this.onRemoveNew,
+  });
+
+  final List<EntryPhoto> existingPhotos;
+
+  /// Newly picked, not-yet-uploaded photos already held by the caller — this
+  /// widget only needs the count to render a placeholder tile per one; the
+  /// bytes themselves stay with the form until save.
+  final int pendingCount;
+
+  final void Function(String filename, List<int> bytes) onAdd;
+  final void Function(String photoId) onRemoveExisting;
+  final void Function(int index) onRemoveNew;
+
+  @override
+  State<PhotoGalleryPicker> createState() => _PhotoGalleryPickerState();
+}
+
+class _PhotoGalleryPickerState extends State<PhotoGalleryPicker> {
+  bool _picking = false;
+
+  Future<void> _pick() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+      widget.onAdd(file.name, bytes);
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  Widget _tile({required Widget child, required VoidCallback? onRemove}) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        Container(
+          width: 96,
+          height: 96,
+          padding: const EdgeInsets.all(6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: T.dropzoneFill,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: T.dashed),
+          ),
+          child: child,
+        ),
+        if (onRemove != null)
+          Positioned(
+            top: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: T.secondary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: <Widget>[
+        for (final photo in widget.existingPhotos)
+          _tile(
+            onRemove: () => widget.onRemoveExisting(photo.id),
+            child: Text(
+              photo.url.split('/').last,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.sans(size: 11, color: T.secondary),
+            ),
+          ),
+        for (var i = 0; i < widget.pendingCount; i++)
+          _tile(
+            onRemove: () => widget.onRemoveNew(i),
+            child: Text(
+              'New photo',
+              textAlign: TextAlign.center,
+              style: AppText.sans(
+                size: 11,
+                weight: FontWeight.w600,
+                color: T.greenInk,
+              ),
+            ),
+          ),
+        GestureDetector(
+          onTap: _pick,
+          child: DashedBorder(
+            radius: 10,
+            child: Container(
+              width: 96,
+              height: 96,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(6),
+              child: Text(
+                _picking ? 'Choosing…' : '+ Add photo',
+                textAlign: TextAlign.center,
+                style: AppText.sans(
+                  size: 12.5,
+                  weight: FontWeight.w600,
+                  color: T.secondary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

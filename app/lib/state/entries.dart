@@ -255,27 +255,33 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     ref.invalidate(pendingFilterEntriesProvider);
   }
 
-  Future<String> attachPhoto({
+  Future<List<EntryPhoto>> attachPhoto({
     required String entryId,
     required String filename,
     required List<int> bytes,
   }) async {
-    final url = await ref
+    final photos = await ref
         .read(entryRepositoryProvider)
         .attachPhoto(entryId, filename: filename, bytes: bytes);
     _replaceAll(
       (list) => list
-          .map((e) => e.id == entryId ? e.withPhotoUrl(url) : e)
+          .map((e) => e.id == entryId ? e.withPhotos(photos) : e)
           .toList(),
     );
-    return url;
+    return photos;
   }
 
-  Future<void> removePhoto(String entryId) async {
-    await ref.read(entryRepositoryProvider).removePhoto(entryId);
+  Future<void> removePhoto(String entryId, String photoId) async {
+    await ref.read(entryRepositoryProvider).removePhoto(entryId, photoId);
     _replaceAll(
       (list) => list
-          .map((e) => e.id == entryId ? e.withPhotoUrl(null) : e)
+          .map(
+            (e) => e.id == entryId
+                ? e.withPhotos(
+                    e.photos.where((p) => p.id != photoId).toList(),
+                  )
+                : e,
+          )
           .toList(),
     );
   }

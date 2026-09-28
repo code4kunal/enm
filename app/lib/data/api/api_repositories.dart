@@ -717,23 +717,25 @@ class ApiEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<String> attachPhoto(
+  Future<List<EntryPhoto>> attachPhoto(
     String entryId, {
     required String filename,
     required List<int> bytes,
   }) async {
     final json = await _api.upload(
-      '/entries/$entryId/photo',
+      '/entries/$entryId/photos',
       field: 'photo',
       fileName: filename,
       bytes: Uint8List.fromList(bytes),
     );
-    return (json as Map<String, dynamic>)['photo_url'] as String;
+    return (json as List<dynamic>)
+        .map((p) => EntryPhoto.fromJson(p as Map<String, dynamic>))
+        .toList();
   }
 
   @override
-  Future<void> removePhoto(String entryId) =>
-      _api.delete('/entries/$entryId/photo');
+  Future<void> removePhoto(String entryId, String photoId) =>
+      _api.delete('/entries/$entryId/photos/$photoId');
 
   @override
   Future<List<RegisterEntry>> createCoolantDay({
@@ -772,6 +774,7 @@ RegisterEntry _entryFromWire(Map<String, dynamic> json) {
   return RegisterEntry(
     id: json['id'] as String,
     registerId: registerId,
+    displayId: json['display_id'] as String? ?? '',
     date: json['date'] as String,
     time: (json['entry_time'] as String? ?? '00:00').substring(0, 5),
     site: json['site'] as String,
@@ -788,7 +791,9 @@ RegisterEntry _entryFromWire(Map<String, dynamic> json) {
       'resolved' => EntryStatus.resolved,
       _ => EntryStatus.done,
     },
-    photoUrl: json['photo_url'] as String?,
+    photos: (json['photos'] as List<dynamic>? ?? <dynamic>[])
+        .map((p) => EntryPhoto.fromJson(p as Map<String, dynamic>))
+        .toList(),
     linkedSessions: (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])
         .map((s) => s as Map<String, dynamic>)
         .toList(),

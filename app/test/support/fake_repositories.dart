@@ -184,6 +184,18 @@ class FakeMasterDataRepository implements MasterDataRepository {
 
 // ─── Entries ──────────────────────────────────────────────────────────────
 
+/// Mirrors the server's per-register prefix (see `_ENTRY_DISPLAY_PREFIX` in
+/// `services/entries.py`) closely enough for tests that search/display by
+/// id -- exact numbering doesn't matter here, only that it's prefixed and
+/// distinguishable per register.
+String _displayPrefix(String registerId) => switch (registerId) {
+      'work' => 'WD',
+      'breakdown' => 'BD',
+      'complaint' => 'DC',
+      'coolant' => 'CT',
+      _ => 'PS',
+    };
+
 class FakeEntryRepository implements EntryRepository {
   FakeEntryRepository(this._store);
 
@@ -226,16 +238,20 @@ class FakeEntryRepository implements EntryRepository {
     await Future<void>.delayed(_latency);
     // Mirrors the server's rule: a dropdown value must exist on its master list.
     assertMasterValue(_store, entry);
+    final id = _store.newId();
     final created = RegisterEntry(
-      id: _store.newId(),
+      id: id,
       registerId: entry.registerId,
+      displayId: entry.displayId.isNotEmpty
+          ? entry.displayId
+          : '${_displayPrefix(entry.registerId)}-FAKE-$id',
       date: entry.date,
       time: entry.time,
       site: entry.site,
       enteredBy: entry.enteredBy,
       data: entry.data,
       status: entry.status,
-      photoUrl: entry.photoUrl,
+      photos: entry.photos,
     );
     _store.entries.insert(0, created);
     // A Work Done session that completes a ticket is the only way a
@@ -266,7 +282,7 @@ class FakeEntryRepository implements EntryRepository {
   }
 
   @override
-  Future<String> attachPhoto(
+  Future<List<EntryPhoto>> attachPhoto(
     String entryId, {
     required String filename,
     required List<int> bytes,
@@ -274,17 +290,23 @@ class FakeEntryRepository implements EntryRepository {
     await Future<void>.delayed(_latency);
     final i = _store.entries.indexWhere((e) => e.id == entryId);
     if (i == -1) throw ApiException('Entry $entryId not found');
-    final url = 'fake://photos/$entryId/$filename';
-    _store.entries[i] = _store.entries[i].withPhotoUrl(url);
-    return url;
+    final photo = EntryPhoto(
+      id: _store.newId(),
+      url: 'fake://photos/$entryId/$filename',
+    );
+    final photos = <EntryPhoto>[..._store.entries[i].photos, photo];
+    _store.entries[i] = _store.entries[i].withPhotos(photos);
+    return photos;
   }
 
   @override
-  Future<void> removePhoto(String entryId) async {
+  Future<void> removePhoto(String entryId, String photoId) async {
     await Future<void>.delayed(_latency);
     final i = _store.entries.indexWhere((e) => e.id == entryId);
     if (i == -1) throw ApiException('Entry $entryId not found');
-    _store.entries[i] = _store.entries[i].withPhotoUrl(null);
+    _store.entries[i] = _store.entries[i].withPhotos(
+      _store.entries[i].photos.where((p) => p.id != photoId).toList(),
+    );
   }
 
   @override

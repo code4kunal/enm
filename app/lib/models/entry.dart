@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import 'entry_photo.dart';
+export 'entry_photo.dart';
+
 /// Lifecycle of a register entry. Only breakdown entries are ever [open] or
 /// [resolved]; every other register writes [done] on save.
 enum EntryStatus { open, done, resolved }
@@ -20,12 +23,17 @@ class RegisterEntry {
     required this.enteredBy,
     required this.data,
     this.status = EntryStatus.done,
-    this.photoUrl,
+    this.displayId = '',
+    this.photos = const <EntryPhoto>[],
     this.linkedSessions = const <Map<String, dynamic>>[],
   });
 
   final String id;
   final String registerId;
+
+  /// Human-readable, server-stamped ("BD-2026-000123"). Empty for
+  /// synthetic/test entries that never round-tripped through the API.
+  final String displayId;
 
   /// `yyyy-MM-dd`. Stored as a string so it sorts and compares lexically, the
   /// same way the register period filters work.
@@ -38,8 +46,12 @@ class RegisterEntry {
   final Map<String, String> data;
   final EntryStatus status;
 
-  /// Null when no photo is attached.
-  final String? photoUrl;
+  final List<EntryPhoto> photos;
+
+  /// The single-photo registers' own convenience view — the first (and,
+  /// for them, only) photo, or null if none. Multi-photo registers
+  /// (Breakdown, Driver Complaint, Work Done) use [photos] directly.
+  String? get photoUrl => photos.isEmpty ? null : photos.first.url;
 
   /// Work Done sessions raised against this entry's ticket, breakdown only.
   /// Read-only display data — the server owns the linkage.
@@ -60,31 +72,33 @@ class RegisterEntry {
     return RegisterEntry(
       id: id,
       registerId: registerId,
+      displayId: displayId,
       date: date ?? this.date,
       time: time ?? this.time,
       site: site ?? this.site,
       enteredBy: enteredBy ?? this.enteredBy,
       data: data ?? this.data,
       status: status ?? this.status,
-      photoUrl: photoUrl,
+      photos: photos,
       linkedSessions: linkedSessions,
     );
   }
 
-  /// Separate from [copyWith] because a photo removal must be able to set
-  /// [photoUrl] to null, which [copyWith]'s "null means unchanged" contract
-  /// cannot express.
-  RegisterEntry withPhotoUrl(String? photoUrl) {
+  /// Separate from [copyWith] because the multi-photo endpoints always
+  /// return the full updated list, and that's a different shape than
+  /// "one field changed" — this just swaps it in wholesale.
+  RegisterEntry withPhotos(List<EntryPhoto> photos) {
     return RegisterEntry(
       id: id,
       registerId: registerId,
+      displayId: displayId,
       date: date,
       time: time,
       site: site,
       enteredBy: enteredBy,
       data: data,
       status: status,
-      photoUrl: photoUrl,
+      photos: photos,
       linkedSessions: linkedSessions,
     );
   }
@@ -92,13 +106,20 @@ class RegisterEntry {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'registerId': registerId,
+        'displayId': displayId,
         'date': date,
         'time': time,
         'site': site,
         'enteredBy': enteredBy,
         'data': data,
         'status': status.name,
-        'photoUrl': photoUrl,
+        'photos': photos
+            .map((p) => <String, dynamic>{
+                  'id': p.id,
+                  'url': p.url,
+                  'caption': p.caption,
+                })
+            .toList(),
         'linkedSessions': linkedSessions,
       };
 
@@ -106,6 +127,7 @@ class RegisterEntry {
     return RegisterEntry(
       id: json['id'] as String,
       registerId: json['registerId'] as String,
+      displayId: json['displayId'] as String? ?? '',
       date: json['date'] as String,
       time: json['time'] as String,
       site: json['site'] as String,
@@ -115,7 +137,9 @@ class RegisterEntry {
         (s) => s.name == json['status'],
         orElse: () => EntryStatus.done,
       ),
-      photoUrl: json['photoUrl'] as String?,
+      photos: (json['photos'] as List<dynamic>? ?? <dynamic>[])
+          .map((p) => EntryPhoto.fromJson(Map<String, dynamic>.from(p as Map)))
+          .toList(),
       linkedSessions: (json['linkedSessions'] as List<dynamic>? ?? <dynamic>[])
           .map((s) => Map<String, dynamic>.from(s as Map))
           .toList(),

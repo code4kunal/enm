@@ -65,14 +65,13 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   final Map<String, TextEditingController> _controllers =
       <String, TextEditingController>{};
 
-  /// A newly picked, not-yet-uploaded photo — uploaded on save, once the
-  /// entry it attaches to exists (or already has an id, when editing).
-  List<int>? _photoBytes;
-  String? _photoFilename;
+  /// Newly picked, not-yet-uploaded photos — uploaded on save, once the
+  /// entry they attach to exists (or already has an id, when editing).
+  final List<_PendingPhoto> _newPhotos = <_PendingPhoto>[];
 
-  /// Set when the user removed a photo that was already on the entry being
-  /// edited; the removal itself is sent on save, same as an attach.
-  bool _photoRemoved = false;
+  /// Existing photo ids the user removed — the removal itself is sent on
+  /// save, same as an attach.
+  final Set<String> _removedPhotoIds = <String>{};
 
   bool _saving = false;
   bool _initialised = false;
@@ -131,20 +130,33 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
   static bool _isTextBacked(FieldType type) =>
       type == FieldType.text || type == FieldType.area || type == FieldType.number;
 
-  bool get _hasPhoto =>
-      _photoBytes != null || (!_photoRemoved && _editing?.photoUrl != null);
+  bool get _hasPhoto => _newPhotos.isNotEmpty || _remainingExistingPhotos.isNotEmpty;
+
+  List<EntryPhoto> get _remainingExistingPhotos => (_editing?.photos ?? const <EntryPhoto>[])
+      .where((p) => !_removedPhotoIds.contains(p.id))
+      .toList();
 
   void _onAttachPhoto(String filename, List<int> bytes) => setState(() {
-        _photoBytes = bytes;
-        _photoFilename = filename;
-        _photoRemoved = false;
+        _newPhotos.add(_PendingPhoto(filename: filename, bytes: bytes));
       });
 
+  /// Single-photo registers only: [PhotoAttachButton] toggles a single
+  /// on/off state, so "remove" always means "clear whichever one photo is
+  /// currently shown" — an existing one if there's no unsaved pick, else
+  /// the unsaved pick itself.
   void _onRemovePhoto() => setState(() {
-        _photoBytes = null;
-        _photoFilename = null;
-        _photoRemoved = true;
+        if (_newPhotos.isNotEmpty) {
+          _newPhotos.removeLast();
+        } else {
+          final existing = _remainingExistingPhotos;
+          if (existing.isNotEmpty) _removedPhotoIds.add(existing.first.id);
+        }
       });
+
+  void _onRemoveExistingPhoto(String photoId) =>
+      setState(() => _removedPhotoIds.add(photoId));
+
+  void _onRemoveNewPhoto(int index) => setState(() => _newPhotos.removeAt(index));
 
   void _set(String key, String value) => _values[key] = value;
 
@@ -230,26 +242,26 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
     // A photo pick/remove is a second, independent action on the now-saved
     // entry — same reasoning as the unit fit below: its failure must not
     // read as the entry save (already done) having failed.
-    final photoBytes = _photoBytes;
-    if (photoBytes != null) {
+    for (final photo in _newPhotos) {
       try {
         await entries.attachPhoto(
           entryId: saved.id,
-          filename: _photoFilename ?? 'photo.jpg',
-          bytes: photoBytes,
+          filename: photo.filename,
+          bytes: photo.bytes,
         );
       } catch (_) {
         ref
             .read(toastProvider.notifier)
-            .show('Entry saved, but the photo could not be attached');
+            .show('Entry saved, but a photo could not be attached');
       }
-    } else if (_photoRemoved && _editing?.photoUrl != null) {
+    }
+    for (final photoId in _removedPhotoIds) {
       try {
-        await entries.removePhoto(saved.id);
+        await entries.removePhoto(saved.id, photoId);
       } catch (_) {
         ref
             .read(toastProvider.notifier)
-            .show('Entry saved, but the photo could not be removed');
+            .show('Entry saved, but a photo could not be removed');
       }
     }
 
@@ -464,6 +476,10 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   photoAttached: _hasPhoto,
                   onAttachPhoto: _onAttachPhoto,
                   onRemovePhoto: _onRemovePhoto,
+                  existingPhotos: _remainingExistingPhotos,
+                  newPhotoCount: _newPhotos.length,
+                  onRemoveExistingPhoto: _onRemoveExistingPhoto,
+                  onRemoveNewPhoto: _onRemoveNewPhoto,
                   readOnly: widget.readOnly,
                 ),
               ),
@@ -537,6 +553,13 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
       ),
     );
   }
+}
+
+/// One newly picked, not-yet-uploaded photo.
+class _PendingPhoto {
+  const _PendingPhoto({required this.filename, required this.bytes});
+  final String filename;
+  final List<int> bytes;
 }
 
 /// One unfit-yet component pick in the Unit section. Its own controllers, so
@@ -1141,6 +1164,10 @@ class _FieldGrid extends StatelessWidget {
     required this.photoAttached,
     required this.onAttachPhoto,
     required this.onRemovePhoto,
+    required this.existingPhotos,
+    required this.newPhotoCount,
+    required this.onRemoveExistingPhoto,
+    required this.onRemoveNewPhoto,
     required this.readOnly,
   });
 
@@ -1159,7 +1186,18 @@ class _FieldGrid extends StatelessWidget {
   final bool photoAttached;
   final void Function(String filename, List<int> bytes) onAttachPhoto;
   final VoidCallback onRemovePhoto;
+
+  /// Only used by the three multi-photo registers (Breakdown, Driver
+  /// Complaint, Work Done) — every other register keeps using
+  /// [PhotoAttachButton] via [photoAttached]/[onAttachPhoto]/[onRemovePhoto]
+  /// above, unchanged.
+  final List<EntryPhoto> existingPhotos;
+  final int newPhotoCount;
+  final void Function(String photoId) onRemoveExistingPhoto;
+  final void Function(int index) onRemoveNewPhoto;
   final bool readOnly;
+
+  static const _galleryRegisters = <String>{'breakdown', 'complaint', 'work'};
 
   @override
   Widget build(BuildContext context) {
@@ -1207,27 +1245,30 @@ class _FieldGrid extends StatelessWidget {
               ),
             SizedBox(
               width: total,
-              child: readOnly
-                  ? AbsorbPointer(
-                      child: Opacity(
-                        opacity: 0.7,
-                        child: PhotoAttachButton(
-                          attached: photoAttached,
-                          onAttach: onAttachPhoto,
-                          onRemove: onRemovePhoto,
-                        ),
-                      ),
-                    )
-                  : PhotoAttachButton(
-                      attached: photoAttached,
-                      onAttach: onAttachPhoto,
-                      onRemove: onRemovePhoto,
-                    ),
+              child: _buildPhotoPicker(),
             ),
           ],
         );
       },
     );
+  }
+
+  Widget _buildPhotoPicker() {
+    final picker = _galleryRegisters.contains(register.id)
+        ? PhotoGalleryPicker(
+            existingPhotos: existingPhotos,
+            pendingCount: newPhotoCount,
+            onAdd: onAttachPhoto,
+            onRemoveExisting: onRemoveExistingPhoto,
+            onRemoveNew: onRemoveNewPhoto,
+          )
+        : PhotoAttachButton(
+            attached: photoAttached,
+            onAttach: onAttachPhoto,
+            onRemove: onRemovePhoto,
+          );
+    if (!readOnly) return picker;
+    return AbsorbPointer(child: Opacity(opacity: 0.7, child: picker));
   }
 }
 

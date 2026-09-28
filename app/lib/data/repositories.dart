@@ -652,16 +652,16 @@ abstract interface class EntryRepository {
 
   Future<RegisterEntry> updateEntry(RegisterEntry entry);
 
-  /// Uploads (replacing any existing one) the entry's photo. Returns the
-  /// stored photo's URL.
-  Future<String> attachPhoto(
+  /// Adds a photo (never replaces — an entry may hold several). Returns the
+  /// entry's full updated photo list.
+  Future<List<EntryPhoto>> attachPhoto(
     String entryId, {
     required String filename,
     required List<int> bytes,
   });
 
-  /// Clears whatever photo the entry has, if any.
-  Future<void> removePhoto(String entryId);
+  /// Removes exactly the named photo, leaving any others.
+  Future<void> removePhoto(String entryId, String photoId);
 
   /// Coolant Topping's day-based entry: one date, one submitting supervisor,
   /// every bus in one request. Each row is `{vehicle_id, bcs_litres?,
