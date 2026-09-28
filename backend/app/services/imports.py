@@ -941,10 +941,14 @@ async def _commit_register(
         entry.source_fingerprint = mark
         entry.import_run_id = run_id
         already.add(mark)
-        # A 2024 breakdown must not light up today's open-breakdown banner.
-        if register is Register.breakdown:
+        # A 2024 breakdown/complaint must not light up today's open-ticket
+        # banner -- both registers now auto-open a ticket at creation
+        # (services/tickets.create_ticket_for_entry), which imports never
+        # calls, so leaving status=open here would strand a ticket-shaped
+        # entry with no actual ticket.
+        if register in (Register.breakdown, Register.driver_complaint):
             entry.status = EntryStatus.resolved
-            if entry.breakdown is not None:
+            if register is Register.breakdown and entry.breakdown is not None:
                 entry.breakdown.resolved_at = datetime.now(UTC)
         await session.flush()
 

@@ -52,6 +52,7 @@ class Ticket(Base):
         nullable=True,
         unique=True,
     )
+    display_id: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     source_kind: Mapped[TicketSourceKind] = mapped_column(
         Enum(
             TicketSourceKind,

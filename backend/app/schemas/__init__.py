@@ -4,8 +4,8 @@ from app.schemas.entry import (
     REGISTER_DATA_SCHEMAS,
     EntryCreate,
     EntryOut,
+    EntryPhotoOut,
     EntryUpdate,
-    PhotoOut,
     SummaryOut,
 )
 from app.schemas.master import (
@@ -74,6 +74,7 @@ __all__ = [
     "DeviceTokenOut",
     "EntryCreate",
     "EntryOut",
+    "EntryPhotoOut",
     "EntryUpdate",
     "ImportCommitIn",
     "ImportPreviewOut",
@@ -95,7 +96,6 @@ __all__ = [
     "Ok",
     "Page",
     "PageParams",
-    "PhotoOut",
     "RefreshIn",
     "ResetPasswordIn",
     "RowErrorOut",

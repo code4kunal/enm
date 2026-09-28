@@ -21,12 +21,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TZDateTime, created_at_col, new_uuid
+from app.models.entry_photo import EntryPhoto
 from app.models.enums import (
     ENTRY_STATUS_ENUM,
+    LOCATION_SOURCE_ENUM,
     REGISTER_ENUM,
     SHIFT_ENUM,
     UNIT_STATUS_ENUM,
     EntryStatus,
+    LocationSource,
     Register,
     Shift,
     UnitStatus,
@@ -142,8 +145,7 @@ class Entry(Base):
         ),
         nullable=True,
     )
-    photo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    display_id: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     # denormalized haystack for `q` search; GIN trgm indexed in migration
     search_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
@@ -177,6 +179,9 @@ class Entry(Base):
         back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
         uselist=False,
     )
+    photos: Mapped[list[EntryPhoto]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EntryPhoto.created_at",
+    )
 
     @property
     def detail(
@@ -201,6 +206,10 @@ class WorkDoneEntry(Base):
         Integer, ForeignKey("defect_types.id", ondelete="RESTRICT"), nullable=True
     )
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Explicit, mirrors completion_time -- without it, mark_attended() falls
+    # back to the session's own submission moment (_session_moment), which
+    # is often wrong for a backdated entry.
+    attended_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     # Floor supervisor who signed the job off. A name, not an FK: the
     # supervisor of a 2024 entry must still read correctly after they leave.
     supervisor: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -290,6 +299,16 @@ class DriverComplaintEntry(Base):
     driver_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("drivers.id", ondelete="SET NULL"), nullable=True
     )
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    location_source: Mapped[LocationSource | None] = mapped_column(
+        Enum(
+            LocationSource,
+            name=LOCATION_SOURCE_ENUM,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=True,
+    )
 
     entry: Mapped[Entry] = relationship(back_populates="driver_complaint")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")
@@ -329,6 +348,19 @@ class BreakdownEntry(Base):
     )
     # set when the SLA nudge has fired, so it fires at most once per breakdown
     sla_notified_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    # Additive to the free-text location/route above -- those describe
+    # *what* the location is ("Depot A -> Andheri"), these capture *where*,
+    # precisely.
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    location_source: Mapped[LocationSource | None] = mapped_column(
+        Enum(
+            LocationSource,
+            name=LOCATION_SOURCE_ENUM,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=True,
+    )
 
     entry: Mapped[Entry] = relationship(back_populates="breakdown")
     defect_type: Mapped[DefectType | None] = relationship(lazy="joined")

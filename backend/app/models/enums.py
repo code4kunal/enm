@@ -57,6 +57,12 @@ class TicketStatus(StrEnum):
     completed = "completed"
 
 
+class LocationSource(StrEnum):
+    gps = "gps"
+    map = "map"
+    manual = "manual"
+
+
 class TicketSourceKind(StrEnum):
     breakdown = "breakdown"
     coolant = "coolant"
@@ -238,3 +244,4 @@ PLATFORM_ENUM = "platform_enum"
 NOTIFICATION_TYPE_ENUM = "notification_type_enum"
 TICKET_STATUS_ENUM = "ticket_status_enum"
 TICKET_SOURCE_KIND_ENUM = "ticket_source_kind_enum"
+LOCATION_SOURCE_ENUM = "location_source_enum"

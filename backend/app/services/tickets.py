@@ -13,6 +13,17 @@ from app.models.master import Vehicle
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.services import notifications
+from app.services.id_counters import allocate_display_id
+
+_TICKET_DISPLAY_PREFIX: dict[TicketSourceKind, str] = {
+    TicketSourceKind.breakdown: "BD",
+    TicketSourceKind.driver_complaint: "DC",
+    TicketSourceKind.coolant: "CT",
+    TicketSourceKind.daily_inspection: "DI",
+    TicketSourceKind.ten_day_inspection: "TD",
+    TicketSourceKind.pm_docking: "PM",
+    TicketSourceKind.pm_schedule: "PS",
+}
 
 #: Which register types may ever have a ticket automatically or via "Raise
 #: ticket". PM/Docking's ticket path now runs through InspectionEntry (see
@@ -51,9 +62,16 @@ async def create_ticket_for_entry(
     # Assigning the relationship (not just the FK id) populates it in memory
     # immediately, so a caller can use the returned ticket's source without
     # forcing a lazy load outside an awaited context.
+    source_kind = _REGISTER_SOURCE_KIND[entry.register]
     ticket = Ticket(
         source_entry=entry,
-        source_kind=_REGISTER_SOURCE_KIND[entry.register],
+        source_kind=source_kind,
+        display_id=await allocate_display_id(
+            session,
+            kind=f"ticket:{source_kind.value}",
+            year=entry.entry_date.year,
+            prefix=_TICKET_DISPLAY_PREFIX[source_kind],
+        ),
         created_by_id=creator.id,
     )
     session.add(ticket)
@@ -86,6 +104,12 @@ async def create_ticket_for_inspection_result(
     ticket = Ticket(
         source_inspection_result=result,
         source_kind=source_kind,
+        display_id=await allocate_display_id(
+            session,
+            kind=f"ticket:{source_kind.value}",
+            year=result.inspection.inspected_on.year,
+            prefix=_TICKET_DISPLAY_PREFIX[source_kind],
+        ),
         created_by_id=creator.id,
     )
     session.add(ticket)
@@ -128,11 +152,10 @@ async def search_tickets(
     site_code: str,
     source_kind: TicketSourceKind | None,
     q: str | None,
+    status: str = "open",
 ) -> list[Ticket]:
-    entry_stmt = (
-        select(Ticket)
-        .join(Entry, Entry.id == Ticket.source_entry_id)
-        .where(Entry.site_code == site_code, Ticket.status == TicketStatus.open)
+    entry_stmt = select(Ticket).join(Entry, Entry.id == Ticket.source_entry_id).where(
+        Entry.site_code == site_code
     )
     inspection_stmt = (
         select(Ticket)
@@ -140,15 +163,24 @@ async def search_tickets(
         .join(InspectionEntry, InspectionEntry.id == InspectionResult.inspection_id)
         .join(ChecklistItem, ChecklistItem.id == InspectionResult.item_id)
         .join(Vehicle, Vehicle.id == InspectionEntry.vehicle_id)
-        .where(InspectionEntry.site_code == site_code, Ticket.status == TicketStatus.open)
+        .where(InspectionEntry.site_code == site_code)
     )
+    if status != "all":
+        target = TicketStatus.open if status == "open" else TicketStatus.completed
+        entry_stmt = entry_stmt.where(Ticket.status == target)
+        inspection_stmt = inspection_stmt.where(Ticket.status == target)
     if source_kind is not None:
         entry_stmt = entry_stmt.where(Ticket.source_kind == source_kind)
         inspection_stmt = inspection_stmt.where(Ticket.source_kind == source_kind)
     if q:
         needle = f"%{q.strip().lower()}%"
         entry_stmt = entry_stmt.where(
-            or_(Entry.search_text.like(needle), Ticket.id == q.strip(), Entry.id == q.strip())
+            or_(
+                Entry.search_text.like(needle),
+                Entry.display_id.ilike(needle),
+                Ticket.id == q.strip(),
+                Entry.id == q.strip(),
+            )
         )
         inspection_stmt = inspection_stmt.where(
             or_(

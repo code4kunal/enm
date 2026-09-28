@@ -336,6 +336,37 @@ async def test_backfilled_breakdowns_land_resolved(client: AsyncClient) -> None:
     assert entries[0]["status"] == "resolved"
 
 
+async def test_backfilled_driver_complaints_land_resolved(client: AsyncClient) -> None:
+    """Driver Complaint now auto-opens a ticket at creation, like Breakdown
+    -- an imported (historical) complaint must not land status=open with no
+    backing ticket, mirroring the breakdown backfill immediately above."""
+    h = await auth_headers(client)
+    r = await _preview(
+        client,
+        h,
+        target="driverComplaint",
+        body="Date,Bus,Complaint\n2024-03-04,MH40LY1895,AC not cooling\n",
+        mappings=_mappings(
+            {
+                "date": "Date",
+                "bus": "Bus",
+                "complaint": "Complaint",
+            }
+        ),
+    )
+    assert r.json()["errors"] == [], r.json()
+    await _commit(client, h, r.json()["token"])
+
+    entries = (
+        await client.get(
+            "/entries",
+            params={"site": "MBMT", "register": "driver_complaint"},
+            headers=h,
+        )
+    ).json()["items"]
+    assert entries[0]["status"] == "resolved"
+
+
 async def test_an_xlsx_upload_is_parsed_server_side(client: AsyncClient) -> None:
     h = await auth_headers(client)
     workbook = Workbook()

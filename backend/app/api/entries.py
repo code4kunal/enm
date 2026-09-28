@@ -19,6 +19,7 @@ from app.deps import (
 )
 from app.errors import Conflict, Forbidden, NotFound
 from app.models.entry import Entry
+from app.models.entry_photo import EntryPhoto
 from app.models.enums import AuditAction, EntryStatus, Register
 from app.schemas.common import Page
 from app.schemas.entry import (
@@ -26,8 +27,8 @@ from app.schemas.entry import (
     CoolantDayOut,
     EntryCreate,
     EntryOut,
+    EntryPhotoOut,
     EntryUpdate,
-    PhotoOut,
     SummaryOut,
 )
 from app.services import audit, notifications, storage
@@ -163,8 +164,9 @@ async def create_entry(
         object_id=entry.id,
         after=svc.audit_snapshot(entry),
     )
-    if payload.register is Register.breakdown:
+    if payload.register in (Register.breakdown, Register.driver_complaint):
         await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
+    if payload.register is Register.breakdown:
         await notifications.notify_breakdown_opened(session, entry)
     result = svc.serialize_entry(entry)
     await session.commit()
@@ -371,23 +373,24 @@ async def raise_ticket(
     return EntryOut(**result)
 
 
-@router.post("/{entry_id}/photo", response_model=PhotoOut)
+@router.post("/{entry_id}/photos", response_model=list[EntryPhotoOut], status_code=status.HTTP_201_CREATED)
 async def upload_photo(
     entry_id: str,
     user: CurrentUser,
     session: SessionDep,
     photo: Annotated[UploadFile, File()],
-) -> PhotoOut:
+) -> list[EntryPhotoOut]:
     entry = await _load(session, entry_id)
     if not _can_edit(user, entry):
         raise Forbidden("You can only attach photos to your own entries")
 
     content = await photo.read()
     ext = storage.validate_photo(photo.content_type, len(content))
-    old_key = entry.photo_key
     key, url = storage.save_photo(entry.id, content, ext)
 
-    entry.photo_key, entry.photo_url = key, url
+    session.add(
+        EntryPhoto(entry_id=entry.id, storage_key=key, url=url, uploaded_by_id=user.id)
+    )
     entry.updated_at = datetime.now(UTC)
     await audit.record(
         session,
@@ -398,20 +401,28 @@ async def upload_photo(
         after={"photo_url": url},
     )
     await session.commit()
-    storage.delete_photo(old_key)
-    return PhotoOut(photo_url=url)
+    await session.refresh(entry, attribute_names=["photos"])
+    return [EntryPhotoOut(id=p.id, url=p.url, caption=p.caption) for p in entry.photos]
 
 
-@router.delete("/{entry_id}/photo", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/{entry_id}/photos/{photo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_photo(
-    entry_id: str, user: CurrentUser, session: SessionDep
+    entry_id: str, photo_id: str, user: CurrentUser, session: SessionDep
 ) -> None:
     entry = await _load(session, entry_id)
     if not _can_edit(user, entry):
         raise Forbidden("You can only remove photos from your own entries")
 
-    key = entry.photo_key
-    entry.photo_key, entry.photo_url = None, None
+    photo = await session.get(EntryPhoto, photo_id)
+    if photo is None or photo.entry_id != entry_id:
+        raise NotFound("Photo not found")
+
+    key = photo.storage_key
+    await session.delete(photo)
     entry.updated_at = datetime.now(UTC)
     await audit.record(
         session,

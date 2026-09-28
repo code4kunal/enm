@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
-from app.deps import CurrentUser, EntrySite, SessionDep
+from app.deps import CurrentUser, EntrySite, SessionDep, assert_site_access
+from app.errors import NotFound
 from app.models.enums import TicketSourceKind
+from app.models.ticket import Ticket
+from app.schemas.entry import EntryOut, EntryPhotoOut
 from app.schemas.ticket import TicketSearchResult
+from app.services import entries as entries_svc
 from app.services import tickets as svc
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -19,11 +24,17 @@ async def search(
     site: EntrySite,
     source_kind: Annotated[TicketSourceKind | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
+    status: Annotated[str, Query()] = "open",
 ) -> list[TicketSearchResult]:
-    tickets = await svc.search_tickets(session, site_code=site, source_kind=source_kind, q=q)
+    tickets = await svc.search_tickets(
+        session, site_code=site, source_kind=source_kind, q=q, status=status
+    )
     return [
         TicketSearchResult(
             ticket_id=t.id,
+            display_id=(
+                t.source_entry.display_id if t.source_entry is not None else t.display_id
+            ),
             title=svc.ticket_title(t),
             entry_date=svc.ticket_entry_date(t),
             status=t.status.value,
@@ -31,3 +42,45 @@ async def search(
         )
         for t in tickets
     ]
+
+
+class TicketDetailOut(BaseModel):
+    ticket_id: str
+    display_id: str
+    status: str
+    source_entry: EntryOut | None
+    linked_sessions: list[dict[str, Any]] | None
+    photos: list[EntryPhotoOut] = []
+
+
+@router.get("/{ticket_id}", response_model=TicketDetailOut)
+async def get_ticket(
+    ticket_id: str, user: CurrentUser, session: SessionDep
+) -> TicketDetailOut:
+    ticket = await session.get(Ticket, ticket_id)
+    if ticket is None:
+        raise NotFound("Ticket not found")
+    site_code = (
+        ticket.source_entry.site_code
+        if ticket.source_entry is not None
+        else ticket.source_inspection_result.inspection.site_code
+    )
+    assert_site_access(user, site_code)
+    entry_out = None
+    linked_sessions = None
+    if ticket.source_entry is not None:
+        entry_out = EntryOut(**entries_svc.serialize_entry(ticket.source_entry))
+        linked_sessions = await entries_svc.load_linked_sessions(
+            session, ticket.source_entry
+        )
+    display_id = (
+        ticket.source_entry.display_id if ticket.source_entry is not None else ticket.display_id
+    )
+    return TicketDetailOut(
+        ticket_id=ticket.id,
+        display_id=display_id,
+        status=ticket.status.value,
+        source_entry=entry_out,
+        linked_sessions=linked_sessions,
+        photos=entry_out.photos if entry_out is not None else [],
+    )

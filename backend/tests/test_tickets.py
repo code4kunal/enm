@@ -541,6 +541,9 @@ async def _seeded_pm_entry(session) -> Entry:
         bus_id=vehicle.id,
         entry_date=date.today(),
         status=EntryStatus.done,
+        # A real pre-existing row would have gotten one from the migration
+        # backfill (0036) -- this simulates that, same as a legacy row.
+        display_id="PS-2026-000001",
         created_by_id=await _admin_id(session),
     )
     session.add(entry)
@@ -611,6 +614,10 @@ async def test_legacy_pm_schedule_ticket_still_reads(client: AsyncClient) -> Non
         ticket = Ticket(
             source_entry=entry,
             source_kind=TicketSourceKind.pm_schedule,
+            # Simulates what migration 0037's backfill would have given a
+            # real pre-existing ticket -- same reasoning as the entry's
+            # display_id in _seeded_pm_entry above.
+            display_id="PS-2026-000001",
             created_by_id=admin.id,
         )
         session.add(ticket)
@@ -694,3 +701,108 @@ async def test_search_endpoint_accepts_source_kind(client: AsyncClient) -> None:
     body = r.json()
     assert len(body) == 1
     assert body[0]["source_kind"] == "daily_inspection"
+
+
+async def test_ticket_gets_a_display_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.post("/entries", json=breakdown(), headers=h)
+    entry_id = r.json()["id"]
+    async with SessionLocal() as session:
+        ticket = await session.scalar(
+            select(Ticket).where(Ticket.source_entry_id == entry_id)
+        )
+        assert ticket is not None
+        assert ticket.display_id.startswith("BD-")
+
+
+async def test_search_default_excludes_completed(client: AsyncClient) -> None:
+    from tests.test_entries import resolve_via_work_done
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    await resolve_via_work_done(client, h, bd.json()["id"])
+    r = await client.get("/tickets/search", params={"site": "MBMT"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert all(t["status"] == "open" for t in r.json())
+
+
+async def test_search_status_all_includes_completed(client: AsyncClient) -> None:
+    from tests.test_entries import resolve_via_work_done
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    await resolve_via_work_done(client, h, bd.json()["id"])
+    r = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "status": "all", "q": display_id},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()) == 1
+    assert r.json()[0]["status"] == "completed"
+
+
+async def test_search_matches_source_entry_display_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    r = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()) == 1
+    assert r.json()[0]["display_id"] == display_id
+
+
+async def test_get_ticket_detail_returns_source_entry_and_sessions(
+    client: AsyncClient,
+) -> None:
+    from tests.test_entries import resolve_via_work_done
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    display_id = bd.json()["display_id"]
+    await resolve_via_work_done(client, h, bd_id)
+    found = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "status": "all", "q": display_id},
+        headers=h,
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["display_id"] == display_id
+    assert body["source_entry"]["id"] == bd_id
+    assert len(body["linked_sessions"]) == 1
+
+
+async def test_get_ticket_detail_404s_for_unknown_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.get("/tickets/does-not-exist", headers=h)
+    assert r.status_code == 404
+
+
+async def test_get_ticket_detail_404s_for_a_site_the_user_cant_reach(
+    client: AsyncClient,
+) -> None:
+    """TV4102 (supervisor) only reaches MBMT -- a UMT-sourced ticket must
+    404, not 200 with someone else's site's data."""
+    h = await auth_headers(client)
+    payload = breakdown()
+    payload["site"] = "UMT"
+    payload["data"]["bus_no"] = "MH05GX4410"
+    bd = await client.post("/entries", json=payload, headers=h)
+    display_id = bd.json()["display_id"]
+    found = await client.get(
+        "/tickets/search", params={"site": "UMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    narrow = await auth_headers(client, "TV4102")
+    r = await client.get(f"/tickets/{ticket_id}", headers=narrow)
+    # Matches GET /entries/{id}'s existing convention (assert_site_access
+    # raises Forbidden, not NotFound) -- not the 404 my plan assumed.
+    assert r.status_code == 403

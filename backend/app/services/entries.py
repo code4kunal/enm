@@ -25,11 +25,12 @@ from app.models.entry import (
     WorkDoneEntry,
     WorkDoneSparePart,
 )
-from app.models.enums import EntryStatus, Register, TicketStatus
+from app.models.enums import EntryStatus, LocationSource, Register, TicketStatus
 from app.models.master import Vehicle
 from app.models.ticket import Ticket
 from app.models.user import User, UserSiteAccess
 from app.schemas.entry import REGISTER_DATA_SCHEMAS, CoolantDayRow
+from app.services.id_counters import allocate_display_id
 from app.services.masters import (
     resolve_defect_source,
     resolve_defect_type,
@@ -40,6 +41,14 @@ from app.services.masters import (
 from app.services.tickets import TICKETABLE_REGISTERS, complete_ticket, mark_attended
 
 IST = ZoneInfo(settings.timezone)
+
+_ENTRY_DISPLAY_PREFIX = {
+    Register.work_done: "WD",
+    Register.breakdown: "BD",
+    Register.driver_complaint: "DC",
+    Register.coolant: "CT",
+    Register.pm_schedule: "PS",
+}
 
 
 def _now_ist() -> datetime:
@@ -249,6 +258,7 @@ async def _build_detail(
             defect_source=src,
             defect_type=typ,
             attended_details=data.attended_details,
+            attended_time=data.attended_time,
             supervisor=data.supervisor,
             ticket_id=ticket.id if ticket else None,
             completes_ticket=data.completes_ticket,
@@ -281,6 +291,11 @@ async def _build_detail(
             mechanic=data.mechanic,
             supervisor=data.supervisor,
             driver=driver,
+            latitude=data.latitude,
+            longitude=data.longitude,
+            location_source=(
+                LocationSource(data.location_source) if data.location_source else None
+            ),
         )
         return row, [
             data.complaint,
@@ -303,6 +318,11 @@ async def _build_detail(
             attended_details=data.attended_details,
             remarks=data.remarks,
             supervisor=data.supervisor,
+            latitude=data.latitude,
+            longitude=data.longitude,
+            location_source=(
+                LocationSource(data.location_source) if data.location_source else None
+            ),
         )
         return row, [
             data.complaint,
@@ -359,7 +379,7 @@ async def _apply_ticket_side_effects(
     # The mechanic reached the bus when this session started, so the session's
     # own date+time is the attend moment — same derivation as `completed_at`
     # below, which takes the date and the form's completion time.
-    mark_attended(ticket, _session_moment(entry))
+    mark_attended(ticket, _session_moment(entry, detail.attended_time))
     if detail.completes_ticket and ticket.status is not TicketStatus.completed:
         completed_at = _session_moment(entry, detail.completion_time)
         await complete_ticket(session, ticket=ticket, completed_by=actor, completed_at=completed_at)
@@ -452,12 +472,29 @@ async def create_entry(
         entry_date=entry_date,
         entry_time=entry_time or _now_ist().time().replace(microsecond=0),
         status=(
-            EntryStatus.open if register is Register.breakdown else EntryStatus.done
+            EntryStatus.open
+            if register in (Register.breakdown, Register.driver_complaint)
+            else EntryStatus.done
+        ),
+        display_id=await allocate_display_id(
+            session,
+            kind=f"entry:{register.value}",
+            year=entry_date.year,
+            prefix=_ENTRY_DISPLAY_PREFIX[register],
         ),
         created_by=creator,
         # What kind of job this was. The scheduler reads it to see that a
         # booked inspection actually happened.
         work_type_id=work_type_id,
+        # Explicit, not left unloaded: `work_done`/etc. above get marked
+        # "loaded" via the `setattr(entry, register.value, detail)` below,
+        # but nothing ever touches `photos` for a brand-new entry. Left
+        # unloaded, `serialize_entry`'s sync read of `entry.photos` (called
+        # pre-commit, right after this entry is flushed for its ticket FK)
+        # tries a real selectin query outside any async/greenlet context and
+        # crashes with MissingGreenlet -- setting it here marks the
+        # collection loaded (correctly empty) without ever querying.
+        photos=[],
     )
     detail, searchable = await _build_detail(
         session, register, data, site_code=site_code
@@ -619,6 +656,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "defect_source": d.defect_source.name if d.defect_source else None,
             "defect_type": d.defect_type.name if d.defect_type else None,
             "attended_details": d.attended_details,
+            "attended_time": _hhmm(d.attended_time),
             "spare_parts": [
                 {"part_id": sp.spare_part_id, "part_no": sp.spare_part.part_no, "name": sp.spare_part.name}
                 for sp in d.spare_parts
@@ -655,6 +693,9 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "mechanic": d.mechanic,
             "supervisor": d.supervisor,
             "driver_id": d.driver.driver_code if d.driver else None,
+            "latitude": _num(d.latitude),
+            "longitude": _num(d.longitude),
+            "location_source": d.location_source.value if d.location_source else None,
         }
     if entry.register is Register.breakdown:
         return {
@@ -671,6 +712,9 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "remarks": d.remarks,
             "supervisor": d.supervisor,
             "resolved_at": _ist_iso(d.resolved_at),
+            "latitude": _num(d.latitude),
+            "longitude": _num(d.longitude),
+            "location_source": d.location_source.value if d.location_source else None,
         }
     return {
         "bus_no": bus_no,
@@ -738,6 +782,7 @@ def reporter_name(entry: Entry) -> str:
 def serialize_entry(entry: Entry) -> dict[str, Any]:
     return {
         "id": entry.id,
+        "display_id": entry.display_id,
         "entered_by": reporter_name(entry),
         "register": entry.register,
         "site": entry.site_code,
@@ -751,7 +796,9 @@ def serialize_entry(entry: Entry) -> dict[str, Any]:
         "created_at": entry.created_at,
         "updated_at": entry.updated_at,
         "status": entry.status,
-        "photo_url": entry.photo_url,
+        "photos": [
+            {"id": p.id, "url": p.url, "caption": p.caption} for p in entry.photos
+        ],
         "data": serialize_data(entry),
     }
 

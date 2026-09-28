@@ -357,38 +357,93 @@ async def test_supervisor_can_edit_others_entries(client: AsyncClient) -> None:
     assert r.status_code == 200
 
 
-async def test_photo_upload_and_delete(client: AsyncClient) -> None:
-    h = await auth_headers(client)
-    entry = (await client.post("/entries", json=work_done(), headers=h)).json()
+PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDAT"
+    b"x\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDAT"
-        b"x\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
+
+async def test_single_photo_behavior_still_works_for_an_untouched_register(
+    client: AsyncClient,
+) -> None:
+    """Coolant isn't one of this plan's three touched registers -- its
+    Flutter widget still shows one photo, backed by the same list-returning
+    endpoint capped at index 0. This proves the endpoint swap didn't change
+    behavior for registers that never asked for a gallery."""
+    h = await auth_headers(client)
+    entry = (await client.post("/entries", json=coolant(), headers=h)).json()
+
     r = await client.post(
-        f"/entries/{entry['id']}/photo",
-        files={"photo": ("defect.png", png, "image/png")},
+        f"/entries/{entry['id']}/photos",
+        files={"photo": ("defect.png", PNG, "image/png")},
         headers=h,
     )
-    assert r.status_code == 200, r.text
-    assert r.json()["photo_url"].endswith(".png")
+    assert r.status_code == 201, r.text
+    assert len(r.json()) == 1
+    assert r.json()[0]["url"].endswith(".png")
+    photo_id = r.json()[0]["id"]
 
     fetched = await client.get(f"/entries/{entry['id']}", headers=h)
-    assert fetched.json()["photo_url"] is not None
+    assert len(fetched.json()["photos"]) == 1
 
-    deleted = await client.delete(f"/entries/{entry['id']}/photo", headers=h)
+    deleted = await client.delete(
+        f"/entries/{entry['id']}/photos/{photo_id}", headers=h
+    )
     assert deleted.status_code == 204
     assert (await client.get(f"/entries/{entry['id']}", headers=h)).json()[
-        "photo_url"
-    ] is None
+        "photos"
+    ] == []
+
+
+async def test_upload_two_photos_produces_two_rows(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    entry = (await client.post("/entries", json=breakdown(), headers=h)).json()
+
+    r1 = await client.post(
+        f"/entries/{entry['id']}/photos",
+        files={"photo": ("a.png", PNG, "image/png")},
+        headers=h,
+    )
+    assert r1.status_code == 201, r1.text
+    r2 = await client.post(
+        f"/entries/{entry['id']}/photos",
+        files={"photo": ("b.png", PNG, "image/png")},
+        headers=h,
+    )
+    assert r2.status_code == 201, r2.text
+    assert len(r2.json()) == 2
+
+
+async def test_delete_one_photo_leaves_the_other(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    entry = (await client.post("/entries", json=breakdown(), headers=h)).json()
+
+    await client.post(
+        f"/entries/{entry['id']}/photos",
+        files={"photo": ("a.png", PNG, "image/png")},
+        headers=h,
+    )
+    photos = (
+        await client.post(
+            f"/entries/{entry['id']}/photos",
+            files={"photo": ("b.png", PNG, "image/png")},
+            headers=h,
+        )
+    ).json()
+    to_delete = photos[0]["id"]
+    r = await client.delete(f"/entries/{entry['id']}/photos/{to_delete}", headers=h)
+    assert r.status_code == 204
+    remaining = await client.get(f"/entries/{entry['id']}", headers=h)
+    assert len(remaining.json()["photos"]) == 1
+    assert remaining.json()["photos"][0]["id"] != to_delete
 
 
 async def test_photo_rejects_wrong_type(client: AsyncClient) -> None:
     h = await auth_headers(client)
     entry = (await client.post("/entries", json=work_done(), headers=h)).json()
     r = await client.post(
-        f"/entries/{entry['id']}/photo",
+        f"/entries/{entry['id']}/photos",
         files={"photo": ("notes.txt", b"hello", "text/plain")},
         headers=h,
     )
@@ -918,3 +973,103 @@ async def test_linked_sessions_include_supervisor(client: AsyncClient) -> None:
 
     body = (await client.get(f"/entries/{bd['id']}", headers=h)).json()
     assert body["linked_sessions"][0]["supervisor"] == "R. Mehta"
+
+
+async def test_entry_gets_a_prefixed_display_id(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.post("/entries", json=breakdown(), headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["display_id"].startswith("BD-")
+
+
+async def test_work_done_entry_gets_wd_prefix(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    r = await client.post("/entries", json=work_done(), headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["display_id"].startswith("WD-")
+
+
+def driver_complaint(bus: str = "MH40LY1895") -> dict:
+    return {
+        "register": "driver_complaint",
+        "site": "MBMT",
+        "date": TODAY,
+        "data": {
+            "bus_no": bus,
+            "complaint": "AC not cooling",
+        },
+    }
+
+
+async def test_driver_complaint_opens_a_ticket_automatically(
+    client: AsyncClient,
+) -> None:
+    from app.models.ticket import Ticket
+
+    h = await auth_headers(client)
+    r = await client.post("/entries", json=driver_complaint(), headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "open"
+    entry_id = r.json()["id"]
+    async with SessionLocal() as session:
+        ticket = await session.scalar(
+            select(Ticket).where(Ticket.source_entry_id == entry_id)
+        )
+        assert ticket is not None
+
+
+async def test_driver_complaint_raise_ticket_endpoint_now_conflicts(
+    client: AsyncClient,
+) -> None:
+    """The manual raise_ticket endpoint still exists (used by Coolant), but
+    a freshly-created complaint already has a ticket -- calling it again
+    must 409, not silently create a duplicate."""
+    h = await auth_headers(client)
+    created = await client.post("/entries", json=driver_complaint(), headers=h)
+    entry_id = created.json()["id"]
+    r = await client.post(f"/entries/{entry_id}/raise_ticket", headers=h)
+    assert r.status_code == 409
+
+
+async def test_attended_time_is_used_when_provided(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": bd.json()["display_id"]},
+        headers=h,
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["attended_time"] = "11:05"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["attended_time"] == "11:05"
+    entry = await client.get(f"/entries/{bd_id}", headers=h)
+    assert entry.json()["data"]["attended_time"] == "11:05"
+
+
+async def test_breakdown_location_round_trips(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    payload["data"]["latitude"] = "19.1197"
+    payload["data"]["longitude"] = "72.8468"
+    payload["data"]["location_source"] = "gps"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["location_source"] == "gps"
+    entry = await client.get(f"/entries/{r.json()['id']}", headers=h)
+    assert entry.json()["data"]["latitude"] == 19.1197
+
+
+async def test_driver_complaint_location_round_trips(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    payload = driver_complaint()
+    payload["data"]["latitude"] = "19.03"
+    payload["data"]["longitude"] = "73.0297"
+    payload["data"]["location_source"] = "manual"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["location_source"] == "manual"
+    assert r.json()["data"]["longitude"] == 73.0297

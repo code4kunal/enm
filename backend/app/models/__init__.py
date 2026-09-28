@@ -6,7 +6,6 @@ from app.models.checklist import (
     InspectionEntry,
     InspectionResult,
 )
-from app.models.id_counter import IdCounter
 from app.models.entry import (
     REGISTER_MODELS,
     BreakdownEntry,
@@ -16,6 +15,8 @@ from app.models.entry import (
     PMScheduleEntry,
     WorkDoneEntry,
 )
+from app.models.entry_photo import EntryPhoto
+from app.models.id_counter import IdCounter
 from app.models.inspection import Alert, InspectionPlan, InspectionSlot
 from app.models.master import (
     DefectSource,
@@ -58,6 +59,7 @@ __all__ = [
     "DmrDay",
     "DriverComplaintEntry",
     "Entry",
+    "EntryPhoto",
     "FittedUnit",
     "IdCounter",
     "InspectionEntry",

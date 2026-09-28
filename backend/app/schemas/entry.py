@@ -42,6 +42,7 @@ class WorkDoneData(_DataBase):
     defect_source: OptText = None
     defect_type: OptText = None
     attended_details: OptText = None
+    attended_time: HHMM | None = None
     spare_part_ids: list[str] = Field(default_factory=list)
     supervisor: OptText = None
     ticket_id: OptText = None
@@ -100,6 +101,9 @@ class DriverComplaintData(_DataBase):
     mechanic: OptText = None
     supervisor: OptText = None
     driver_id: OptText = None
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    location_source: Literal["gps", "map", "manual"] | None = None
 
 
 class BreakdownData(_DataBase):
@@ -125,6 +129,9 @@ class BreakdownData(_DataBase):
     # edit-form round trip (GET the entry, PUT it back) doesn't 400 on a key
     # the client never set but the server always echoes.
     resolved_at: OptText = None
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    location_source: Literal["gps", "map", "manual"] | None = None
 
 
 class PMScheduleData(_DataBase):
@@ -169,8 +176,17 @@ class EntryUpdate(BaseModel):
     data: dict[str, Any]
 
 
+class EntryPhotoOut(BaseModel):
+    id: str
+    url: str
+    caption: str | None = None
+
+
 class EntryOut(BaseModel):
     id: str
+    #: Human-readable, server-stamped at creation (`BD-2026-000123`, ...).
+    #: Never accepted on write.
+    display_id: str
     register: Register
     site: str
     date: date_t
@@ -181,21 +197,17 @@ class EntryOut(BaseModel):
     created_at: ISTDateTime
     updated_at: ISTDateTime | None
     status: EntryStatus
-    photo_url: str | None
     data: dict[str, Any]
     #: Work Done sessions logged against this entry's ticket. Populated only
     #: for entries that can have a ticket (breakdown, coolant, driver
     #: complaint, PM/docking); null everywhere else, including work_done
     #: entries themselves.
     linked_sessions: list[dict[str, Any]] | None = None
+    photos: list[EntryPhotoOut] = []
 
 
 class CoolantDayOut(BaseModel):
     items: list[EntryOut]
-
-
-class PhotoOut(BaseModel):
-    photo_url: str
 
 
 class SummaryOut(BaseModel):
