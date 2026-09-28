@@ -450,6 +450,14 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              if (!widget.readOnly && register.id == 'work') ...<Widget>[
+                _TicketLinkSection(
+                  values: _values,
+                  onSet: (k, v) => setState(() => _set(k, v)),
+                  onPickTime: _pickTime,
+                ),
+                const SizedBox(height: 16),
+              ],
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
@@ -494,14 +502,6 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                     draft.dispose();
                   }),
                   onChanged: () => setState(() {}),
-                ),
-              ],
-              if (!widget.readOnly && register.id == 'work') ...<Widget>[
-                const SizedBox(height: 16),
-                _TicketLinkSection(
-                  values: _values,
-                  onSet: (k, v) => setState(() => _set(k, v)),
-                  onPickTime: _pickTime,
                 ),
               ],
               if (register.id == 'work') ...<Widget>[
@@ -763,9 +763,13 @@ class _TicketLinkSection extends ConsumerStatefulWidget {
 }
 
 class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
-  String? _registerFilter;
   String _query = '';
   String _pickedTitle = '';
+
+  /// The picked ticket's own context, for the read-only block below the
+  /// search field — set once, on pick, so it survives even if a later
+  /// search clears [results] (the picker itself disappears once linked).
+  TicketSearchResult? _picked;
   final TextEditingController _queryController = TextEditingController();
 
   @override
@@ -798,7 +802,11 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
       ..._echoedAttendeeNames(),
       for (final s in staff) s.id: s.name,
     };
-    final searchKey = (site: site, register: _registerFilter, q: _query);
+    // No register-filter dropdown any more -- free text matches both the
+    // source entry's own text and its display id (see search_tickets's `q`
+    // handling), so typing "BD-2026-" or "DC-2026-" narrows exactly as well
+    // as picking a register used to, without the extra step.
+    final searchKey = (site: site, register: null, q: _query);
     final results = ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
         const <TicketSearchResult>[];
 
@@ -827,7 +835,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
             style: AppText.sans(size: 12.5, color: T.secondary, height: 1.4),
           ),
           const SizedBox(height: 12),
-          if (hasTicket)
+          if (hasTicket) ...<Widget>[
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -844,6 +852,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                     widget.onSet('completesTicket', '');
                     widget.onSet('completionTime', '');
                     _pickedTitle = '';
+                    _picked = null;
                   }),
                   child: Text(
                     'Remove',
@@ -851,25 +860,15 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                   ),
                 ),
               ],
-            )
-          else ...<Widget>[
-            AppSelect(
-              value: _registerFilter,
-              options: const <String>[
-                'breakdown',
-                'coolant',
-                'complaint',
-                'daily_inspection',
-                'ten_day_inspection',
-                'pm',
-              ],
-              placeholder: 'Which register…',
-              onChanged: (v) => setState(() => _registerFilter = v),
             ),
-            const SizedBox(height: 8),
+            if (_picked != null) ...<Widget>[
+              const SizedBox(height: 12),
+              _LinkedTicketContext(ticket: _picked!),
+            ],
+          ] else ...<Widget>[
             AppTextField(
               controller: _queryController,
-              placeholder: 'Search by title or ID…',
+              placeholder: 'Search by title or ID (e.g. BD-2026-000123)…',
               onChanged: (v) => setState(() => _query = v),
             ),
             if (results.isNotEmpty) ...<Widget>[
@@ -879,6 +878,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                   onTap: () => setState(() {
                     widget.onSet('ticketId', r.ticketId);
                     _pickedTitle = r.title;
+                    _picked = r;
                     _query = '';
                     _queryController.clear();
                   }),
@@ -924,6 +924,61 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
               ),
             ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The linked ticket's own fields, read-only — bus, driver, route, and the
+/// original complaint/defect text. Shown once a ticket is picked so the
+/// mechanic never re-types what's already on the linked record.
+class _LinkedTicketContext extends StatelessWidget {
+  const _LinkedTicketContext({required this.ticket});
+
+  final TicketSearchResult ticket;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, String?)>[
+      ('Bus', ticket.busNo),
+      ('Driver', ticket.driverName),
+      ('Route', ticket.route),
+      ('Reported', ticket.defectText),
+    ].where((r) => (r.$2 ?? '').isNotEmpty).toList();
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: T.subtleFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          for (final (label, value) in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: RichText(
+                text: TextSpan(
+                  children: <InlineSpan>[
+                    TextSpan(
+                      text: '$label: ',
+                      style: AppText.sans(
+                        size: 12.5,
+                        weight: FontWeight.w600,
+                        color: T.secondary,
+                      ),
+                    ),
+                    TextSpan(
+                      text: value,
+                      style: AppText.sans(size: 12.5, color: T.ink),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
