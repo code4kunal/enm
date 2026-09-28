@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/registers.dart';
 import '../models/entry.dart';
+import '../models/ticket_detail.dart';
 import '../utils/dates.dart';
 import 'providers.dart';
 import 'reports.dart';
@@ -326,6 +327,14 @@ final entriesProvider =
 final entryDetailProvider =
     FutureProvider.family<RegisterEntry, String>((ref, entryId) {
   return ref.watch(entryRepositoryProvider).fetchEntry(entryId);
+});
+
+/// The full record behind one ticket — source entry, every linked Work Done
+/// session, photos. Powers the Tickets screen's tap-through and the
+/// Breakdown/Driver Complaint register row's View action.
+final ticketDetailProvider =
+    FutureProvider.family<TicketDetail, String>((ref, ticketId) {
+  return ref.watch(ticketRepositoryProvider).get(ticketId);
 });
 
 // ─── Derived views ────────────────────────────────────────────────────────

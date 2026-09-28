@@ -806,7 +806,7 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
     // source entry's own text and its display id (see search_tickets's `q`
     // handling), so typing "BD-2026-" or "DC-2026-" narrows exactly as well
     // as picking a register used to, without the extra step.
-    final searchKey = (site: site, register: null, q: _query);
+    final searchKey = (site: site, register: null, q: _query, status: 'open');
     final results = ref.watch(ticketSearchProvider(searchKey)).valueOrNull ??
         const <TicketSearchResult>[];
 

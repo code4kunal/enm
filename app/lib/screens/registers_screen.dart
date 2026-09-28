@@ -575,7 +575,7 @@ class _ResultRow extends ConsumerWidget {
               const SizedBox(width: 10),
               OutlineActionButton(
                 label: 'View',
-                onPressed: () => context.go(Routes.viewEntry(entry.id)),
+                onPressed: () => _viewEntry(context, ref),
                 fontSize: 12.5,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
@@ -638,5 +638,35 @@ class _ResultRow extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Breakdown/Driver Complaint always have a ticket (auto-opened at
+  /// creation) -- View opens the richer Ticket Detail screen instead of the
+  /// plain read-only form every other register still uses. Looks the ticket
+  /// up by this entry's own display id (the same search the Work Done
+  /// linking picker uses) rather than a new backend lookup-by-entry-id
+  /// endpoint, since the existing search already answers this exactly.
+  Future<void> _viewEntry(BuildContext context, WidgetRef ref) async {
+    if (entry.registerId != 'breakdown' && entry.registerId != 'complaint') {
+      context.go(Routes.viewEntry(entry.id));
+      return;
+    }
+    final site = ref.read(sessionProvider.select((s) => s.site));
+    try {
+      final found = await ref.read(ticketRepositoryProvider).search(
+            site: site,
+            q: entry.displayId,
+            status: 'all',
+          );
+      if (found.isEmpty) {
+        if (context.mounted) context.go(Routes.viewEntry(entry.id));
+        return;
+      }
+      if (context.mounted) {
+        context.go(Routes.ticketDetail(found.first.ticketId));
+      }
+    } catch (_) {
+      if (context.mounted) context.go(Routes.viewEntry(entry.id));
+    }
   }
 }

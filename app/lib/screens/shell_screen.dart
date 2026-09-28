@@ -58,6 +58,7 @@ class ShellScreen extends ConsumerWidget {
       if (session.can('em_entry:read')) ...<_Tab>[
         const _Tab('Registers', Routes.registers),
         const _Tab('Breakdowns', Routes.breakdowns),
+        const _Tab('Tickets', Routes.tickets),
       ],
       if (session.can('em_schedule:read'))
         const _Tab('Schedule', Routes.schedule),

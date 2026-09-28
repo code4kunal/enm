@@ -594,7 +594,7 @@ void main() {
 
       final complaints = await container.read(
         ticketSearchProvider(
-          (site: 'MBMT', register: 'complaint', q: 'wiper'),
+          (site: 'MBMT', register: 'complaint', q: 'wiper', status: 'open'),
         ).future,
       );
       expect(complaints, hasLength(1));
@@ -603,7 +603,7 @@ void main() {
       // Same query, wrong register: the filter has to actually bite.
       final none = await container.read(
         ticketSearchProvider(
-          (site: 'MBMT', register: 'breakdown', q: 'wiper'),
+          (site: 'MBMT', register: 'breakdown', q: 'wiper', status: 'open'),
         ).future,
       );
       expect(none, isEmpty);
@@ -616,7 +616,7 @@ void main() {
       await expectLater(
         container.read(
           ticketSearchProvider(
-            (site: 'MBMT', register: 'driver_complaint', q: 'wiper'),
+            (site: 'MBMT', register: 'driver_complaint', q: 'wiper', status: 'open'),
           ).future,
         ),
         throwsA(isA<ApiException>()),

@@ -15,6 +15,8 @@ import 'screens/reports_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/shell_screen.dart';
 import 'screens/site_screen.dart';
+import 'screens/ticket_detail_screen.dart';
+import 'screens/tickets_screen.dart';
 import 'screens/vehicle_master_screen.dart';
 import 'state/session.dart';
 import 'widgets/page_body.dart';
@@ -24,6 +26,7 @@ abstract final class Routes {
   static const home = '/home';
   static const registers = '/registers';
   static const breakdowns = '/breakdowns';
+  static const tickets = '/tickets';
   static const coolantDay = '/coolant/day';
   static const schedule = '/schedule';
   static const vehicleMaster = '/vehicle-master';
@@ -41,6 +44,8 @@ abstract final class Routes {
   static String editEntry(String entryId) => '/entry/edit/$entryId';
 
   static String viewEntry(String entryId) => '/entry/view/$entryId';
+
+  static String ticketDetail(String ticketId) => '/tickets/$ticketId';
 }
 
 /// Bridges Riverpod's session state to GoRouter's refresh mechanism so the
@@ -116,6 +121,24 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => NoTransitionPage<void>(
               key: state.pageKey,
               child: const PageBody(child: BreakdownsScreen()),
+            ),
+          ),
+          GoRoute(
+            path: Routes.tickets,
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: const PageBody(child: TicketsScreen()),
+            ),
+          ),
+          GoRoute(
+            path: '/tickets/:ticketId',
+            pageBuilder: (context, state) => NoTransitionPage<void>(
+              key: state.pageKey,
+              child: PageBody(
+                child: TicketDetailScreen(
+                  ticketId: state.pathParameters['ticketId']!,
+                ),
+              ),
             ),
           ),
           GoRoute(

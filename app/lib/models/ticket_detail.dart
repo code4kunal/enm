@@ -1,5 +1,4 @@
 import 'entry.dart';
-import 'entry_photo.dart';
 
 /// The full record behind one ticket — the source entry's own fields,
 /// every Work Done session logged against it, and any photos. Powers the

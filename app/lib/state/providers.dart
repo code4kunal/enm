@@ -302,10 +302,10 @@ final siteConfigProvider = FutureProvider<SiteConfig>((ref) {
   return ref.watch(siteConfigRepositoryProvider).fetchConfig(site);
 });
 
-/// Family-keyed so a debounce-driven search per (site, register, query)
-/// doesn't need its own StatefulWidget-managed cache.
-final ticketSearchProvider = FutureProvider.family<
-    List<TicketSearchResult>, ({String site, String? register, String q})>(
+/// Family-keyed so a debounce-driven search per (site, register, query,
+/// status) doesn't need its own StatefulWidget-managed cache.
+final ticketSearchProvider = FutureProvider.family<List<TicketSearchResult>,
+    ({String site, String? register, String q, String status})>(
   (ref, key) async {
     // An empty query is a real request, not "nothing typed yet" -- it asks
     // the backend for every open ticket at this site (bounded, since a
@@ -318,6 +318,7 @@ final ticketSearchProvider = FutureProvider.family<
           site: key.site,
           register: key.register,
           q: key.q.trim(),
+          status: key.status,
         );
   },
 );
