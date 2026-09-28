@@ -6,6 +6,7 @@ from app.models.checklist import (
     InspectionEntry,
     InspectionResult,
 )
+from app.models.id_counter import IdCounter
 from app.models.entry import (
     REGISTER_MODELS,
     BreakdownEntry,
@@ -58,6 +59,7 @@ __all__ = [
     "DriverComplaintEntry",
     "Entry",
     "FittedUnit",
+    "IdCounter",
     "InspectionEntry",
     "InspectionPlan",
     "InspectionResult",
