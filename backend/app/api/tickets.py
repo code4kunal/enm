@@ -5,7 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from app.deps import CurrentUser, EntrySite, SessionDep, assert_site_access
+from app.deps import CurrentUser, EntrySite, SessionDep, assert_site_permission
 from app.errors import NotFound
 from app.models.enums import TicketSourceKind
 from app.models.ticket import Ticket
@@ -66,7 +66,10 @@ async def get_ticket(
         if ticket.source_entry is not None
         else ticket.source_inspection_result.inspection.site_code
     )
-    assert_site_access(user, site_code)
+    # Matches GET /entries/{id}'s convention -- site reach alone isn't
+    # enough, the caller also needs em_entry:read (same permission
+    # /tickets/search already enforces via its EntrySite dependency).
+    assert_site_permission(user, site_code, "em_entry:read")
     entry_out = None
     linked_sessions = None
     if ticket.source_entry is not None:
