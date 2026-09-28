@@ -368,7 +368,7 @@ class _AppSelectState extends State<AppSelect> {
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
                               maxHeight: 240,
-                              minWidth: size.width,
+                              minWidth: size.width.clamp(200, 480),
                               maxWidth: size.width.clamp(200, 480),
                             ),
                             child: list.isEmpty

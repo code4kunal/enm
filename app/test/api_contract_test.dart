@@ -13,6 +13,7 @@ import 'package:transvolt_em/models/app_user.dart';
 import 'package:transvolt_em/models/checklist.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/ticket.dart';
+import 'package:transvolt_em/models/ticket_detail.dart';
 
 /// Contract tests against responses captured from a running backend.
 ///
@@ -886,6 +887,38 @@ void main() {
       final items = sent['items'] as List<dynamic>;
       expect((items[0] as Map<String, dynamic>)['odometer_km'], 100000);
       expect((items[1] as Map<String, dynamic>)['odometer_km'], 205000);
+    });
+  });
+
+  group('TicketDetail.fromJson', () {
+    test('attended_at and completed_at parse from the wire timeline', () {
+      final detail = TicketDetail.fromJson(<String, dynamic>{
+        'ticket_id': 't1',
+        'display_id': 'BD-2026-000001',
+        'status': 'completed',
+        'source_entry': null,
+        'linked_sessions': <dynamic>[],
+        'photos': <dynamic>[],
+        'attended_at': '11:05',
+        'completed_at': '12:30',
+      }, (_) => null);
+
+      expect(detail.attendedAt, '11:05');
+      expect(detail.completedAt, '12:30');
+    });
+
+    test('null timeline fields when the ticket has not reached that stage', () {
+      final detail = TicketDetail.fromJson(<String, dynamic>{
+        'ticket_id': 't1',
+        'display_id': 'BD-2026-000001',
+        'status': 'open',
+        'source_entry': null,
+        'linked_sessions': <dynamic>[],
+        'photos': <dynamic>[],
+      }, (_) => null);
+
+      expect(detail.attendedAt, isNull);
+      expect(detail.completedAt, isNull);
     });
   });
 }

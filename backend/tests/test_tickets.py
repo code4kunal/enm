@@ -779,6 +779,39 @@ async def test_get_ticket_detail_returns_source_entry_and_sessions(
     assert len(body["linked_sessions"]) == 1
 
 
+async def test_get_ticket_detail_exposes_the_attended_and_completed_timeline(
+    client: AsyncClient,
+) -> None:
+    """The whole point of Ticket Detail is the reported->attended->completed
+    timeline (per the reference mockups) -- attended_at/completed_at on the
+    ticket, and each session's own attended_time/completion_time, must
+    actually be in the response, not just derivable by the client from
+    nothing."""
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["attended_time"] = "11:05"
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "12:30"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    body = detail.json()
+    assert body["attended_at"] == "11:05"
+    assert body["completed_at"] == "12:30"
+    assert len(body["linked_sessions"]) == 1
+    session = body["linked_sessions"][0]
+    assert session["attended_time"] == "11:05"
+    assert session["completion_time"] == "12:30"
+
+
 async def test_get_ticket_detail_404s_for_unknown_id(client: AsyncClient) -> None:
     h = await auth_headers(client)
     r = await client.get("/tickets/does-not-exist", headers=h)

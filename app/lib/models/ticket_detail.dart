@@ -12,6 +12,8 @@ class TicketDetail {
     required this.sourceEntry,
     required this.linkedSessions,
     required this.photos,
+    this.attendedAt,
+    this.completedAt,
   });
 
   final String ticketId;
@@ -24,6 +26,11 @@ class TicketDetail {
   final RegisterEntry? sourceEntry;
   final List<Map<String, dynamic>> linkedSessions;
   final List<EntryPhoto> photos;
+
+  /// HH:mm, site-local. Null until that stage of the reported->attended->
+  /// completed timeline has actually happened.
+  final String? attendedAt;
+  final String? completedAt;
 
   factory TicketDetail.fromJson(
     Map<String, dynamic> json,
@@ -42,6 +49,8 @@ class TicketDetail {
       photos: (json['photos'] as List<dynamic>? ?? <dynamic>[])
           .map((p) => EntryPhoto.fromJson(Map<String, dynamic>.from(p as Map)))
           .toList(),
+      attendedAt: json['attended_at'] as String?,
+      completedAt: json['completed_at'] as String?,
     );
   }
 }

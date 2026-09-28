@@ -838,6 +838,12 @@ async def load_linked_sessions(
                 ],
                 "completes_ticket": wd.completes_ticket,
                 "supervisor": wd.supervisor,
+                "attended_time": wd.attended_time.strftime("%H:%M")
+                if wd.attended_time
+                else None,
+                "completion_time": wd.completion_time.strftime("%H:%M")
+                if wd.completion_time
+                else None,
             }
         )
     return out

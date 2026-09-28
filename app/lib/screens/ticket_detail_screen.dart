@@ -57,9 +57,6 @@ class _Loaded extends StatelessWidget {
     final entry = ticket.sourceEntry;
     final data = entry?.data ?? const <String, String>{};
     final sessions = ticket.linkedSessions;
-    final completedSession = sessions.where(
-      (s) => s['completes_ticket'] == true,
-    ).firstOrNull;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,13 +122,13 @@ class _Loaded extends StatelessWidget {
                 Expanded(
                   child: _Metric(
                     label: 'Attended',
-                    value: data['t_att'] ?? '—',
+                    value: ticket.attendedAt ?? '—',
                   ),
                 ),
                 Expanded(
                   child: _Metric(
                     label: 'Completed',
-                    value: completedSession?['entry_date'] as String? ?? '—',
+                    value: ticket.completedAt ?? '—',
                   ),
                 ),
               ],
@@ -170,7 +167,9 @@ class _Loaded extends StatelessWidget {
                   Text(
                     '${indexed.value['entry_date']} · Shift ${indexed.value['shift'] ?? '—'} · '
                     '${(indexed.value['attendees'] as List<dynamic>? ?? const <dynamic>[]).map((a) => (a as Map)['name']).join(', ')}'
-                    '${(indexed.value['supervisor'] as String?)?.isNotEmpty == true ? ' · Supervisor: ${indexed.value['supervisor']}' : ''}',
+                    '${(indexed.value['supervisor'] as String?)?.isNotEmpty == true ? ' · Supervisor: ${indexed.value['supervisor']}' : ''}'
+                    '${(indexed.value['attended_time'] as String?) != null ? ' · Attended: ${indexed.value['attended_time']}' : ''}'
+                    '${(indexed.value['completion_time'] as String?) != null ? ' · Completed: ${indexed.value['completion_time']}' : ''}',
                     style: AppText.sans(size: 13),
                   ),
                 ],

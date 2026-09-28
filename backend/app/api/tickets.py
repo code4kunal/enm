@@ -13,6 +13,7 @@ from app.schemas.entry import EntryOut, EntryPhotoOut
 from app.schemas.ticket import TicketSearchResult
 from app.services import entries as entries_svc
 from app.services import tickets as svc
+from app.services.common import IST
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -52,6 +53,17 @@ class TicketDetailOut(BaseModel):
     source_entry: EntryOut | None
     linked_sessions: list[dict[str, Any]] | None
     photos: list[EntryPhotoOut] = []
+    #: HH:mm, site-local -- the moment mark_attended()/complete_ticket()
+    #: stamped, not the ticket row's raw UTC timestamp. Null until that
+    #: stage of the reported->attended->completed timeline has happened.
+    attended_at: str | None = None
+    completed_at: str | None = None
+
+
+def _hhmm(dt: object) -> str | None:
+    if dt is None:
+        return None
+    return dt.astimezone(IST).strftime("%H:%M")
 
 
 @router.get("/{ticket_id}", response_model=TicketDetailOut)
@@ -87,4 +99,6 @@ async def get_ticket(
         source_entry=entry_out,
         linked_sessions=linked_sessions,
         photos=entry_out.photos if entry_out is not None else [],
+        attended_at=_hhmm(ticket.attended_at),
+        completed_at=_hhmm(ticket.completed_at),
     )
