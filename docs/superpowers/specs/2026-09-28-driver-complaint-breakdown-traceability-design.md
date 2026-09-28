@@ -43,10 +43,10 @@ Two client-facing gaps surfaced against the live app:
 | `GET /tickets/{id}` (new) | Returns the ticket, its source entry's full field set, and its `linked_sessions` (already exists off Breakdown — generalized here to be a first-class part of the ticket response, not a per-register bolt-on). |
 | Work Done linking UX | Move `_TicketLinkSection` from after the Unit section to immediately after the Shift field — first block in the form. Replace the register-filter `AppSelect` + separate free-text field + plain-text result list with one `AppMultiSelect`-style searchable typeahead (single-select) matching free text **or** the source entry's `display_id`. On pick, populate a new read-only "Linked ticket context" block (bus, driver, route, original complaint/defect text) sourced from the ticket's `source_entry` — the mechanic no longer retypes it. The Work Done form's own editable fields (attended details, spare parts, mechanics, times) are unchanged; only the now-redundant re-entry of source-entry fields is removed for a linked session. |
 | Work Done `attended_time` | New explicit `attended_time: HHMM` on `WorkDoneData`, same shape and same-record validation pattern as `completion_time` (no requirement it be set — a session that only attends, without completing, may still omit it, matching today's optionality). When present, `mark_attended(ticket, _session_moment(entry, detail.attended_time))` uses it instead of the bare `_session_moment(entry)`, which today silently uses the entry's own submission moment. |
-| Photos | New `entry_attachments` table, S3-backed, presigned-URL upload flow (backend issues a presigned PUT, Flutter uploads directly to S3, then confirms via a small POST that writes the row) — avoids proxying binary payloads through the API. Scoped to Breakdown, Driver Complaint, and Work Done entries this pass (the three registers actually touched by this spec); other registers get the same table for free later without a schema change. |
+| Photos | **Correction from the first draft**: this repo already has a working single-photo-per-entry feature — `services/storage.py` (local-disk save/validate/delete), `POST`/`DELETE /entries/{id}/photo`, `Entry.photo_key`/`photo_url`, and a Flutter picker already wired into `register_form_screen.dart`'s save flow for every register. The first draft proposed a parallel S3 + presigned-URL `entry_attachments` system, which would have duplicated it on inconsistent infra (cloud storage nobody's configured locally, next to disk storage that already works) — dropped. Instead: promote the existing single `photo_key`/`photo_url` columns on `Entry` into a new one-to-many `entry_photos` table (`entry_id`, `storage_key`, `url`, `caption`, `uploaded_by_id`, `created_at`), reusing `storage.save_photo`/`storage.delete_photo` as-is (already generic per `entry_id`, already random-named, nothing about them assumes one-per-entry). Scoped to Breakdown, Driver Complaint, and Work Done this pass — every other register keeps today's single-photo behavior unchanged, since multi-photo isn't part of this spec's scope. |
 | Location capture | New `latitude NUMERIC(9,6)`, `longitude NUMERIC(9,6)`, `location_source ENUM(gps, map, manual)` on `breakdown_entries` and `driver_complaint_entries` — additive to the existing free-text `location`/route fields, not a replacement. Captured client-side at entry-creation time; the existing text fields keep describing *what* the location is ("Depot A → Andheri"), the new columns capture *where*, precisely. |
 | Map widget | `flutter_map` + OpenStreetMap raster tiles, not `google_maps_flutter` — no API key or billing account needed, and depot-grade location display doesn't need Google's tiles. Used only for optional "pick on map" and a small static preview on the Ticket Detail screen; not embedded in every list row. |
-| S3 bucket/config | New `ATTACHMENTS_S3_BUCKET` env var, `boto3` added to backend deps (first use of AWS SDK directly in this codebase — existing AWS usage is infra-level, not app-level). Presigned URLs expire in 15 minutes, matching typical mobile upload windows. |
+| Platform reality for camera/GPS | The app runs via `flutter run -d chrome` (per this repo's README) — this is a **web** build, not a native mobile app. `image_picker` on web opens the OS file picker (camera-capture attribute works on phones' mobile browsers, but on desktop Chrome it's a plain file chooser, not a live in-app camera view like the mockups suggest). Browser Geolocation likewise prompts the standard browser permission dialog, not a native OS one, and only works over `localhost` or HTTPS. None of this blocks the feature — it works today for the existing single-photo picker — but "camera capture" on a desktop test session will look like a file dialog, not the mockup's live camera screen. Worth knowing going in so a desktop QA pass isn't read as a bug. |
 | Rollout | Local only, same as prior specs, until tested end-to-end. |
 
 ## Data model
@@ -80,15 +80,20 @@ Two client-facing gaps surfaced against the live app:
 - `location_source`: new `LocationSource` enum (`gps`, `map`, `manual`),
   nullable.
 
-### `entry_attachments` (new table)
+### `entry_photos` (new table, replaces `Entry.photo_key`/`Entry.photo_url`)
 
 - `id`: PK, `String(32)`, `default=new_uuid`.
 - `entry_id`: `FK → entries.id, ondelete=CASCADE`, `NOT NULL`.
-- `s3_key`: `String(255)`, `NOT NULL`.
-- `content_type`: `String(100)`, `NOT NULL`.
+- `storage_key`: `String(255)`, `NOT NULL` — same value shape `storage.save_photo` already returns.
+- `url`: `String(500)`, `NOT NULL`.
 - `caption`: `String(255)`, nullable.
 - `uploaded_by_id`: `FK → users.id, ondelete=SET NULL`, nullable.
 - `created_at`: standard `created_at_col()`.
+
+`Entry.photo_key` / `Entry.photo_url` are dropped after migrating any
+existing value into this table as that entry's first row — same
+drop-after-migrate pattern this repo already used for `WorkDoneEntry.employee`
+→ `work_done_attendees`.
 
 ## API contract changes
 
@@ -107,14 +112,18 @@ New/changed endpoints:
   "open"` query param, threaded into `search_tickets()`'s existing
   `Ticket.status == TicketStatus.open` filter (becomes conditional).
 - `GET /tickets/{ticket_id}` (new): ticket + source entry (full field set,
-  via existing `serialize_entry`) + `linked_sessions` + attachments.
-- `GET /entries/{entry_id}/attachments/upload-url` (new): returns a
-  presigned S3 PUT URL + the `s3_key` the client must use.
-- `POST /entries/{entry_id}/attachments` (new): confirms an upload
-  (`s3_key`, `content_type`, optional `caption`) and writes the
-  `entry_attachments` row. Requires the object to already exist at that key
-  (a `head_object` check) so a confirm call can't fabricate a row for
-  nothing.
+  via existing `serialize_entry`) + `linked_sessions` + photos.
+- `POST /entries/{entry_id}/photos` (new, multipart) and
+  `DELETE /entries/{entry_id}/photos/{photo_id}` (new) **replace**
+  `POST`/`DELETE /entries/{entry_id}/photo` for every register, not just
+  these three — one backend surface, no register branching, since photos
+  were already entry-scoped, not register-scoped. Both reuse
+  `storage.validate_photo`/`storage.save_photo`/`storage.delete_photo`
+  unchanged, only swapping the single-column update for an `entry_photos`
+  row. Registers other than Breakdown/Driver Complaint/Work Done keep
+  today's one-photo Flutter widget, which simply caps itself at index 0 of
+  the same list the new endpoint returns — no UI change for them, no second
+  backend code path to maintain.
 - `services/entries.create_entry` (or its ticket-adjacent caller): after
   inserting the row, allocates `display_id` via the `id_counters` upsert in
   the same transaction.
@@ -142,9 +151,10 @@ New/changed endpoints:
     the handful of fields this block needs).
   - New "Attended time" `HHMM` field, next to the existing "Attended
     details" field.
-  - Photo capture: camera/gallery picker attached to the form for Breakdown,
-    Driver Complaint, and Work Done; uploads via the presigned-URL flow on
-    save.
+  - Photo capture: the existing single-photo picker becomes a gallery
+    (pick/remove multiple, each with an optional caption) for Breakdown,
+    Driver Complaint, and Work Done — reusing the same pick-then-upload-on-
+    save flow already implemented, just against the list-returning endpoint.
   - Location capture: on Breakdown/Driver Complaint forms, attempt device
     GPS on form open (`location_source = gps`), fall back to a "pick on
     map" (`flutter_map`) or manual lat/long entry (`location_source = map` /
@@ -163,8 +173,12 @@ New/changed endpoints:
   else a plain read-only field dump) alongside the existing **Edit** action
   (unchanged, still the register form).
 - `data/repositories.dart` / `data/api/api_repositories.dart`:
-  `TicketRepository` gains `get(ticketId)`; `EntryRepository` gains
-  `uploadAttachment(entryId, file)`.
+  `TicketRepository` gains `get(ticketId)`. `EntryRepository.attachPhoto`
+  changes return type from `Future<String>` (one URL) to
+  `Future<List<EntryPhoto>>` (the full updated list, `{id, url, caption}`
+  each); `removePhoto(entryId)` becomes `removePhoto(entryId, photoId)`. Both
+  call sites in `register_form_screen.dart` update accordingly — this is a
+  breaking signature change to an existing method, not an addition.
 - Fakes (`test/support/fake_repositories.dart`) updated in the same pass for
   both new methods, per this repo's "a drifting fake is worse than no fake"
   rule.
@@ -182,7 +196,8 @@ Alembic revisions, in order:
 4. `work_done_entries.attended_time`.
 5. `breakdown_entries` / `driver_complaint_entries`: `latitude`,
    `longitude`, `location_source`.
-6. `entry_attachments`.
+6. `entry_photos`; backfill each entry with a non-null `photo_key` into one
+   row; drop `entries.photo_key` / `entries.photo_url`.
 
 ## Testing
 
@@ -196,9 +211,12 @@ Alembic revisions, in order:
   `GET /tickets/search` (default) still excludes completed, unchanged;
   `GET /tickets/{id}` 404s for another site's ticket (site-scoping holds);
   `mark_attended` uses the form's `attended_time` when present, falls back
-  to entry-submission moment when absent; attachment confirm 404s if the S3
-  object doesn't exist at the given key; attachment/location fields round-
-  trip through `GET`-then-`PUT`.
+  to entry-submission moment when absent; `POST /entries/{id}/photos` twice
+  produces two rows, not a replace; `DELETE` removes exactly the named photo
+  and leaves the others; every existing single-photo test in
+  `test_entries.py` still passes unchanged against the new endpoints
+  (behavior-preserving for the one-photo case); location fields round-trip
+  through `GET`-then-`PUT`.
 - **Backend integration**: create a Driver Complaint → ticket appears in
   `/tickets/search` immediately (no manual raise) → link a Work Done session
   with `attended_time` set → ticket's `attended_at` matches the given time,
@@ -209,9 +227,9 @@ Alembic revisions, in order:
   ID; picking a ticket populates the read-only context block and it's not
   editable; Tickets screen status filter and search; View button on a
   Breakdown/Driver Complaint row opens Ticket Detail showing every linked
-  session; photo upload round-trips (pick → presigned upload → appears in
-  Ticket Detail); location capture records GPS by default and falls back to
-  manual/map when denied.
+  session; multi-photo gallery round-trips (pick two, save, both appear in
+  Ticket Detail, remove one, the other survives); location capture records
+  GPS by default and falls back to manual/map when denied.
 - **End-to-end sanity pass** (post-implementation): file a Driver Complaint
   as a depot user, confirm its ticket appears unprompted in `/tickets`,
   link and complete it from Work Done with an explicit attended time, then
