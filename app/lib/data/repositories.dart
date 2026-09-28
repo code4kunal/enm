@@ -13,6 +13,7 @@ import '../models/site.dart';
 import '../models/spare_part.dart';
 import '../models/staff.dart';
 import '../models/ticket.dart';
+import '../models/ticket_detail.dart';
 import '../models/site_config.dart';
 import '../models/checklist.dart';
 import '../models/inspection.dart';
@@ -685,9 +686,14 @@ abstract interface class TicketRepository {
     required String site,
     String? register,
     String? q,
+    String status = 'open',
   });
 
   Future<RegisterEntry> raiseTicket(String entryId);
+
+  /// The full record behind one ticket, for the Tickets list's tap-through
+  /// and the register View action on Breakdown/Driver Complaint rows.
+  Future<TicketDetail> get(String ticketId);
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────

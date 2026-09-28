@@ -806,3 +806,16 @@ async def test_get_ticket_detail_404s_for_a_site_the_user_cant_reach(
     # Matches GET /entries/{id}'s existing convention (assert_site_access
     # raises Forbidden, not NotFound) -- not the 404 my plan assumed.
     assert r.status_code == 403
+
+
+async def test_search_result_includes_prefill_context(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    r = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    result = r.json()[0]
+    assert result["bus_no"] == bd.json()["data"]["bus_no"]
+    assert result["defect_text"] == bd.json()["data"]["complaint"]

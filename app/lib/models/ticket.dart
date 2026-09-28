@@ -11,6 +11,11 @@ class TicketSearchResult {
     required this.entryDate,
     required this.status,
     required this.sourceKind,
+    this.displayId = '',
+    this.busNo,
+    this.driverName,
+    this.route,
+    this.defectText,
   });
 
   final String ticketId;
@@ -24,6 +29,18 @@ class TicketSearchResult {
   /// what distinguishes them for display (see pendingInspectionTicketsProvider).
   final String sourceKind;
 
+  /// The source entry's own display id ("BD-2026-…") — the id a person
+  /// actually sees and would type to search. Empty for an inspection-
+  /// sourced ticket (no entry to read one from).
+  final String displayId;
+
+  /// Prefill context for the Work Done linking form — null for an
+  /// inspection-sourced ticket.
+  final String? busNo;
+  final String? driverName;
+  final String? route;
+  final String? defectText;
+
   factory TicketSearchResult.fromJson(Map<String, dynamic> json) =>
       TicketSearchResult(
         ticketId: json['ticket_id'] as String,
@@ -31,5 +48,10 @@ class TicketSearchResult {
         entryDate: json['entry_date'] as String,
         status: json['status'] as String,
         sourceKind: json['source_kind'] as String? ?? '',
+        displayId: json['display_id'] as String? ?? '',
+        busNo: json['bus_no'] as String?,
+        driverName: json['driver_name'] as String?,
+        route: json['route'] as String?,
+        defectText: json['defect_text'] as String?,
       );
 }

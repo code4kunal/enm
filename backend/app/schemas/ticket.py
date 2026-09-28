@@ -16,3 +16,9 @@ class TicketSearchResult(BaseModel):
     entry_date: date_t
     status: str
     source_kind: str
+    #: Prefill context for the Work Done linking form -- null for an
+    #: inspection-sourced ticket (no register entry to read from).
+    bus_no: str | None = None
+    driver_name: str | None = None
+    route: str | None = None
+    defect_text: str | None = None

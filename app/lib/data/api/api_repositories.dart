@@ -14,6 +14,7 @@ import '../../models/site_import.dart';
 import '../../models/spare_part.dart';
 import '../../models/staff.dart';
 import '../../models/ticket.dart';
+import '../../models/ticket_detail.dart';
 import '../repositories.dart';
 import 'api_client.dart';
 import 'field_map.dart';
@@ -812,6 +813,7 @@ class ApiTicketRepository implements TicketRepository {
     required String site,
     String? register,
     String? q,
+    String status = 'open',
   }) async {
     final json = await _api.get(
       '/tickets/search',
@@ -821,6 +823,7 @@ class ApiTicketRepository implements TicketRepository {
         if (register != null)
           'source_kind': ticketSourceKindWire[register] ?? register,
         if (q != null && q.isNotEmpty) 'q': q,
+        'status': status,
       },
     );
     return (json as List<dynamic>)
@@ -832,6 +835,15 @@ class ApiTicketRepository implements TicketRepository {
   Future<RegisterEntry> raiseTicket(String entryId) async {
     final json = await _api.post('/entries/$entryId/raise_ticket');
     return _entryFromWire(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<TicketDetail> get(String ticketId) async {
+    final json = await _api.get('/tickets/$ticketId');
+    return TicketDetail.fromJson(
+      json as Map<String, dynamic>,
+      (entryJson) => _entryFromWire(entryJson),
+    );
   }
 }
 

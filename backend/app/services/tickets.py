@@ -140,6 +140,24 @@ def ticket_title(ticket: Ticket) -> str:
     return f"{label[:60]} · {bus}"
 
 
+def ticket_context(ticket: Ticket) -> dict[str, str | None]:
+    """The handful of source-entry fields the Work Done form's linked-ticket
+    picker prefills so a mechanic doesn't re-type what's already on the
+    linked record. Empty strings for an inspection-sourced ticket (no
+    register entry to read from) -- not surfaced by that picker anyway."""
+    if ticket.source_entry_id is None:
+        return {"bus_no": None, "driver_name": None, "route": None, "defect_text": None}
+    entry = ticket.source_entry
+    detail = entry.detail
+    driver = getattr(detail, "driver", None)
+    return {
+        "bus_no": entry.vehicle.registration_no,
+        "driver_name": driver.name if driver is not None else None,
+        "route": getattr(detail, "route", None),
+        "defect_text": _TITLE_FIELD[entry.register](detail),
+    }
+
+
 def ticket_entry_date(ticket: Ticket):
     if ticket.source_entry_id is not None:
         return ticket.source_entry.entry_date

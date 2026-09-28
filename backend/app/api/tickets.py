@@ -39,6 +39,7 @@ async def search(
             entry_date=svc.ticket_entry_date(t),
             status=t.status.value,
             source_kind=t.source_kind.value,
+            **svc.ticket_context(t),
         )
         for t in tickets
     ]

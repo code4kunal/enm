@@ -5,6 +5,7 @@ import 'package:transvolt_em/models/site.dart';
 import 'package:transvolt_em/models/spare_part.dart';
 import 'package:transvolt_em/models/staff.dart';
 import 'package:transvolt_em/models/ticket.dart';
+import 'package:transvolt_em/models/ticket_detail.dart';
 import 'package:transvolt_em/data/api/api_repositories.dart' show registerToWire;
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/data/registers.dart';
@@ -361,6 +362,7 @@ class FakeTicketRepository implements TicketRepository {
     required String site,
     String? register,
     String? q,
+    String status = 'open',
   }) async {
     await Future<void>.delayed(_latency);
     final needle = (q ?? '').toLowerCase();
@@ -375,16 +377,31 @@ class FakeTicketRepository implements TicketRepository {
     }
     return _store.entries
         .where((e) => e.site == site)
-        .where((e) => e.isOpen || e.registerId != kBreakdownRegisterId)
+        .where(
+          (e) => switch (status) {
+            'all' => true,
+            'completed' => e.status == EntryStatus.resolved,
+            _ => e.isOpen || e.registerId != kBreakdownRegisterId,
+          },
+        )
         .where((e) => wanted == null || registerToWire[e.registerId] == wanted)
-        .where((e) => needle.isEmpty || entrySummary(e).toLowerCase().contains(needle))
+        .where(
+          (e) =>
+              needle.isEmpty ||
+              entrySummary(e).toLowerCase().contains(needle) ||
+              e.displayId.toLowerCase().contains(needle),
+        )
         .map(
           (e) => TicketSearchResult(
             ticketId: e.id,
+            displayId: e.displayId,
             title: '${entrySummary(e)} · ${e.busNumber}',
             entryDate: e.date,
-            status: 'open',
+            status: e.status == EntryStatus.resolved ? 'completed' : 'open',
             sourceKind: registerToWire[e.registerId] ?? e.registerId,
+            busNo: e.busNumber,
+            route: e.data['route'],
+            defectText: e.data['complaint'] ?? e.data['defects'],
           ),
         )
         .toList();
@@ -398,6 +415,21 @@ class FakeTicketRepository implements TicketRepository {
     final updated = _store.entries[i].copyWith(status: EntryStatus.open);
     _store.entries[i] = updated;
     return updated;
+  }
+
+  @override
+  Future<TicketDetail> get(String ticketId) async {
+    await Future<void>.delayed(_latency);
+    final entry = _store.entries.where((e) => e.id == ticketId).firstOrNull;
+    if (entry == null) throw ApiException('Ticket $ticketId not found');
+    return TicketDetail(
+      ticketId: entry.id,
+      displayId: entry.displayId,
+      status: entry.status == EntryStatus.resolved ? 'completed' : 'open',
+      sourceEntry: entry,
+      linkedSessions: entry.linkedSessions,
+      photos: entry.photos,
+    );
   }
 }
 
