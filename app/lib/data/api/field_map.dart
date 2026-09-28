@@ -44,6 +44,9 @@ abstract final class RegisterFieldMap {
       'mechanic': 'mechanic',
       'supervisor': 'supervisor',
       'driver': 'driver_id',
+      'latitude': 'latitude',
+      'longitude': 'longitude',
+      'locationSource': 'location_source',
     },
     'breakdown': <String, String>{
       'bus': 'bus_no',
@@ -58,6 +61,9 @@ abstract final class RegisterFieldMap {
       'attended': 'attended_details',
       'remarks': 'remarks',
       'supervisor': 'supervisor',
+      'latitude': 'latitude',
+      'longitude': 'longitude',
+      'locationSource': 'location_source',
     },
     'pm': <String, String>{
       'bus': 'bus_no',
@@ -84,6 +90,8 @@ abstract final class RegisterFieldMap {
     'bcs_litres',
     'tcs_litres',
     'loss_km',
+    'latitude',
+    'longitude',
   };
 
   /// Fields the API sends/accepts as a JSON boolean, not a string.

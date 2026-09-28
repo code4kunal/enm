@@ -27,6 +27,7 @@ import '../widgets/code_square.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
+import '../widgets/location_capture.dart';
 import '../widgets/sheet.dart';
 
 /// New-entry and edit-entry form. Exactly one of [registerId] / [entryId] is
@@ -455,6 +456,19 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   values: _values,
                   onSet: (k, v) => setState(() => _set(k, v)),
                   onPickTime: _pickTime,
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (!widget.readOnly &&
+                  (register.id == 'breakdown' || register.id == 'complaint')) ...<Widget>[
+                LocationCaptureField(
+                  service: ref.watch(locationServiceProvider),
+                  alreadyCaptured: (_values['latitude'] ?? '').isNotEmpty,
+                  onCaptured: (lat, lng, source) => setState(() {
+                    _set('latitude', lat.toString());
+                    _set('longitude', lng.toString());
+                    _set('locationSource', source);
+                  }),
                 ),
                 const SizedBox(height: 16),
               ],

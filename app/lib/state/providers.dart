@@ -9,6 +9,7 @@ import '../models/site_config.dart';
 import '../models/spare_part.dart';
 import '../models/staff.dart';
 import '../models/ticket.dart';
+import '../services/location_service.dart';
 import 'selected_site.dart';
 import 'session.dart';
 
@@ -52,6 +53,10 @@ final entryRepositoryProvider = Provider<EntryRepository>(
 
 final ticketRepositoryProvider = Provider<TicketRepository>(
   (ref) => ApiTicketRepository(ref.watch(apiClientProvider)),
+);
+
+final locationServiceProvider = Provider<LocationService>(
+  (ref) => const LocationService(),
 );
 
 final userRepositoryProvider = Provider<UserRepository>(
