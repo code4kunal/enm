@@ -30,6 +30,7 @@ from app.models.master import Vehicle
 from app.models.ticket import Ticket
 from app.models.user import User, UserSiteAccess
 from app.schemas.entry import REGISTER_DATA_SCHEMAS, CoolantDayRow
+from app.services import odometer as odometer_service
 from app.services.id_counters import allocate_display_id
 from app.services.masters import (
     resolve_defect_source,
@@ -93,9 +94,7 @@ def validate_data(register: Register, raw: dict[str, Any]) -> Any:
 # --- search haystack -------------------------------------------------------
 
 
-def _search_text(
-    entry: Entry, vehicle: Vehicle, creator: User, parts: list[Any]
-) -> str:
+def _search_text(entry: Entry, vehicle: Vehicle, creator: User, parts: list[Any]) -> str:
     chunks = [
         vehicle.registration_no,
         entry.register.value,
@@ -157,12 +156,16 @@ async def _resolve_attendees(
     if not user_ids:
         return []
     users = (
-        await session.scalars(
-            select(User)
-            .join(UserSiteAccess, UserSiteAccess.user_id == User.id)
-            .where(User.id.in_(user_ids), UserSiteAccess.site_code == site_code)
+        (
+            await session.scalars(
+                select(User)
+                .join(UserSiteAccess, UserSiteAccess.user_id == User.id)
+                .where(User.id.in_(user_ids), UserSiteAccess.site_code == site_code)
+            )
         )
-    ).unique().all()
+        .unique()
+        .all()
+    )
     by_id = {u.id: u for u in users}
     missing = [uid for uid in user_ids if uid not in by_id]
     if missing:
@@ -200,8 +203,7 @@ async def _set_attendees(
     """
     users = await _resolve_attendees(session, user_ids, site_code=site_code)
     rows = [
-        WorkDoneAttendee(work_done_entry_id=entry_id, user_id=u.id, user=u)
-        for u in users
+        WorkDoneAttendee(work_done_entry_id=entry_id, user_id=u.id, user=u) for u in users
     ]
     session.add_all(rows)
     set_committed_value(detail, "attendees", rows)
@@ -315,6 +317,7 @@ async def _build_detail(
             complaint=data.complaint,
             reported_time=data.reported_time,
             loss_km=data.loss_km,
+            odometer_km=data.odometer_km,
             attended_details=data.attended_details,
             remarks=data.remarks,
             supervisor=data.supervisor,
@@ -382,7 +385,9 @@ async def _apply_ticket_side_effects(
     mark_attended(ticket, _session_moment(entry, detail.attended_time))
     if detail.completes_ticket and ticket.status is not TicketStatus.completed:
         completed_at = _session_moment(entry, detail.completion_time)
-        await complete_ticket(session, ticket=ticket, completed_by=actor, completed_at=completed_at)
+        await complete_ticket(
+            session, ticket=ticket, completed_by=actor, completed_at=completed_at
+        )
 
 
 #: Detail columns the server owns: written by the ticket lifecycle (or the SLA
@@ -496,14 +501,29 @@ async def create_entry(
         # collection loaded (correctly empty) without ever querying.
         photos=[],
     )
-    detail, searchable = await _build_detail(
-        session, register, data, site_code=site_code
-    )
+    detail, searchable = await _build_detail(session, register, data, site_code=site_code)
     setattr(entry, register.value, detail)
     entry.search_text = _search_text(entry, vehicle, creator, searchable)
 
     session.add(entry)
     await _flush_catching_shift_conflict(session)
+    # A missing reading is unknown, never zero -- only write one when the form
+    # actually captured it, and only move the vehicle forward, same contract
+    # every other record_reading caller holds to.
+    if (
+        register is Register.breakdown
+        and data.odometer_km is not None
+        and (
+            vehicle.odometer_updated_at is None or data.odometer_km >= vehicle.odometer_km
+        )
+    ):
+        odometer_service.record_reading(
+            session,
+            vehicle,
+            odometer_km=data.odometer_km,
+            recorded_at=datetime.combine(entry_date, time_t(0, 0), tzinfo=UTC),
+            source="breakdown",
+        )
     if register is Register.work_done:
         await _set_attendees(
             session, entry.id, detail, data.attendee_user_ids, site_code=site_code
@@ -581,10 +601,14 @@ async def update_entry(
     old_ticket_id = getattr(old_detail, "ticket_id", None)
     if entry.register is Register.work_done and old_detail is not None:
         await _reject_undoing_completion(session, old_detail, data)
-    carried = {
-        name: getattr(old_detail, name)
-        for name in _SERVER_OWNED_DETAIL_COLUMNS.get(entry.register, ())
-    } if old_detail is not None else {}
+    carried = (
+        {
+            name: getattr(old_detail, name)
+            for name in _SERVER_OWNED_DETAIL_COLUMNS.get(entry.register, ())
+        }
+        if old_detail is not None
+        else {}
+    )
     if old_detail is not None:
         await session.delete(old_detail)
         await session.flush()
@@ -658,7 +682,11 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "attended_details": d.attended_details,
             "attended_time": _hhmm(d.attended_time),
             "spare_parts": [
-                {"part_id": sp.spare_part_id, "part_no": sp.spare_part.part_no, "name": sp.spare_part.name}
+                {
+                    "part_id": sp.spare_part_id,
+                    "part_no": sp.spare_part.part_no,
+                    "name": sp.spare_part.name,
+                }
                 for sp in d.spare_parts
             ],
             "supervisor": d.supervisor,
@@ -708,6 +736,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "reported_time": _hhmm(d.reported_time),
             "attended_time": _hhmm(d.attended_time),
             "loss_km": _num(d.loss_km),
+            "odometer_km": d.odometer_km,
             "attended_details": d.attended_details,
             "remarks": d.remarks,
             "supervisor": d.supervisor,
@@ -803,6 +832,28 @@ def serialize_entry(entry: Entry) -> dict[str, Any]:
     }
 
 
+async def bulk_ticket_status(
+    session: AsyncSession, entry_ids: list[str]
+) -> dict[str, tuple[TicketStatus, date_t | None]]:
+    """One query's worth of ticket lifecycle for a page of entries.
+
+    The Registers list is paginated and hot; unlike `load_linked_sessions`
+    (real Work Done session rows, detail-only), this is cheap enough to run
+    on every list page -- a single bulk lookup, never one query per row.
+    """
+    if not entry_ids:
+        return {}
+    rows = await session.execute(
+        select(Ticket.source_entry_id, Ticket.status, Ticket.completed_at).where(
+            Ticket.source_entry_id.in_(entry_ids)
+        )
+    )
+    return {
+        entry_id: (status, completed_at.astimezone(IST).date() if completed_at else None)
+        for entry_id, status, completed_at in rows
+    }
+
+
 async def load_linked_sessions(
     session: AsyncSession, entry: Entry
 ) -> list[dict[str, Any]] | None:
@@ -813,7 +864,9 @@ async def load_linked_sessions(
     """
     if entry.register not in TICKETABLE_REGISTERS:
         return None
-    ticket = await session.scalar(select(Ticket).where(Ticket.source_entry_id == entry.id))
+    ticket = await session.scalar(
+        select(Ticket).where(Ticket.source_entry_id == entry.id)
+    )
     if ticket is None:
         return []
     return await sessions_for_ticket(session, ticket.id)
@@ -830,13 +883,17 @@ async def sessions_for_ticket(
     this is the version `GET /tickets/{id}` uses for every ticket.
     """
     rows = (
-        await session.scalars(
-            select(WorkDoneEntry)
-            .join(Entry, Entry.id == WorkDoneEntry.entry_id)
-            .where(WorkDoneEntry.ticket_id == ticket_id)
-            .order_by(Entry.entry_date, Entry.created_at)
+        (
+            await session.scalars(
+                select(WorkDoneEntry)
+                .join(Entry, Entry.id == WorkDoneEntry.entry_id)
+                .where(WorkDoneEntry.ticket_id == ticket_id)
+                .order_by(Entry.entry_date, Entry.created_at)
+            )
         )
-    ).unique().all()
+        .unique()
+        .all()
+    )
     out = []
     for wd in rows:
         wd_entry = await session.get(Entry, wd.entry_id)
@@ -891,9 +948,7 @@ def _csv_cell_value(value: Any) -> str | None:
                 if v.get("part_no") and v.get("name"):
                     labels.append(f"{v['part_no']} · {v['name']}")
                 else:
-                    labels.append(
-                        str(v.get("name") or v.get("user_id") or v)
-                    )
+                    labels.append(str(v.get("name") or v.get("user_id") or v))
             return ", ".join(labels)
         return ", ".join(str(v) for v in value)
     return str(value)
@@ -949,14 +1004,10 @@ def apply_filters(
     if date_to is not None:
         stmt = stmt.where(Entry.entry_date <= date_to)
     if status is not None:
-        stmt = stmt.where(
-            Entry.register == Register.breakdown, Entry.status == status
-        )
+        stmt = stmt.where(Entry.register == Register.breakdown, Entry.status == status)
     if q:
         needle = f"%{q.strip().lower()}%"
-        stmt = stmt.where(
-            or_(Entry.search_text.like(needle), Entry.id == q.strip())
-        )
+        stmt = stmt.where(or_(Entry.search_text.like(needle), Entry.id == q.strip()))
     if origin is not None:
         linked_ids = select(WorkDoneEntry.entry_id).where(
             WorkDoneEntry.ticket_id.is_not(None)

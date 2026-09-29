@@ -58,6 +58,7 @@ abstract final class RegisterFieldMap {
       't_reported': 'reported_time',
       't_att': 'attended_time',
       'loss': 'loss_km',
+      'odo': 'odometer_km',
       'attended': 'attended_details',
       'remarks': 'remarks',
       'supervisor': 'supervisor',
@@ -90,6 +91,7 @@ abstract final class RegisterFieldMap {
     'bcs_litres',
     'tcs_litres',
     'loss_km',
+    'odometer_km',
     'latitude',
     'longitude',
   };

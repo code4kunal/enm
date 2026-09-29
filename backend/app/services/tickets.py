@@ -146,15 +146,23 @@ def ticket_context(ticket: Ticket) -> dict[str, str | None]:
     linked record. Empty strings for an inspection-sourced ticket (no
     register entry to read from) -- not surfaced by that picker anyway."""
     if ticket.source_entry_id is None:
-        return {"bus_no": None, "driver_name": None, "route": None, "defect_text": None}
+        return {
+            "bus_no": None,
+            "driver_name": None,
+            "route": None,
+            "defect_text": None,
+            "defect_type": None,
+        }
     entry = ticket.source_entry
     detail = entry.detail
     driver = getattr(detail, "driver", None)
+    defect_type = getattr(detail, "defect_type", None)
     return {
         "bus_no": entry.vehicle.registration_no,
         "driver_name": driver.name if driver is not None else None,
         "route": getattr(detail, "route", None),
         "defect_text": _TITLE_FIELD[entry.register](detail),
+        "defect_type": defect_type.name if defect_type is not None else None,
     }
 
 
@@ -172,8 +180,10 @@ async def search_tickets(
     q: str | None,
     status: str = "open",
 ) -> list[Ticket]:
-    entry_stmt = select(Ticket).join(Entry, Entry.id == Ticket.source_entry_id).where(
-        Entry.site_code == site_code
+    entry_stmt = (
+        select(Ticket)
+        .join(Entry, Entry.id == Ticket.source_entry_id)
+        .where(Entry.site_code == site_code)
     )
     inspection_stmt = (
         select(Ticket)
@@ -212,7 +222,8 @@ async def search_tickets(
     entry_tickets = (await session.scalars(entry_stmt)).unique().all()
     inspection_tickets = (
         []
-        if source_kind is not None and source_kind not in _INSPECTION_WORK_TYPE_SOURCE_KIND.values()
+        if source_kind is not None
+        and source_kind not in _INSPECTION_WORK_TYPE_SOURCE_KIND.values()
         else (await session.scalars(inspection_stmt)).unique().all()
     )
     combined = [*entry_tickets, *inspection_tickets]
@@ -225,7 +236,10 @@ def mark_attended(ticket: Ticket, at: datetime) -> None:
     if ticket.attended_at is not None:
         return
     ticket.attended_at = at
-    if ticket.source_entry_id is not None and ticket.source_entry.register is Register.breakdown:
+    if (
+        ticket.source_entry_id is not None
+        and ticket.source_entry.register is Register.breakdown
+    ):
         detail: BreakdownEntry = ticket.source_entry.breakdown
         detail.attended_time = at.timetz().replace(tzinfo=None)
 

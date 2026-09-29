@@ -26,6 +26,8 @@ class RegisterEntry {
     this.displayId = '',
     this.photos = const <EntryPhoto>[],
     this.linkedSessions = const <Map<String, dynamic>>[],
+    this.ticketStatus,
+    this.ticketCompletedAt,
   });
 
   final String id;
@@ -57,6 +59,15 @@ class RegisterEntry {
   /// Read-only display data — the server owns the linkage.
   final List<Map<String, dynamic>> linkedSessions;
 
+  /// The entry's own ticket lifecycle — `'open'` | `'completed'` | `null`.
+  /// Cheap to compute (one bulk query per list page), unlike
+  /// [linkedSessions] which is detail-only. Null for registers that can
+  /// never carry a ticket, and for a ticketable entry with no ticket yet.
+  final String? ticketStatus;
+
+  /// `yyyy-MM-dd`, set only when [ticketStatus] is `'completed'`.
+  final String? ticketCompletedAt;
+
   String get busNumber => data['bus'] ?? '';
 
   bool get isOpen => status == EntryStatus.open;
@@ -81,6 +92,8 @@ class RegisterEntry {
       status: status ?? this.status,
       photos: photos,
       linkedSessions: linkedSessions,
+      ticketStatus: ticketStatus,
+      ticketCompletedAt: ticketCompletedAt,
     );
   }
 
@@ -100,6 +113,8 @@ class RegisterEntry {
       status: status,
       photos: photos,
       linkedSessions: linkedSessions,
+      ticketStatus: ticketStatus,
+      ticketCompletedAt: ticketCompletedAt,
     );
   }
 
@@ -121,6 +136,8 @@ class RegisterEntry {
                 })
             .toList(),
         'linkedSessions': linkedSessions,
+        'ticketStatus': ticketStatus,
+        'ticketCompletedAt': ticketCompletedAt,
       };
 
   factory RegisterEntry.fromJson(Map<String, dynamic> json) {
@@ -143,6 +160,8 @@ class RegisterEntry {
       linkedSessions: (json['linkedSessions'] as List<dynamic>? ?? <dynamic>[])
           .map((s) => Map<String, dynamic>.from(s as Map))
           .toList(),
+      ticketStatus: json['ticketStatus'] as String?,
+      ticketCompletedAt: json['ticketCompletedAt'] as String?,
     );
   }
 }

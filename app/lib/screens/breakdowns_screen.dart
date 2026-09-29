@@ -150,6 +150,11 @@ class _BreakdownCard extends ConsumerWidget {
                 value: Dates.elapsed(d['t_reported'], d['t_att']),
               ),
               _Metric(label: 'Loss KM', value: '${d['loss'] ?? '0'} km'),
+              _Metric(label: 'Driver', value: d['driver'] ?? '—'),
+              _Metric(
+                label: 'Odometer',
+                value: (d['odo'] ?? '').isEmpty ? '—' : '${d['odo']} km',
+              ),
             ],
           ),
           if (linkedSessions.isNotEmpty) ...<Widget>[

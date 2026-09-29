@@ -136,7 +136,9 @@ void main() {
       'breakdown',
       <String, String>{'odo': '121000'},
     );
-    expect(wire['odometer_km'], '121000');
+    // A number on the wire, not a string -- same convention as loss_km/
+    // bcs_litres (_numericWireKeys), matching the backend's `odometer_km: int`.
+    expect(wire['odometer_km'], 121000);
   });
 
   test('driver field posts under driver_id for both registers', () {

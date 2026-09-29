@@ -270,6 +270,13 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         unit: 'km',
         width: FieldWidth.half,
       ),
+      FieldDef(
+        key: 'odo',
+        label: 'Odometer Reading',
+        type: FieldType.number,
+        unit: 'km',
+        width: FieldWidth.half,
+      ),
       // No `attended` (Bus Attended Details) field: resolution only happens
       // through a linked Work Done session, and that session already has
       // its own Attended Details field -- re-typing it here would just be a

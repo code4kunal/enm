@@ -22,3 +22,4 @@ class TicketSearchResult(BaseModel):
     driver_name: str | None = None
     route: str | None = None
     defect_text: str | None = None
+    defect_type: str | None = None

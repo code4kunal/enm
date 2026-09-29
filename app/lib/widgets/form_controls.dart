@@ -582,21 +582,29 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
                       style: AppText.sans(size: 14, color: T.muted),
                     ),
                   )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: filtered.length.clamp(0, 40),
-                    itemBuilder: (_, i) {
-                      final o = filtered[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(_label(o), style: AppText.input),
-                        onTap: () {
-                          _toggle(o);
-                          _query.clear();
-                          setState(() {});
-                        },
-                      );
-                    },
+                : Material(
+                    // ListTile paints its background/ink splashes on the
+                    // nearest Material ancestor -- the enclosing Container
+                    // above is a plain DecoratedBox, not one, which is what
+                    // was tripping ListTile's own "may be invisible" debug
+                    // assertion on every render of this list.
+                    color: Colors.transparent,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length.clamp(0, 40),
+                      itemBuilder: (_, i) {
+                        final o = filtered[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(_label(o), style: AppText.input),
+                          onTap: () {
+                            _toggle(o);
+                            _query.clear();
+                            setState(() {});
+                          },
+                        );
+                      },
+                    ),
                   ),
           ),
         ],

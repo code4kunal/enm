@@ -160,7 +160,16 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
 
   void _onRemoveNewPhoto(int index) => setState(() => _newPhotos.removeAt(index));
 
-  void _set(String key, String value) => _values[key] = value;
+  /// The single setter every field/picker routes through. Also keeps the
+  /// matching [TextEditingController] (if any -- `_isTextBacked` fields
+  /// only) in sync: `_syncControllers()` overwrites `_values` from the
+  /// controller's own text on save, so a text-backed field set only in
+  /// `_values` (e.g. by the ticket-pick auto-fill) would otherwise render
+  /// correctly but get silently wiped back to blank on submit.
+  void _set(String key, String value) {
+    _values[key] = value;
+    _controllers[key]?.text = value;
+  }
 
   Future<void> _pickDate(String key) async {
     final current = Dates.parse(_values[key]) ?? DateTime.now();
@@ -900,6 +909,22 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                 InkWell(
                   onTap: () => setState(() {
                     widget.onSet('ticketId', r.ticketId);
+                    // Carry the linked ticket's own data forward so the
+                    // mechanic doesn't re-type what's already on the
+                    // record it's linked to. Always overwrites on a fresh
+                    // pick (the ticket is authoritative); a blank source
+                    // field is left alone rather than clearing what's
+                    // already typed. This widget only renders inside the
+                    // Work Done form, so the target keys are fixed.
+                    if ((r.busNo ?? '').isNotEmpty) {
+                      widget.onSet('bus', r.busNo!);
+                    }
+                    if ((r.defectText ?? '').isNotEmpty) {
+                      widget.onSet('defects', r.defectText!);
+                    }
+                    if ((r.defectType ?? '').isNotEmpty) {
+                      widget.onSet('defectType', r.defectType!);
+                    }
                     _pickedTitle = r.title;
                     _picked = r;
                     _query = '';

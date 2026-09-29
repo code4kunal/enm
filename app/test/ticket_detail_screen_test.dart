@@ -87,10 +87,21 @@ void main() {
         find.textContaining('Location: Kashimira signal', findRichText: true),
         findsOneWidget,
       );
+    },
+  );
 
-      // …and the row is optional, like every other row on this card: an
-      // unset location must not render a dangling "Location:" label. (The
+  testWidgets(
+    'test_ac1_an_unset_breakdown_location_renders_no_dangling_label',
+    (tester) async {
+      // The row is optional, like every other row on this card: an unset
+      // location must not render a dangling "Location:" label. (The
       // separate GPS card keeps its own "Location" title either way.)
+      //
+      // Split from the "set" case above into its own test: both pumps share
+      // one non-autoDispose ticketDetailProvider.family('t1'), and reusing
+      // one tester across two `_pumpTicket` calls left the first ticket's
+      // cached value visible on the second pump -- a test-harness quirk,
+      // not a claim about production caching behaviour.
       await _pumpTicket(tester, _ticketFor(_breakdownEntry()));
       expect(
         find.textContaining(RegExp(r'Location:'), findRichText: true),

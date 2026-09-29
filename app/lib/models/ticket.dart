@@ -16,6 +16,7 @@ class TicketSearchResult {
     this.driverName,
     this.route,
     this.defectText,
+    this.defectType,
   });
 
   final String ticketId;
@@ -40,6 +41,7 @@ class TicketSearchResult {
   final String? driverName;
   final String? route;
   final String? defectText;
+  final String? defectType;
 
   factory TicketSearchResult.fromJson(Map<String, dynamic> json) =>
       TicketSearchResult(
@@ -53,5 +55,6 @@ class TicketSearchResult {
         driverName: json['driver_name'] as String?,
         route: json['route'] as String?,
         defectText: json['defect_text'] as String?,
+        defectType: json['defect_type'] as String?,
       );
 }

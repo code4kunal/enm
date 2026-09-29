@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/ticket.dart';
@@ -136,6 +137,11 @@ Future<void> _pumpForm(WidgetTester tester, _Harness h) async {
     ),
   );
   await _settle(tester);
+  // With runtime fetching disabled (see setUpAll), resolving this form's
+  // bold-weight text throws an "asset not found" fallback exception --
+  // drain it here so it doesn't fail the test. No-op once already drained
+  // for an earlier pumpForm in the same test.
+  tester.takeException();
 }
 
 /// A form control currently holding [text] — an [AppTextField]'s or an
@@ -159,10 +165,36 @@ Future<void> _save(WidgetTester tester) async {
   final button = find.text('Save entry');
   await tester.ensureVisible(button);
   await tester.tap(button);
+  // The submit path runs a real 220ms fake-repository delay
+  // (test/support/fake_repositories.dart's `_latency`) -- same reason
+  // `_signedIn` above escapes to the real clock for sign-in/entries-load.
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 300)),
+  );
   await _settle(tester);
+  // A successful save shows a toast that auto-dismisses via a real Timer
+  // (ToastController, T.toastDuration = 2600ms). flutter_test's own
+  // teardown asserts no timer is left pending when the test ends, and that
+  // check runs before this test's `addTearDown(container.dispose)` -- so
+  // let the timer actually fire here rather than leaving it to disposal.
+  await tester.pump(const Duration(milliseconds: 2700));
 }
 
 void main() {
+  // This is the first widget test file in the suite to render this form's
+  // bold-weight text (`_TicketLinkSection`'s "Link to" header). Left at its
+  // default, google_fonts kicks off a real, unawaited network fetch for
+  // that weight, which flutter_test's mocked HttpClient always rejects --
+  // and that rejection surfaces asynchronously, detached from whichever
+  // test triggered it (observed landing on the *next* test, not the one
+  // that built the text), so no amount of in-test draining or waiting
+  // catches it reliably. Disabling runtime fetching removes the network
+  // attempt entirely; `_pumpForm` below drains the synchronous "asset not
+  // found" fallback exception that replaces it.
+  setUpAll(() {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  });
+
   testWidgets(
     'test_ac4_picking_a_breakdown_ticket_fills_the_work_done_fields',
     (tester) async {
