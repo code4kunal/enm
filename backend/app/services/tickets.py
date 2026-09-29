@@ -205,6 +205,7 @@ async def search_tickets(
                 InspectionResult.remark.ilike(needle),
                 ChecklistItem.label.ilike(needle),
                 Vehicle.registration_no.ilike(needle),
+                Ticket.display_id.ilike(needle),
                 Ticket.id == q.strip(),
             )
         )

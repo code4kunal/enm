@@ -50,6 +50,15 @@ class TicketDetailOut(BaseModel):
     ticket_id: str
     display_id: str
     status: str
+    #: Always present -- `services/tickets.ticket_title()` already handles
+    #: both source shapes (checklist item + bus for inspection-sourced,
+    #: the register's own title field for entry-sourced). The one thing a
+    #: person can read regardless of which source this ticket has.
+    title: str
+    #: The bus, resolved the same way regardless of source. Entry-sourced
+    #: tickets also get this from `source_entry`, but a screen that can't
+    #: assume `source_entry` is non-null needs it at the top level too.
+    bus_no: str
     source_entry: EntryOut | None
     linked_sessions: list[dict[str, Any]] | None
     photos: list[EntryPhotoOut] = []
@@ -83,19 +92,27 @@ async def get_ticket(
     # /tickets/search already enforces via its EntrySite dependency).
     assert_site_permission(user, site_code, "em_entry:read")
     entry_out = None
-    linked_sessions = None
     if ticket.source_entry is not None:
         entry_out = EntryOut(**entries_svc.serialize_entry(ticket.source_entry))
-        linked_sessions = await entries_svc.load_linked_sessions(
-            session, ticket.source_entry
-        )
+    # sessions_for_ticket works off the ticket id directly -- unlike
+    # load_linked_sessions, it doesn't need a source Entry, so this is one
+    # call for both source shapes (a Work Done session can link to any
+    # ticket regardless of source kind).
+    linked_sessions = await entries_svc.sessions_for_ticket(session, ticket.id)
     display_id = (
         ticket.source_entry.display_id if ticket.source_entry is not None else ticket.display_id
+    )
+    bus_no = (
+        entry_out.data.get("bus_no", "")
+        if entry_out is not None
+        else ticket.source_inspection_result.inspection.vehicle.registration_no
     )
     return TicketDetailOut(
         ticket_id=ticket.id,
         display_id=display_id,
         status=ticket.status.value,
+        title=svc.ticket_title(ticket),
+        bus_no=bus_no,
         source_entry=entry_out,
         linked_sessions=linked_sessions,
         photos=entry_out.photos if entry_out is not None else [],

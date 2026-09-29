@@ -9,6 +9,8 @@ class TicketDetail {
     required this.ticketId,
     required this.displayId,
     required this.status,
+    required this.title,
+    required this.busNo,
     required this.sourceEntry,
     required this.linkedSessions,
     required this.photos,
@@ -20,9 +22,16 @@ class TicketDetail {
   final String displayId;
   final String status;
 
-  /// Null only for an inspection-sourced ticket (no register entry) — not
-  /// reachable by this pass's UI, which only opens Ticket Detail for
-  /// Breakdown/Driver Complaint rows.
+  /// Always present regardless of source shape -- the one thing every
+  /// ticket has to show, even an inspection-sourced one with no entry.
+  final String title;
+  final String busNo;
+
+  /// Null for an inspection-sourced ticket (no register entry) -- reachable
+  /// whenever a Work Done session links to one, since linking doesn't
+  /// filter by source kind. Screens must not assume this is non-null just
+  /// because they only *open* Ticket Detail from Breakdown/Driver
+  /// Complaint rows -- the ticket on the other end can be any kind.
   final RegisterEntry? sourceEntry;
   final List<Map<String, dynamic>> linkedSessions;
   final List<EntryPhoto> photos;
@@ -41,6 +50,8 @@ class TicketDetail {
       ticketId: json['ticket_id'] as String,
       displayId: json['display_id'] as String,
       status: json['status'] as String,
+      title: json['title'] as String? ?? '',
+      busNo: json['bus_no'] as String? ?? '',
       sourceEntry: source == null ? null : parseEntry(source),
       linkedSessions:
           (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])

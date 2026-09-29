@@ -816,11 +816,24 @@ async def load_linked_sessions(
     ticket = await session.scalar(select(Ticket).where(Ticket.source_entry_id == entry.id))
     if ticket is None:
         return []
+    return await sessions_for_ticket(session, ticket.id)
+
+
+async def sessions_for_ticket(
+    session: AsyncSession, ticket_id: str
+) -> list[dict[str, Any]]:
+    """Every Work Done session logged against a ticket, oldest first.
+
+    Unlike `load_linked_sessions`, this doesn't need a source `Entry` --
+    a Work Done session can link to any ticket regardless of source kind
+    (including an inspection-sourced one, which has no `Entry` at all), so
+    this is the version `GET /tickets/{id}` uses for every ticket.
+    """
     rows = (
         await session.scalars(
             select(WorkDoneEntry)
             .join(Entry, Entry.id == WorkDoneEntry.entry_id)
-            .where(WorkDoneEntry.ticket_id == ticket.id)
+            .where(WorkDoneEntry.ticket_id == ticket_id)
             .order_by(Entry.entry_date, Entry.created_at)
         )
     ).unique().all()

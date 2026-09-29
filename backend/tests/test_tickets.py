@@ -633,6 +633,63 @@ async def test_legacy_pm_schedule_ticket_still_reads(client: AsyncClient) -> Non
     assert found.status_code == 200, found.text
 
 
+async def test_search_matches_inspection_ticket_display_id(client: AsyncClient) -> None:
+    """Same gap as test_search_matches_source_entry_display_id, but for an
+    inspection-sourced ticket -- the TicketsScreen shows Ticket.display_id
+    for these (no source_entry to read one from), so search must match it,
+    not just the entry-sourced branch's Entry.display_id."""
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        ticket = await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        await session.commit()
+        display_id = ticket.display_id
+
+    h = await auth_headers(client)
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    assert found.status_code == 200, found.text
+    assert any(t["ticket_id"] == ticket.id for t in found.json())
+
+
+async def test_get_ticket_detail_for_inspection_source_is_not_blank(
+    client: AsyncClient,
+) -> None:
+    """A Work Done session can link to any ticket regardless of source kind
+    (services/entries.py's ticket_id lookup has no register/source_kind
+    restriction), so an inspection-sourced ticket is reachable from the
+    Work Done linking picker same as a breakdown/complaint one -- Ticket
+    Detail must show a title, bus, and the linked session, not just a bare
+    display id with nothing else."""
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        ticket = await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        await session.commit()
+        ticket_id = ticket.id
+
+    h = await auth_headers(client)
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["attended_time"] = "11:05"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["source_entry"] is None
+    assert body["title"]
+    assert body["bus_no"] == "MH40LY1894"
+    assert body["attended_at"] == "11:05"
+    assert len(body["linked_sessions"]) == 1
+
+
 async def test_ticket_title_for_inspection_source(client: AsyncClient) -> None:
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)

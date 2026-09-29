@@ -18,7 +18,8 @@ RegisterEntry _breakdownEntry() => const RegisterEntry(
       data: <String, String>{
         'bus': 'MH04LQ5737',
         'defectType': 'Brake',
-        'complaint': 'Brake pressure low, vehicle stopped for technical attention',
+        'complaint':
+            'Brake pressure low, vehicle stopped for technical attention',
         'route': '7',
         'loss': '12.5',
         'remarks': 'Towed to workshop',
@@ -36,6 +37,8 @@ void main() {
         ticketId: 't1',
         displayId: 'BD-2026-000002',
         status: 'open',
+        title: 'Brake pressure low, vehicle stopped for technical attention',
+        busNo: 'MH04LQ5737',
         sourceEntry: _breakdownEntry(),
         linkedSessions: const <Map<String, dynamic>>[],
         photos: const <EntryPhoto>[],
@@ -44,7 +47,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: <Override>[
-            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+            ticketDetailProvider('t1')
+                .overrideWith((ref) => Future.value(ticket)),
           ],
           child: const MaterialApp(
             home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
@@ -56,7 +60,8 @@ void main() {
 
       expect(find.textContaining('Brake', findRichText: true), findsWidgets);
       expect(find.textContaining('12.5', findRichText: true), findsWidgets);
-      expect(find.textContaining('Towed to workshop', findRichText: true), findsWidgets);
+      expect(find.textContaining('Towed to workshop', findRichText: true),
+          findsWidgets);
       expect(find.textContaining('19.1197', findRichText: true), findsWidgets);
       expect(find.textContaining('GPS', findRichText: true), findsWidgets);
     },
@@ -69,6 +74,8 @@ void main() {
         ticketId: 't1',
         displayId: 'BD-2026-000002',
         status: 'open',
+        title: 'Brake pressure low, vehicle stopped for technical attention',
+        busNo: 'MH04LQ5737',
         sourceEntry: _breakdownEntry(),
         linkedSessions: <Map<String, dynamic>>[
           <String, dynamic>{
@@ -77,7 +84,11 @@ void main() {
             'attendees': <dynamic>[],
             'completes_ticket': false,
             'spare_parts': <dynamic>[
-              <String, dynamic>{'part_id': 'p1', 'part_no': 'SP-1', 'name': 'Brake pad'},
+              <String, dynamic>{
+                'part_id': 'p1',
+                'part_no': 'SP-1',
+                'name': 'Brake pad'
+              },
             ],
           },
         ],
@@ -87,7 +98,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: <Override>[
-            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+            ticketDetailProvider('t1')
+                .overrideWith((ref) => Future.value(ticket)),
           ],
           child: const MaterialApp(
             home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
@@ -97,7 +109,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.textContaining('Brake pad', findRichText: true), findsWidgets);
+      expect(
+          find.textContaining('Brake pad', findRichText: true), findsWidgets);
     },
   );
 
@@ -108,6 +121,8 @@ void main() {
         ticketId: 't1',
         displayId: 'BD-2026-000002',
         status: 'open',
+        title: 'Brake pressure low, vehicle stopped for technical attention',
+        busNo: 'MH04LQ5737',
         sourceEntry: _breakdownEntry(),
         linkedSessions: const <Map<String, dynamic>>[],
         photos: const <EntryPhoto>[],
@@ -116,7 +131,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: <Override>[
-            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+            ticketDetailProvider('t1')
+                .overrideWith((ref) => Future.value(ticket)),
           ],
           child: const MaterialApp(
             home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
@@ -137,6 +153,8 @@ void main() {
         ticketId: 't1',
         displayId: 'BD-2026-000002',
         status: 'open',
+        title: 'Brake pressure low, vehicle stopped for technical attention',
+        busNo: 'MH04LQ5737',
         sourceEntry: _breakdownEntry(),
         linkedSessions: const <Map<String, dynamic>>[],
         photos: const <EntryPhoto>[],
@@ -145,7 +163,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: <Override>[
-            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+            ticketDetailProvider('t1')
+                .overrideWith((ref) => Future.value(ticket)),
           ],
           child: const MaterialApp(
             home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
@@ -157,9 +176,60 @@ void main() {
 
       expect(find.text('Work sessions'), findsOneWidget);
       expect(
-        find.textContaining('No Work Done session logged against this ticket yet'),
+        find.textContaining(
+            'No Work Done session logged against this ticket yet'),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'an inspection-sourced ticket (no sourceEntry) still shows a title, bus, timeline, and sessions',
+    (tester) async {
+      // A Work Done session can link to any ticket regardless of source
+      // kind, so this screen is reachable for an inspection-sourced ticket
+      // too -- it must not assume sourceEntry is non-null.
+      const ticket = TicketDetail(
+        ticketId: 't1',
+        displayId: 'DI-2026-000001',
+        status: 'completed',
+        title: 'Brake check · MH40LY1894',
+        busNo: 'MH40LY1894',
+        sourceEntry: null,
+        linkedSessions: <Map<String, dynamic>>[
+          <String, dynamic>{
+            'entry_date': '2026-09-29',
+            'shift': 'C',
+            'attendees': <dynamic>[],
+            'completes_ticket': true,
+          },
+        ],
+        photos: <EntryPhoto>[],
+        attendedAt: '11:05',
+        completedAt: '12:30',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            ticketDetailProvider('t1')
+                .overrideWith((ref) => Future.value(ticket)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+          find.textContaining('Brake check', findRichText: true), findsWidgets);
+      expect(
+          find.textContaining('MH40LY1894', findRichText: true), findsWidgets);
+      expect(find.textContaining('11:05', findRichText: true), findsWidgets);
+      expect(find.textContaining('12:30', findRichText: true), findsWidgets);
+      expect(find.text('Work sessions'), findsOneWidget);
     },
   );
 }

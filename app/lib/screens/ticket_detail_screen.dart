@@ -79,7 +79,7 @@ class _Loaded extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     entry == null
-                        ? ''
+                        ? ticket.busNo
                         : '${entry.busNumber} · ${data['shift'] != null ? 'Shift ${data['shift']}' : entry.date}',
                     style: AppText.sans(size: 13, color: T.secondary),
                   ),
@@ -151,33 +151,49 @@ class _Loaded extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
+        ] else ...<Widget>[
+          // Inspection-sourced (or any future source shape without a
+          // register Entry) -- no per-register fields to show, but the
+          // ticket's own title/bus are always there.
           _Card(
-            title: 'Time & Shift Timeline',
-            child: Row(
+            title: 'Job',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Expanded(
-                  child: _Metric(
-                    label: 'Reported',
-                    value: data['t_reported'] ?? entry.time,
-                  ),
-                ),
-                Expanded(
-                  child: _Metric(
-                    label: 'Attended',
-                    value: ticket.attendedAt ?? '—',
-                  ),
-                ),
-                Expanded(
-                  child: _Metric(
-                    label: 'Completed',
-                    value: ticket.completedAt ?? '—',
-                  ),
-                ),
+                _row('Bus', ticket.busNo),
+                _row('Item', ticket.title),
               ],
             ),
           ),
           const SizedBox(height: 12),
         ],
+        _Card(
+          title: 'Time & Shift Timeline',
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: _Metric(
+                  label: 'Reported',
+                  value:
+                      entry == null ? '—' : (data['t_reported'] ?? entry.time),
+                ),
+              ),
+              Expanded(
+                child: _Metric(
+                  label: 'Attended',
+                  value: ticket.attendedAt ?? '—',
+                ),
+              ),
+              Expanded(
+                child: _Metric(
+                  label: 'Completed',
+                  value: ticket.completedAt ?? '—',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         _Card(
           title: 'Work sessions',
           child: sessions.isEmpty

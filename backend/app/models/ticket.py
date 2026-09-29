@@ -26,9 +26,9 @@ class Ticket(Base):
 
     Exactly one of `source_entry_id` / `source_inspection_result_id` is set,
     enforced by a check constraint — a ticket's source is either shape, never
-    both, never neither. A breakdown's ticket is created automatically, as is
-    an inspection failure's; Coolant/Driver Complaint/PM-Docking tickets are
-    raised explicitly (see `services/tickets.py`).
+    both, never neither. A breakdown's, a driver complaint's, and an
+    inspection failure's tickets are all created automatically; Coolant/
+    PM-Docking tickets are raised explicitly (see `services/tickets.py`).
     """
 
     __tablename__ = "tickets"

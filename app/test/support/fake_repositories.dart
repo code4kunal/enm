@@ -426,6 +426,8 @@ class FakeTicketRepository implements TicketRepository {
       ticketId: entry.id,
       displayId: entry.displayId,
       status: entry.status == EntryStatus.resolved ? 'completed' : 'open',
+      title: entry.data['complaint'] ?? entry.data['defects'] ?? '',
+      busNo: entry.busNumber,
       sourceEntry: entry,
       linkedSessions: entry.linkedSessions,
       photos: entry.photos,
