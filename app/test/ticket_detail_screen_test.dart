@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transvolt_em/models/entry.dart';
@@ -97,6 +98,68 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('Brake pad', findRichText: true), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'a location with lat/long renders an actual map, not just text',
+    (tester) async {
+      final ticket = TicketDetail(
+        ticketId: 't1',
+        displayId: 'BD-2026-000002',
+        status: 'open',
+        sourceEntry: _breakdownEntry(),
+        linkedSessions: const <Map<String, dynamic>>[],
+        photos: const <EntryPhoto>[],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(FlutterMap), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'no work sessions yet shows an explicit empty state, not a missing section',
+    (tester) async {
+      final ticket = TicketDetail(
+        ticketId: 't1',
+        displayId: 'BD-2026-000002',
+        status: 'open',
+        sourceEntry: _breakdownEntry(),
+        linkedSessions: const <Map<String, dynamic>>[],
+        photos: const <EntryPhoto>[],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Work sessions'), findsOneWidget);
+      expect(
+        find.textContaining('No Work Done session logged against this ticket yet'),
+        findsOneWidget,
+      );
     },
   );
 }

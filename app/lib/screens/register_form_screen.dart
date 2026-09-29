@@ -463,7 +463,8 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                   (register.id == 'breakdown' || register.id == 'complaint')) ...<Widget>[
                 LocationCaptureField(
                   service: ref.watch(locationServiceProvider),
-                  alreadyCaptured: (_values['latitude'] ?? '').isNotEmpty,
+                  initialLatitude: double.tryParse(_values['latitude'] ?? ''),
+                  initialLongitude: double.tryParse(_values['longitude'] ?? ''),
                   onCaptured: (lat, lng, source) => setState(() {
                     _set('latitude', lat.toString());
                     _set('longitude', lng.toString());

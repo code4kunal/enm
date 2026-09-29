@@ -68,6 +68,13 @@ void main() {
     expect(requireRegister('breakdown').field('t_att'), isNull);
   });
 
+  test('Breakdown Report does not duplicate Work Done\'s own attended details', () {
+    // Resolution only happens through a linked Work Done session, and that
+    // session already has its own "Attended Details" field -- re-typing it
+    // on the breakdown itself just diverges from what actually happened.
+    expect(requireRegister('breakdown').field('attended'), isNull);
+  });
+
   test('every register requires Date and Bus No', () {
     for (final r in kRegisters) {
       expect(r.field('date')?.required, isTrue, reason: r.name);

@@ -270,12 +270,10 @@ const List<RegisterDef> kRegisters = <RegisterDef>[
         unit: 'km',
         width: FieldWidth.half,
       ),
-      FieldDef(
-        key: 'attended',
-        label: 'Bus Attended Details',
-        type: FieldType.area,
-        placeholder: 'What was done on site',
-      ),
+      // No `attended` (Bus Attended Details) field: resolution only happens
+      // through a linked Work Done session, and that session already has
+      // its own Attended Details field -- re-typing it here would just be a
+      // second, divergent copy of what actually happened.
       FieldDef(
         key: 'supervisor',
         label: 'Supervisor (Floor)',

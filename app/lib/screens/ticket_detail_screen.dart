@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/entry_photo.dart';
 import '../models/ticket_detail.dart';
@@ -12,6 +13,7 @@ import '../widgets/buttons.dart';
 import '../widgets/chips.dart';
 import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
+import '../widgets/location_map.dart';
 
 /// The full history behind one ticket — the source entry's own fields, the
 /// reported/attended/completed timeline, every Work Done session logged
@@ -86,8 +88,10 @@ class _Loaded extends StatelessWidget {
             ),
             TagBadge(
               label: ticket.status == 'completed' ? 'Completed' : 'Open',
-              background: ticket.status == 'completed' ? T.greenTint : T.subtleFill,
-              foreground: ticket.status == 'completed' ? T.greenInk : T.secondary,
+              background:
+                  ticket.status == 'completed' ? T.greenTint : T.subtleFill,
+              foreground:
+                  ticket.status == 'completed' ? T.greenInk : T.secondary,
             ),
           ],
         ),
@@ -101,15 +105,19 @@ class _Loaded extends StatelessWidget {
                 _row('Date', entry.date),
                 if (data['shift'] != null) _row('Shift', data['shift']!),
                 _row('Bus', entry.busNumber),
-                if ((data['driver'] ?? '').isNotEmpty) _row('Driver', data['driver']!),
-                if ((data['route'] ?? '').isNotEmpty) _row('Route', data['route']!),
+                if ((data['driver'] ?? '').isNotEmpty)
+                  _row('Driver', data['driver']!),
+                if ((data['route'] ?? '').isNotEmpty)
+                  _row('Route', data['route']!),
                 if ((data['defectType'] ?? '').isNotEmpty)
                   _row('Defect Type', data['defectType']!),
                 if ((data['complaint'] ?? '').isNotEmpty)
                   _row('Reported', data['complaint']!),
                 // Breakdown-only.
-                if ((data['loss'] ?? '').isNotEmpty) _row('Loss (km)', data['loss']!),
-                if ((data['remarks'] ?? '').isNotEmpty) _row('Remarks', data['remarks']!),
+                if ((data['loss'] ?? '').isNotEmpty)
+                  _row('Loss (km)', data['loss']!),
+                if ((data['remarks'] ?? '').isNotEmpty)
+                  _row('Remarks', data['remarks']!),
                 // Driver Complaint-only.
                 if ((data['action'] ?? '').isNotEmpty)
                   _row('Rectification Action', data['action']!),
@@ -119,13 +127,26 @@ class _Loaded extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if ((data['latitude'] ?? '').isNotEmpty && (data['longitude'] ?? '').isNotEmpty) ...<Widget>[
+          if (double.tryParse(data['latitude'] ?? '') != null &&
+              double.tryParse(data['longitude'] ?? '') != null) ...<Widget>[
             _Card(
               title: 'Location',
-              child: _row(
-                'Coordinates',
-                '${data['latitude']}, ${data['longitude']} '
-                '(${(data['locationSource'] ?? 'manual').toUpperCase()})',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  LocationMapView(
+                    center: LatLng(
+                      double.parse(data['latitude']!),
+                      double.parse(data['longitude']!),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _row(
+                    'Coordinates',
+                    '${data['latitude']}, ${data['longitude']} '
+                        '(${(data['locationSource'] ?? 'manual').toUpperCase()})',
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -157,54 +178,61 @@ class _Loaded extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
-        if (sessions.isNotEmpty)
-          _Card(
-            title: 'Work sessions',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                for (final indexed in sessions.asMap().entries) ...<Widget>[
-                  if (indexed.key > 0) const Divider(height: 20, color: T.border),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: <Widget>[
-                      if (indexed.key == 0)
-                        const TagBadge(
-                          label: 'Originally logged',
-                          background: T.blueTint,
-                          foreground: T.blue,
+        _Card(
+          title: 'Work sessions',
+          child: sessions.isEmpty
+              ? Text(
+                  'No Work Done session logged against this ticket yet.',
+                  style: AppText.sans(size: 13, color: T.muted),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    for (final indexed in sessions.asMap().entries) ...<Widget>[
+                      if (indexed.key > 0)
+                        const Divider(height: 20, color: T.border),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: <Widget>[
+                          if (indexed.key == 0)
+                            const TagBadge(
+                              label: 'Originally logged',
+                              background: T.blueTint,
+                              foreground: T.blue,
+                            ),
+                          if (indexed.value['completes_ticket'] == true)
+                            const TagBadge(
+                              label: 'Completed by',
+                              background: T.greenTint,
+                              foreground: T.green,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${indexed.value['entry_date']} · Shift ${indexed.value['shift'] ?? '—'} · '
+                        '${(indexed.value['attendees'] as List<dynamic>? ?? const <dynamic>[]).map((a) => (a as Map)['name']).join(', ')}'
+                        '${(indexed.value['supervisor'] as String?)?.isNotEmpty == true ? ' · Supervisor: ${indexed.value['supervisor']}' : ''}'
+                        '${(indexed.value['attended_time'] as String?) != null ? ' · Attended: ${indexed.value['attended_time']}' : ''}'
+                        '${(indexed.value['completion_time'] as String?) != null ? ' · Completed: ${indexed.value['completion_time']}' : ''}',
+                        style: AppText.sans(size: 13),
+                      ),
+                      if ((indexed.value['spare_parts'] as List<dynamic>? ??
+                              const <dynamic>[])
+                          .isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Spare parts: '
+                          '${(indexed.value['spare_parts'] as List<dynamic>).map((p) => '${(p as Map)['name']} (${p['part_no']})').join(', ')}',
+                          style: AppText.sans(size: 13, color: T.secondary),
                         ),
-                      if (indexed.value['completes_ticket'] == true)
-                        const TagBadge(
-                          label: 'Completed by',
-                          background: T.greenTint,
-                          foreground: T.green,
-                        ),
+                      ],
                     ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${indexed.value['entry_date']} · Shift ${indexed.value['shift'] ?? '—'} · '
-                    '${(indexed.value['attendees'] as List<dynamic>? ?? const <dynamic>[]).map((a) => (a as Map)['name']).join(', ')}'
-                    '${(indexed.value['supervisor'] as String?)?.isNotEmpty == true ? ' · Supervisor: ${indexed.value['supervisor']}' : ''}'
-                    '${(indexed.value['attended_time'] as String?) != null ? ' · Attended: ${indexed.value['attended_time']}' : ''}'
-                    '${(indexed.value['completion_time'] as String?) != null ? ' · Completed: ${indexed.value['completion_time']}' : ''}',
-                    style: AppText.sans(size: 13),
-                  ),
-                  if ((indexed.value['spare_parts'] as List<dynamic>? ?? const <dynamic>[]).isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Spare parts: '
-                      '${(indexed.value['spare_parts'] as List<dynamic>).map((p) => '${(p as Map)['name']} (${p['part_no']})').join(', ')}',
-                      style: AppText.sans(size: 13, color: T.secondary),
-                    ),
                   ],
-                ],
-              ],
-            ),
-          ),
+                ),
+        ),
         if (ticket.photos.isNotEmpty) ...<Widget>[
           const SizedBox(height: 12),
           _Card(
@@ -259,7 +287,8 @@ Widget _row(String label, String value) {
         children: <InlineSpan>[
           TextSpan(
             text: '$label: ',
-            style: AppText.sans(size: 13, weight: FontWeight.w600, color: T.secondary),
+            style: AppText.sans(
+                size: 13, weight: FontWeight.w600, color: T.secondary),
           ),
           TextSpan(text: value, style: AppText.sans(size: 13, color: T.ink)),
         ],
