@@ -64,6 +64,10 @@ class _LocationCaptureFieldState extends State<LocationCaptureField> {
     return LatLng(lat, lng);
   }
 
+  // GPS/map fixes carry far more precision than a depot-scale location
+  // needs to display -- 6 decimal places is sub-metre already.
+  static String _fmt(double v) => v.toStringAsFixed(6);
+
   void _saveManual() {
     final lat = double.tryParse(_latController.text);
     final lng = double.tryParse(_lngController.text);
@@ -75,15 +79,15 @@ class _LocationCaptureFieldState extends State<LocationCaptureField> {
   Future<void> _useMyLocation() async {
     final fix = await widget.service.currentPosition();
     if (!mounted || fix == null) return;
-    _latController.text = fix.latitude.toString();
-    _lngController.text = fix.longitude.toString();
+    _latController.text = _fmt(fix.latitude);
+    _lngController.text = _fmt(fix.longitude);
     widget.onCaptured(fix.latitude, fix.longitude, 'gps');
     setState(() => _captured = true);
   }
 
   void _confirmMapPick(double lat, double lng) {
-    _latController.text = lat.toString();
-    _lngController.text = lng.toString();
+    _latController.text = _fmt(lat);
+    _lngController.text = _fmt(lng);
     widget.onCaptured(lat, lng, 'map');
     setState(() {
       _captured = true;
