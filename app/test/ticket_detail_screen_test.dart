@@ -29,7 +29,92 @@ RegisterEntry _breakdownEntry() => const RegisterEntry(
       },
     );
 
+/// The same breakdown, plus whatever the test under way cares about.
+RegisterEntry _breakdownEntryWith(Map<String, String> extra) {
+  final base = _breakdownEntry();
+  return RegisterEntry(
+    id: base.id,
+    registerId: base.registerId,
+    date: base.date,
+    time: base.time,
+    site: base.site,
+    enteredBy: base.enteredBy,
+    displayId: base.displayId,
+    status: base.status,
+    data: <String, String>{...base.data, ...extra},
+  );
+}
+
+TicketDetail _ticketFor(RegisterEntry entry) => TicketDetail(
+      ticketId: 't1',
+      displayId: entry.displayId,
+      status: 'open',
+      title: 'Brake pressure low, vehicle stopped for technical attention',
+      busNo: entry.busNumber,
+      sourceEntry: entry,
+      linkedSessions: const <Map<String, dynamic>>[],
+      photos: const <EntryPhoto>[],
+    );
+
+Future<void> _pumpTicket(WidgetTester tester, TicketDetail ticket) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: <Override>[
+        ticketDetailProvider('t1').overrideWith((ref) => Future.value(ticket)),
+      ],
+      child: const MaterialApp(
+        home: Scaffold(body: TicketDetailScreen(ticketId: 't1')),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
 void main() {
+  testWidgets(
+    'test_ac1_ticket_detail_shows_the_breakdown_location',
+    (tester) async {
+      // Captured on the Breakdown form as "Location of Breakdown" and shown
+      // on the Breakdowns list, but never on Ticket Detail -- which is the
+      // screen the depot team reads when the bus is already off the road.
+      final ticket = _ticketFor(
+        _breakdownEntryWith(<String, String>{'loc': 'Kashimira signal'}),
+      );
+      await _pumpTicket(tester, ticket);
+
+      expect(
+        find.textContaining('Location: Kashimira signal', findRichText: true),
+        findsOneWidget,
+      );
+
+      // …and the row is optional, like every other row on this card: an
+      // unset location must not render a dangling "Location:" label. (The
+      // separate GPS card keeps its own "Location" title either way.)
+      await _pumpTicket(tester, _ticketFor(_breakdownEntry()));
+      expect(
+        find.textContaining(RegExp(r'Location:'), findRichText: true),
+        findsNothing,
+      );
+      expect(find.text('Location'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'test_ac3_ticket_detail_shows_the_odometer_reading',
+    (tester) async {
+      final ticket = _ticketFor(
+        _breakdownEntryWith(<String, String>{'odo': '121000'}),
+      );
+      await _pumpTicket(tester, ticket);
+
+      expect(
+        find.textContaining(RegExp(r'Odometer.*121,?000'), findRichText: true),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets(
     'renders defect type, loss km, remarks, and captured location',
     (tester) async {
