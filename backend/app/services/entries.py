@@ -521,7 +521,12 @@ async def create_entry(
             session,
             vehicle,
             odometer_km=data.odometer_km,
-            recorded_at=datetime.combine(entry_date, time_t(0, 0), tzinfo=UTC),
+            # Unlike the inspection precedent (date only, midnight UTC),
+            # a breakdown always captures a real reported_time -- use it,
+            # in site-local time, so a backdated entry doesn't drag
+            # vehicle.odometer_updated_at to midnight UTC on that date and
+            # skew service_due's anchor_date.
+            recorded_at=datetime.combine(entry_date, data.reported_time, tzinfo=IST),
             source="breakdown",
         )
     if register is Register.work_done:

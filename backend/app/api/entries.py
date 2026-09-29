@@ -85,6 +85,19 @@ async def _load(session: SessionDep, entry_id: str) -> Entry:
     return entry
 
 
+async def _with_ticket_status(
+    session: SessionDep, entry: Entry, result: dict[str, Any]
+) -> dict[str, Any]:
+    """Mutates and returns `result` with `ticket_status`/`ticket_completed_at`
+    -- every response path that serializes an Entry needs this, not just
+    the list/get routes, or a client that just created/edited/raised a
+    ticket sees a stale null until its next list refresh."""
+    status_pair = (await svc.bulk_ticket_status(session, [entry.id])).get(entry.id)
+    result["ticket_status"] = status_pair[0] if status_pair else None
+    result["ticket_completed_at"] = status_pair[1] if status_pair else None
+    return result
+
+
 def _can_edit(user, entry: Entry) -> bool:
     """Your own record, or somebody else's if you may delete records here.
 
@@ -191,7 +204,7 @@ async def create_entry(
         await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
     if payload.register is Register.breakdown:
         await notifications.notify_breakdown_opened(session, entry)
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 
@@ -330,9 +343,7 @@ async def get_entry(entry_id: str, user: CurrentUser, session: SessionDep) -> En
     assert_site_permission(user, entry.site_code, "em_entry:read")
     result = svc.serialize_entry(entry)
     result["linked_sessions"] = await svc.load_linked_sessions(session, entry)
-    status_pair = (await svc.bulk_ticket_status(session, [entry.id])).get(entry.id)
-    result["ticket_status"] = status_pair[0] if status_pair else None
-    result["ticket_completed_at"] = status_pair[1] if status_pair else None
+    result = await _with_ticket_status(session, entry, result)
     return EntryOut(**result)
 
 
@@ -366,7 +377,7 @@ async def update_entry(
         before=before,
         after=svc.audit_snapshot(entry),
     )
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 
@@ -394,7 +405,7 @@ async def raise_ticket(entry_id: str, user: CurrentUser, session: SessionDep) ->
         object_id=entry.id,
         after=svc.audit_snapshot(entry, extra={"status": "open"}),
     )
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 

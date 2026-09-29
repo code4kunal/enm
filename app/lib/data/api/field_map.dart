@@ -96,6 +96,14 @@ abstract final class RegisterFieldMap {
     'longitude',
   };
 
+  /// Numeric fields the API accepts as `int`, never a decimal -- the
+  /// number-typed form field itself allows two decimal places
+  /// (`AppTextField(numeric: true)`), so a value like `121000.5` has to be
+  /// rounded here rather than 422 the whole submission after the mechanic
+  /// has filled in the rest of the form. Same fix this repo's odometer
+  /// punch already applies client-side (`models/checklist.dart`).
+  static const Set<String> _integerWireKeys = <String>{'odometer_km'};
+
   /// Fields the API sends/accepts as a JSON boolean, not a string.
   static const Set<String> _boolWireKeys = <String>{'completes_ticket'};
 
@@ -127,7 +135,9 @@ abstract final class RegisterFieldMap {
 
       if (_numericWireKeys.contains(wireKey)) {
         final number = num.tryParse(value);
-        if (number != null) out[wireKey] = number;
+        if (number == null) continue;
+        out[wireKey] =
+            _integerWireKeys.contains(wireKey) ? number.round() : number;
         continue;
       }
       if (_boolWireKeys.contains(wireKey)) {

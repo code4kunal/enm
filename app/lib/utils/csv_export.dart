@@ -49,8 +49,11 @@ abstract final class CsvExport {
   /// raised yet; [RegisterEntry.ticketStatus] is null either way and the
   /// column can't tell the two apart, on purpose.
   static String _ticketSummary(RegisterEntry e) {
+    final completedAt = e.ticketCompletedAt;
     return switch (e.ticketStatus) {
-      'completed' => 'Completed — ${e.ticketCompletedAt ?? ''}',
+      'completed' when completedAt != null && completedAt.isNotEmpty =>
+        'Completed — $completedAt',
+      'completed' => 'Completed',
       'open' => 'Open',
       _ => '',
     };

@@ -583,11 +583,11 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
                     ),
                   )
                 : Material(
-                    // ListTile paints its background/ink splashes on the
-                    // nearest Material ancestor -- the enclosing Container
-                    // above is a plain DecoratedBox, not one, which is what
-                    // was tripping ListTile's own "may be invisible" debug
-                    // assertion on every render of this list.
+                    // ListTile paints its selection background/ink splashes
+                    // on the *nearest* Material ancestor, which without this
+                    // wrapper is the Scaffold several widgets up -- behind
+                    // this list's own bordered/backgrounded Container, so
+                    // taps here never visibly ink at all.
                     color: Colors.transparent,
                     child: ListView.builder(
                       shrinkWrap: true,

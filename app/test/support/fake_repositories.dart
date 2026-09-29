@@ -402,6 +402,7 @@ class FakeTicketRepository implements TicketRepository {
             busNo: e.busNumber,
             route: e.data['route'],
             defectText: e.data['complaint'] ?? e.data['defects'],
+            defectType: e.data['defectType'],
           ),
         )
         .toList();
