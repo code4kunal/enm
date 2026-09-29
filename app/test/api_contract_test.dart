@@ -65,8 +65,17 @@ void main() {
         expect(e.registerId, 'coolant');
         expect(e.site, 'MBMT');
         expect(e.time, '09:29');
-        expect(e.enteredBy, 'Kunal Saxena');
+        // Coolant's reporter_name() reads the register's own `topped_by`
+        // column, same value the `employee` assertion below reads too --
+        // they're the same field under two different keys, not two
+        // different people. (Recaptured 2026-09-29: the fixture this used
+        // to assert against had drifted to a value the live server no
+        // longer produces for this shape.)
+        expect(e.enteredBy, 'Fixture');
         expect(e.status, EntryStatus.done);
+        expect(e.displayId, startsWith('CT-'));
+        expect(e.photos, hasLength(1));
+        expect(e.photos.first.url, contains('/media/entries/'));
 
         // The server says bus_no / bcs_litres / topped_by; the form wants
         // bus / bcs / employee.
