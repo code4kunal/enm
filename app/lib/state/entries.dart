@@ -191,6 +191,16 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
       }
     }
 
+    // Ticket Detail's own provider is keyed by ticket id, not entry id, and
+    // caches independently of the list above -- any session linked to a
+    // ticket (attending or completing) changes what that screen shows
+    // (the timeline, the session list), so it must be invalidated too, not
+    // only on completion.
+    final linkedTicketId = normalised['ticketId'];
+    if (linkedTicketId != null && linkedTicketId.isNotEmpty) {
+      ref.invalidate(ticketDetailProvider(linkedTicketId));
+    }
+
     // DMR / charts / investigations read these registers.
     ref.invalidate(dmrDayProvider);
     ref.invalidate(dmrMonthProvider);

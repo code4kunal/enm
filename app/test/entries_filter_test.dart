@@ -258,6 +258,35 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'ticketDetailProvider reflects the completion, not a stale cached read',
+      () async {
+        // A real user who opens Ticket Detail, links a Work Done session
+        // elsewhere, then comes back to the same ticket must see it as
+        // completed -- not the "open" snapshot Riverpod cached on the
+        // first read.
+        final container = await signedInContainer();
+        final open = container.read(openBreakdownsProvider);
+        final ticketId = open.first.id;
+
+        final before = await container.read(ticketDetailProvider(ticketId).future);
+        expect(before.status, 'open');
+
+        await container.read(entriesProvider.notifier).create(
+          registerId: 'work',
+          data: <String, String>{
+            'bus': 'MH40LY1721',
+            'date': Dates.today(),
+            'ticketId': ticketId,
+            'completesTicket': 'true',
+          },
+        );
+
+        final after = await container.read(ticketDetailProvider(ticketId).future);
+        expect(after.status, 'completed');
+      },
+    );
   });
 
   group('filteredEntriesProvider', () {
