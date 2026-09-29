@@ -302,12 +302,19 @@ class _PhotoGalleryPickerState extends State<PhotoGalleryPicker> {
         for (final photo in widget.existingPhotos)
           _tile(
             onRemove: () => widget.onRemoveExisting(photo.id),
-            child: Text(
-              photo.url.split('/').last,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.sans(size: 11, color: T.secondary),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                photo.url,
+                width: 84,
+                height: 84,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stack) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: T.muted,
+                  size: 28,
+                ),
+              ),
             ),
           ),
         for (var i = 0; i < widget.pendingCount; i++)

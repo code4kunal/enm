@@ -28,6 +28,7 @@ import '../widgets/dashed.dart';
 import '../widgets/fade_up.dart';
 import '../widgets/form_controls.dart';
 import '../widgets/location_capture.dart';
+import '../widgets/location_map.dart';
 import '../widgets/sheet.dart';
 
 /// New-entry and edit-entry form. Exactly one of [registerId] / [entryId] is
@@ -459,18 +460,25 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              if (!widget.readOnly &&
-                  (register.id == 'breakdown' || register.id == 'complaint')) ...<Widget>[
-                LocationCaptureField(
-                  service: ref.watch(locationServiceProvider),
-                  initialLatitude: double.tryParse(_values['latitude'] ?? ''),
-                  initialLongitude: double.tryParse(_values['longitude'] ?? ''),
-                  onCaptured: (lat, lng, source) => setState(() {
-                    _set('latitude', lat.toString());
-                    _set('longitude', lng.toString());
-                    _set('locationSource', source);
-                  }),
-                ),
+              if (register.id == 'breakdown' || register.id == 'complaint') ...<Widget>[
+                if (widget.readOnly)
+                  ReadOnlyLocation(
+                    latitude: double.tryParse(_values['latitude'] ?? ''),
+                    longitude: double.tryParse(_values['longitude'] ?? ''),
+                    source: _values['locationSource'],
+                  )
+                else
+                  LocationCaptureField(
+                    service: ref.watch(locationServiceProvider),
+                    initialLatitude: double.tryParse(_values['latitude'] ?? ''),
+                    initialLongitude:
+                        double.tryParse(_values['longitude'] ?? ''),
+                    onCaptured: (lat, lng, source) => setState(() {
+                      _set('latitude', lat.toString());
+                      _set('longitude', lng.toString());
+                      _set('locationSource', source);
+                    }),
+                  ),
                 const SizedBox(height: 16),
               ],
               Container(

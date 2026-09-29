@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
 /// A small OpenStreetMap view centered on [center] with one marker there.
@@ -54,6 +55,44 @@ class LocationMapView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The View screen's read-only counterpart to [LocationCaptureField] --
+/// same map preview + coordinates Ticket Detail shows, so a captured
+/// location isn't only visible via the Ticket Detail redirect (which
+/// depends on a ticket lookup succeeding). Renders nothing when no
+/// location was captured, matching how every other optional card on a
+/// read-only view behaves.
+class ReadOnlyLocation extends StatelessWidget {
+  const ReadOnlyLocation({
+    super.key,
+    required this.latitude,
+    required this.longitude,
+    required this.source,
+  });
+
+  final double? latitude;
+  final double? longitude;
+  final String? source;
+
+  @override
+  Widget build(BuildContext context) {
+    final lat = latitude;
+    final lng = longitude;
+    if (lat == null || lng == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        LocationMapView(center: LatLng(lat, lng)),
+        const SizedBox(height: 8),
+        Text(
+          '$lat, $lng (${(source ?? 'manual').toUpperCase()})',
+          style: AppText.sans(size: 12.5, color: T.secondary),
+        ),
+      ],
     );
   }
 }

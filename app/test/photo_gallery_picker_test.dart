@@ -32,7 +32,8 @@ void main() {
 
   setUp(() => FilePicker.platform = fake = _FakeFilePicker());
 
-  testWidgets('shows a thumbnail per existing photo plus an add tile',
+  testWidgets(
+      'shows a real image thumbnail per existing photo, not its filename, plus an add tile',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -49,8 +50,16 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('a.jpg'), findsOneWidget);
-    expect(find.textContaining('b.jpg'), findsOneWidget);
+    // A picker showing "a.jpg" as text gives no visual confirmation of what
+    // was actually captured -- it must render the real image, same as
+    // Ticket Detail's own photo grid does.
+    expect(find.textContaining('a.jpg'), findsNothing);
+    expect(find.textContaining('b.jpg'), findsNothing);
+    final images = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((w) => (w.image as NetworkImage).url)
+        .toList();
+    expect(images, containsAll(<String>['http://x/a.jpg', 'http://x/b.jpg']));
     expect(find.textContaining('Add photo'), findsOneWidget);
   });
 
