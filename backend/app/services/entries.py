@@ -844,6 +844,14 @@ async def load_linked_sessions(
                 "completion_time": wd.completion_time.strftime("%H:%M")
                 if wd.completion_time
                 else None,
+                "spare_parts": [
+                    {
+                        "part_id": sp.spare_part_id,
+                        "part_no": sp.spare_part.part_no,
+                        "name": sp.spare_part.name,
+                    }
+                    for sp in wd.spare_parts
+                ],
             }
         )
     return out

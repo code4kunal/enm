@@ -103,12 +103,33 @@ class _Loaded extends StatelessWidget {
                 _row('Bus', entry.busNumber),
                 if ((data['driver'] ?? '').isNotEmpty) _row('Driver', data['driver']!),
                 if ((data['route'] ?? '').isNotEmpty) _row('Route', data['route']!),
+                if ((data['defectType'] ?? '').isNotEmpty)
+                  _row('Defect Type', data['defectType']!),
                 if ((data['complaint'] ?? '').isNotEmpty)
                   _row('Reported', data['complaint']!),
+                // Breakdown-only.
+                if ((data['loss'] ?? '').isNotEmpty) _row('Loss (km)', data['loss']!),
+                if ((data['remarks'] ?? '').isNotEmpty) _row('Remarks', data['remarks']!),
+                // Driver Complaint-only.
+                if ((data['action'] ?? '').isNotEmpty)
+                  _row('Rectification Action', data['action']!),
+                if ((data['mechanic'] ?? '').isNotEmpty)
+                  _row('Mechanic', data['mechanic']!),
               ],
             ),
           ),
           const SizedBox(height: 12),
+          if ((data['latitude'] ?? '').isNotEmpty && (data['longitude'] ?? '').isNotEmpty) ...<Widget>[
+            _Card(
+              title: 'Location',
+              child: _row(
+                'Coordinates',
+                '${data['latitude']}, ${data['longitude']} '
+                '(${(data['locationSource'] ?? 'manual').toUpperCase()})',
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           _Card(
             title: 'Time & Shift Timeline',
             child: Row(
@@ -172,6 +193,14 @@ class _Loaded extends StatelessWidget {
                     '${(indexed.value['completion_time'] as String?) != null ? ' · Completed: ${indexed.value['completion_time']}' : ''}',
                     style: AppText.sans(size: 13),
                   ),
+                  if ((indexed.value['spare_parts'] as List<dynamic>? ?? const <dynamic>[]).isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Spare parts: '
+                      '${(indexed.value['spare_parts'] as List<dynamic>).map((p) => '${(p as Map)['name']} (${p['part_no']})').join(', ')}',
+                      style: AppText.sans(size: 13, color: T.secondary),
+                    ),
+                  ],
                 ],
               ],
             ),

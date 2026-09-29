@@ -812,6 +812,36 @@ async def test_get_ticket_detail_exposes_the_attended_and_completed_timeline(
     assert session["completion_time"] == "12:30"
 
 
+async def test_get_ticket_detail_linked_sessions_include_spare_parts(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    part = (
+        await client.post(
+            "/sites/MBMT/spare-parts",
+            json={"part_no": "SP-TD1", "name": "Brake pad"},
+            headers=h,
+        )
+    ).json()
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["spare_part_ids"] = [part["id"]]
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    session = detail.json()["linked_sessions"][0]
+    assert session["spare_parts"] == [
+        {"part_id": part["id"], "part_no": "SP-TD1", "name": "Brake pad"}
+    ]
+
+
 async def test_get_ticket_detail_404s_for_unknown_id(client: AsyncClient) -> None:
     h = await auth_headers(client)
     r = await client.get("/tickets/does-not-exist", headers=h)
