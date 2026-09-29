@@ -9,8 +9,9 @@ import '../state/entries.dart';
 /// Exports the current filtered result set as CSV.
 ///
 /// Columns match the handoff: Register, Date, Site, Bus No, Details,
-/// Entered by. Delivery goes through the platform share sheet, which covers
-/// "save to Files" on mobile and a download on web without a second dependency.
+/// Entered by, Display ID, Ticket Status. Delivery goes through the
+/// platform share sheet, which covers "save to Files" on mobile and a
+/// download on web without a second dependency.
 abstract final class CsvExport {
   static const List<String> _columns = <String>[
     'Register',
@@ -19,6 +20,8 @@ abstract final class CsvExport {
     'Bus No',
     'Details',
     'Entered by',
+    'Display ID',
+    'Ticket Status',
   ];
 
   static String build(List<RegisterEntry> entries) {
@@ -32,11 +35,28 @@ abstract final class CsvExport {
           e.busNumber,
           entrySummary(e),
           e.enteredBy,
+          e.displayId,
+          _ticketSummary(e),
         ].map(_escape).join(','),
       );
     }
     // CRLF so Excel on Windows opens it without a repair prompt.
     return rows.join('\r\n');
+  }
+
+  /// "Completed — <date>", "Open", or blank — blank covers both a register
+  /// that can never carry a ticket and a ticketable one with no ticket
+  /// raised yet; [RegisterEntry.ticketStatus] is null either way and the
+  /// column can't tell the two apart, on purpose.
+  static String _ticketSummary(RegisterEntry e) {
+    final completedAt = e.ticketCompletedAt;
+    return switch (e.ticketStatus) {
+      'completed' when completedAt != null && completedAt.isNotEmpty =>
+        'Completed — $completedAt',
+      'completed' => 'Completed',
+      'open' => 'Open',
+      _ => '',
+    };
   }
 
   static String fileName(String site) =>

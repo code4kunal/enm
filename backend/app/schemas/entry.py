@@ -115,6 +115,7 @@ class BreakdownData(_DataBase):
     complaint: Req = Field(min_length=1)
     reported_time: HHMM
     loss_km: Decimal | None = Field(default=None, ge=0, le=999999)
+    odometer_km: int | None = Field(default=None, ge=0, le=9999999)
     attended_details: OptText = None
     remarks: OptText = None
     supervisor: OptText = None
@@ -203,6 +204,12 @@ class EntryOut(BaseModel):
     #: complaint, PM/docking); null everywhere else, including work_done
     #: entries themselves.
     linked_sessions: list[dict[str, Any]] | None = None
+    #: The entry's own ticket lifecycle, cheap to compute (one bulk query per
+    #: list page, unlike `linked_sessions` which is detail-only). Null for
+    #: registers that can never carry a ticket, and for a ticketable entry
+    #: that hasn't had one raised yet.
+    ticket_status: Literal["open", "completed"] | None = None
+    ticket_completed_at: date_t | None = None
     photos: list[EntryPhotoOut] = []
 
 

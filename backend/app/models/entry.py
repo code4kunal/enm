@@ -160,33 +160,52 @@ class Entry(Base):
     created_by: Mapped[User] = relationship(lazy="joined", foreign_keys=[created_by_id])
 
     work_done: Mapped[WorkDoneEntry | None] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin",
         uselist=False,
     )
     coolant: Mapped[CoolantEntry | None] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin",
         uselist=False,
     )
     driver_complaint: Mapped[DriverComplaintEntry | None] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin",
         uselist=False,
     )
     breakdown: Mapped[BreakdownEntry | None] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin",
         uselist=False,
     )
     pm_schedule: Mapped[PMScheduleEntry | None] = relationship(
-        back_populates="entry", cascade="all, delete-orphan", lazy="selectin",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin",
         uselist=False,
     )
     photos: Mapped[list[EntryPhoto]] = relationship(
-        cascade="all, delete-orphan", lazy="selectin", order_by="EntryPhoto.created_at",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="EntryPhoto.created_at",
     )
 
     @property
     def detail(
         self,
-    ) -> WorkDoneEntry | CoolantEntry | DriverComplaintEntry | BreakdownEntry | PMScheduleEntry | None:
+    ) -> (
+        WorkDoneEntry
+        | CoolantEntry
+        | DriverComplaintEntry
+        | BreakdownEntry
+        | PMScheduleEntry
+        | None
+    ):
         return getattr(self, self.register.value, None)
 
 
@@ -216,9 +235,7 @@ class WorkDoneEntry(Base):
     ticket_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True
     )
-    completes_ticket: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    completes_ticket: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     completion_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
 
     entry: Mapped[Entry] = relationship(back_populates="work_done")
@@ -337,6 +354,10 @@ class BreakdownEntry(Base):
     reported_time: Mapped[time_t] = mapped_column(Time, nullable=False)
     attended_time: Mapped[time_t | None] = mapped_column(Time, nullable=True)
     loss_km: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    # The dash reading at the moment of breakdown -- same int contract as
+    # Vehicle.odometer_km/OdometerReading.odometer_km, feeding the same
+    # forward-only reading history (services/odometer.record_reading).
+    odometer_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attended_details: Mapped[str | None] = mapped_column(Text, nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Floor supervisor who signed the job off. A name, not an FK: the

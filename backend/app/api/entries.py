@@ -85,6 +85,19 @@ async def _load(session: SessionDep, entry_id: str) -> Entry:
     return entry
 
 
+async def _with_ticket_status(
+    session: SessionDep, entry: Entry, result: dict[str, Any]
+) -> dict[str, Any]:
+    """Mutates and returns `result` with `ticket_status`/`ticket_completed_at`
+    -- every response path that serializes an Entry needs this, not just
+    the list/get routes, or a client that just created/edited/raised a
+    ticket sees a stale null until its next list refresh."""
+    status_pair = (await svc.bulk_ticket_status(session, [entry.id])).get(entry.id)
+    result["ticket_status"] = status_pair[0] if status_pair else None
+    result["ticket_completed_at"] = status_pair[1] if status_pair else None
+    return result
+
+
 def _can_edit(user, entry: Entry) -> bool:
     """Your own record, or somebody else's if you may delete records here.
 
@@ -118,19 +131,42 @@ async def list_entries(
     has_open_ticket: Annotated[bool | None, Query()] = None,
 ) -> Page[EntryOut]:
     filters = _filters(
-        site, register, date_from, date_to, period, q, entry_status, origin, has_open_ticket
+        site,
+        register,
+        date_from,
+        date_to,
+        period,
+        q,
+        entry_status,
+        origin,
+        has_open_ticket,
     )
     stmt = svc.apply_filters(select(Entry), **filters)
     total = await svc.count_entries(session, stmt)
     rows = (
-        await session.scalars(
-            stmt.order_by(Entry.entry_date.desc(), Entry.created_at.desc())
-            .offset(page.offset)
-            .limit(page.page_size)
+        (
+            await session.scalars(
+                stmt.order_by(Entry.entry_date.desc(), Entry.created_at.desc())
+                .offset(page.offset)
+                .limit(page.page_size)
+            )
         )
-    ).unique().all()
+        .unique()
+        .all()
+    )
+    ticket_status = await svc.bulk_ticket_status(session, [e.id for e in rows])
+    items = []
+    for e in rows:
+        status_pair = ticket_status.get(e.id)
+        items.append(
+            EntryOut(
+                **svc.serialize_entry(e),
+                ticket_status=status_pair[0] if status_pair else None,
+                ticket_completed_at=status_pair[1] if status_pair else None,
+            )
+        )
     return Page[EntryOut](
-        items=[EntryOut(**svc.serialize_entry(e)) for e in rows],
+        items=items,
         page=page.page,
         page_size=page.page_size,
         total=total,
@@ -168,12 +204,14 @@ async def create_entry(
         await tickets_svc.create_ticket_for_entry(session, entry=entry, creator=user)
     if payload.register is Register.breakdown:
         await notifications.notify_breakdown_opened(session, entry)
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 
 
-@router.post("/coolant/day", response_model=CoolantDayOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/coolant/day", response_model=CoolantDayOut, status_code=status.HTTP_201_CREATED
+)
 async def create_coolant_day(
     payload: CoolantDayCreate,
     user: CurrentUser,
@@ -284,7 +322,9 @@ async def export_csv(
         )
     buf.seek(0)
 
-    frm = (filters["date_from"] or (rows[-1].entry_date if rows else _today())).isoformat()
+    frm = (
+        filters["date_from"] or (rows[-1].entry_date if rows else _today())
+    ).isoformat()
     to = (filters["date_to"] or (rows[0].entry_date if rows else _today())).isoformat()
     filename = f"transvolt-em-register-{site}-{frm}-{to}.csv"
     return StreamingResponse(
@@ -298,13 +338,12 @@ async def export_csv(
 
 
 @router.get("/{entry_id}", response_model=EntryOut)
-async def get_entry(
-    entry_id: str, user: CurrentUser, session: SessionDep
-) -> EntryOut:
+async def get_entry(entry_id: str, user: CurrentUser, session: SessionDep) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_permission(user, entry.site_code, "em_entry:read")
     result = svc.serialize_entry(entry)
     result["linked_sessions"] = await svc.load_linked_sessions(session, entry)
+    result = await _with_ticket_status(session, entry, result)
     return EntryOut(**result)
 
 
@@ -338,15 +377,13 @@ async def update_entry(
         before=before,
         after=svc.audit_snapshot(entry),
     )
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 
 
 @router.post("/{entry_id}/raise_ticket", response_model=EntryOut)
-async def raise_ticket(
-    entry_id: str, user: CurrentUser, session: SessionDep
-) -> EntryOut:
+async def raise_ticket(entry_id: str, user: CurrentUser, session: SessionDep) -> EntryOut:
     entry = await _load(session, entry_id)
     assert_site_permission(user, entry.site_code, "em_entry:write")
     if entry.register not in (Register.coolant, Register.driver_complaint):
@@ -368,12 +405,16 @@ async def raise_ticket(
         object_id=entry.id,
         after=svc.audit_snapshot(entry, extra={"status": "open"}),
     )
-    result = svc.serialize_entry(entry)
+    result = await _with_ticket_status(session, entry, svc.serialize_entry(entry))
     await session.commit()
     return EntryOut(**result)
 
 
-@router.post("/{entry_id}/photos", response_model=list[EntryPhotoOut], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{entry_id}/photos",
+    response_model=list[EntryPhotoOut],
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_photo(
     entry_id: str,
     user: CurrentUser,

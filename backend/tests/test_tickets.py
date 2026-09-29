@@ -270,7 +270,9 @@ async def test_breakdown_get_lists_its_linked_work_done_sessions(
     assert sessions[0]["completes_ticket"] is False
 
 
-async def _ticket_for(client: AsyncClient, h: dict, entry_id: str, site: str = "MBMT") -> str:
+async def _ticket_for(
+    client: AsyncClient, h: dict, entry_id: str, site: str = "MBMT"
+) -> str:
     r = await client.get(
         "/tickets/search", params={"site": site, "q": entry_id}, headers=h
     )
@@ -483,23 +485,30 @@ async def _daily_inspection_result(
     expose `InspectionResult.id`, so there is no way to get a real result id
     through the HTTP surface alone. Mirrors test_inspections.py's own
     `SessionLocal`-direct setup pattern."""
-    work_type = await session.scalar(select(WorkType).where(WorkType.code == work_type_code))
+    work_type = await session.scalar(
+        select(WorkType).where(WorkType.code == work_type_code)
+    )
     if work_type is None:
         work_type = WorkType(code=work_type_code, name=work_type_code, is_inspection=True)
         session.add(work_type)
         await session.flush()
     template = await session.scalar(
         select(ChecklistTemplate).where(
-            ChecklistTemplate.site_code == site_code, ChecklistTemplate.work_type_id == work_type.id
+            ChecklistTemplate.site_code == site_code,
+            ChecklistTemplate.work_type_id == work_type.id,
         )
     )
     if template is None:
-        template = ChecklistTemplate(site_code=site_code, work_type_id=work_type.id, name=work_type_code)
+        template = ChecklistTemplate(
+            site_code=site_code, work_type_id=work_type.id, name=work_type_code
+        )
         session.add(template)
         await session.flush()
         session.add(ChecklistItem(template_id=template.id, label="Brakes"))
         await session.flush()
-    item = await session.scalar(select(ChecklistItem).where(ChecklistItem.template_id == template.id))
+    item = await session.scalar(
+        select(ChecklistItem).where(ChecklistItem.template_id == template.id)
+    )
     vehicle = await session.scalar(
         select(Vehicle).where(Vehicle.registration_no == vehicle_registration)
     )
@@ -589,9 +598,13 @@ async def test_inspection_result_cannot_get_two_tickets(client: AsyncClient) -> 
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)
         admin = await session.get(User, await _admin_id(session))
-        await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
         with pytest.raises(Conflict):
-            await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+            await tickets.create_ticket_for_inspection_result(
+                session, result=result, creator=admin
+            )
 
 
 async def test_pm_schedule_is_no_longer_ticketable(client: AsyncClient) -> None:
@@ -629,7 +642,9 @@ async def test_legacy_pm_schedule_ticket_still_reads(client: AsyncClient) -> Non
         assert entry.vehicle.registration_no in title
 
     h = await auth_headers(client)
-    found = await client.get("/tickets/search", params={"site": "MBMT", "q": ""}, headers=h)
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": ""}, headers=h
+    )
     assert found.status_code == 200, found.text
 
 
@@ -694,29 +709,41 @@ async def test_ticket_title_for_inspection_source(client: AsyncClient) -> None:
     async with SessionLocal() as session:
         result = await _daily_inspection_result(session)
         admin = await session.get(User, await _admin_id(session))
-        ticket = await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        ticket = await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
         title = tickets.ticket_title(ticket)
         assert result.item.label[:20] in title
         assert result.inspection.vehicle.registration_no in title
 
 
-async def test_search_tickets_scopes_inspection_source_by_site(client: AsyncClient) -> None:
+async def test_search_tickets_scopes_inspection_source_by_site(
+    client: AsyncClient,
+) -> None:
     async with SessionLocal() as session:
         mbmt_result = await _daily_inspection_result(session)
         umt_result = await _daily_inspection_result(
             session, site_code="UMT", vehicle_registration="MH05GX4410"
         )
         admin = await session.get(User, await _admin_id(session))
-        await tickets.create_ticket_for_inspection_result(session, result=mbmt_result, creator=admin)
-        await tickets.create_ticket_for_inspection_result(session, result=umt_result, creator=admin)
+        await tickets.create_ticket_for_inspection_result(
+            session, result=mbmt_result, creator=admin
+        )
+        await tickets.create_ticket_for_inspection_result(
+            session, result=umt_result, creator=admin
+        )
 
-        results = await tickets.search_tickets(session, site_code="MBMT", source_kind=None, q=None)
+        results = await tickets.search_tickets(
+            session, site_code="MBMT", source_kind=None, q=None
+        )
         found_ids = {r.source_inspection_result_id for r in results}
         assert mbmt_result.id in found_ids
         assert umt_result.id not in found_ids
 
 
-async def test_search_tickets_matches_inspection_by_label_or_bus(client: AsyncClient) -> None:
+async def test_search_tickets_matches_inspection_by_label_or_bus(
+    client: AsyncClient,
+) -> None:
     """An inspection-sourced ticket's title comes from the checklist item's
     label and the bus registration (ticket_title above) -- q must be able to
     match either, not just the optional remark, which the batch UI never
@@ -745,7 +772,9 @@ async def test_search_endpoint_accepts_source_kind(client: AsyncClient) -> None:
         result = await _daily_inspection_result(session)
         site_code = result.inspection.site_code
         admin = await session.get(User, await _admin_id(session))
-        await tickets.create_ticket_for_inspection_result(session, result=result, creator=admin)
+        await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
         await session.commit()
 
     h = await auth_headers(client)
@@ -939,3 +968,75 @@ async def test_search_result_includes_prefill_context(client: AsyncClient) -> No
     result = r.json()[0]
     assert result["bus_no"] == bd.json()["data"]["bus_no"]
     assert result["defect_text"] == bd.json()["data"]["complaint"]
+
+
+# --- Prefill context carries the defect type too (AC-4 / AC-5) -------------
+#
+# Work Done's own "Type of Defect" field is one of the three the mechanic is
+# currently made to re-pick by hand; the picker can only stop asking for it
+# if the search result carries it.
+
+
+async def test_ac4_search_result_includes_the_breakdown_defect_type(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    payload["data"]["defect_type"] = "Brakes & air system"
+    bd = await client.post("/entries", json=payload, headers=h)
+    assert bd.status_code == 201, bd.text
+
+    r = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "q": bd.json()["display_id"]},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()[0]["defect_type"] == "Brakes & air system"
+
+
+async def test_ac5_search_result_includes_the_driver_complaint_defect_type(
+    client: AsyncClient,
+) -> None:
+    """Same code path, different source register -- one fix closes both."""
+    h = await auth_headers(client)
+    dc = await client.post(
+        "/entries",
+        json={
+            "register": "driver_complaint",
+            "site": "MBMT",
+            "date": TODAY,
+            "data": {
+                "bus_no": "MH40LY1894",
+                "complaint": "AC not cooling",
+                "defect_type": "Electrical / HV",
+            },
+        },
+        headers=h,
+    )
+    assert dc.status_code == 201, dc.text
+
+    r = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "q": dc.json()["display_id"]},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    result = r.json()[0]
+    assert result["defect_type"] == "Electrical / HV"
+    assert result["bus_no"] == "MH40LY1894"
+    assert result["defect_text"] == "AC not cooling"
+
+
+async def test_ac4_search_result_defect_type_is_null_when_unset(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+
+    r = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "q": bd.json()["display_id"]},
+        headers=h,
+    )
+    assert r.json()[0]["defect_type"] is None

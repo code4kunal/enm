@@ -582,21 +582,29 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
                       style: AppText.sans(size: 14, color: T.muted),
                     ),
                   )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: filtered.length.clamp(0, 40),
-                    itemBuilder: (_, i) {
-                      final o = filtered[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(_label(o), style: AppText.input),
-                        onTap: () {
-                          _toggle(o);
-                          _query.clear();
-                          setState(() {});
-                        },
-                      );
-                    },
+                : Material(
+                    // ListTile paints its selection background/ink splashes
+                    // on the *nearest* Material ancestor, which without this
+                    // wrapper is the Scaffold several widgets up -- behind
+                    // this list's own bordered/backgrounded Container, so
+                    // taps here never visibly ink at all.
+                    color: Colors.transparent,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length.clamp(0, 40),
+                      itemBuilder: (_, i) {
+                        final o = filtered[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(_label(o), style: AppText.input),
+                          onTap: () {
+                            _toggle(o);
+                            _query.clear();
+                            setState(() {});
+                          },
+                        );
+                      },
+                    ),
                   ),
           ),
         ],

@@ -160,7 +160,26 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
 
   void _onRemoveNewPhoto(int index) => setState(() => _newPhotos.removeAt(index));
 
-  void _set(String key, String value) => _values[key] = value;
+  /// The single setter every field/picker routes through. Also keeps the
+  /// matching [TextEditingController] (if any -- `_isTextBacked` fields
+  /// only) in sync: `_syncControllers()` overwrites `_values` from the
+  /// controller's own text on save, so a text-backed field set only in
+  /// `_values` (e.g. by the ticket-pick auto-fill) would otherwise render
+  /// correctly but get silently wiped back to blank on submit.
+  ///
+  /// Only writes the controller when the text actually differs: an
+  /// in-progress edit's own `onChanged` already routes through here with
+  /// the controller's current text, and `TextEditingController.text =`
+  /// unconditionally resets the caret to the end -- writing back the same
+  /// string on every keystroke would throw the caret to the end of the
+  /// field mid-edit.
+  void _set(String key, String value) {
+    _values[key] = value;
+    final controller = _controllers[key];
+    if (controller != null && controller.text != value) {
+      controller.text = value;
+    }
+  }
 
   Future<void> _pickDate(String key) async {
     final current = Dates.parse(_values[key]) ?? DateTime.now();
@@ -795,6 +814,12 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
   TicketSearchResult? _picked;
   final TextEditingController _queryController = TextEditingController();
 
+  /// Keys the *current* pick's auto-fill actually wrote. Re-picking a
+  /// different ticket that has no value for one of these clears it first,
+  /// instead of leaving the previous ticket's value misattributed to the
+  /// new one -- a pick is fully authoritative, blank included.
+  final Set<String> _autoFilledKeys = <String>{};
+
   @override
   void dispose() {
     _queryController.dispose();
@@ -900,6 +925,29 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
                 InkWell(
                   onTap: () => setState(() {
                     widget.onSet('ticketId', r.ticketId);
+                    // Carry the linked ticket's own data forward so the
+                    // mechanic doesn't re-type what's already on the
+                    // record it's linked to. A pick is fully authoritative
+                    // for these three fields: a value overwrites, and a
+                    // blank clears -- but only a field *this* section
+                    // auto-filled; a mechanic's own typing is never
+                    // touched. This widget only renders inside the Work
+                    // Done form, so the target keys are fixed.
+                    for (final MapEntry<String, String?> field
+                        in <String, String?>{
+                      'bus': r.busNo,
+                      'defects': r.defectText,
+                      'defectType': r.defectType,
+                    }.entries) {
+                      final value = field.value ?? '';
+                      if (value.isNotEmpty) {
+                        widget.onSet(field.key, value);
+                        _autoFilledKeys.add(field.key);
+                      } else if (_autoFilledKeys.contains(field.key)) {
+                        widget.onSet(field.key, '');
+                        _autoFilledKeys.remove(field.key);
+                      }
+                    }
                     _pickedTitle = r.title;
                     _picked = r;
                     _query = '';

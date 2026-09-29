@@ -5,8 +5,9 @@ from datetime import date
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.db import SessionLocal
-from app.models.master import Vehicle
+from app.db import SessionLocal, engine
+from app.models.entry import BreakdownEntry
+from app.models.master import OdometerReading, Vehicle
 from tests.conftest import auth_headers
 
 
@@ -16,6 +17,7 @@ async def _vehicle_id(reg: str) -> str:
             select(Vehicle).where(Vehicle.registration_no == reg)
         )
         return vehicle.id
+
 
 TODAY = date.today().isoformat()
 
@@ -387,13 +389,9 @@ async def test_single_photo_behavior_still_works_for_an_untouched_register(
     fetched = await client.get(f"/entries/{entry['id']}", headers=h)
     assert len(fetched.json()["photos"]) == 1
 
-    deleted = await client.delete(
-        f"/entries/{entry['id']}/photos/{photo_id}", headers=h
-    )
+    deleted = await client.delete(f"/entries/{entry['id']}/photos/{photo_id}", headers=h)
     assert deleted.status_code == 204
-    assert (await client.get(f"/entries/{entry['id']}", headers=h)).json()[
-        "photos"
-    ] == []
+    assert (await client.get(f"/entries/{entry['id']}", headers=h)).json()["photos"] == []
 
 
 async def test_upload_two_photos_produces_two_rows(client: AsyncClient) -> None:
@@ -732,7 +730,10 @@ async def test_work_done_no_longer_accepts_employee(client: AsyncClient) -> None
     payload["data"]["employee"] = "S. Pawar"
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 400
-    assert "employee" in r.json()["error"]["fields"] or "employee" in r.json()["error"]["message"]
+    assert (
+        "employee" in r.json()["error"]["fields"]
+        or "employee" in r.json()["error"]["message"]
+    )
 
 
 async def test_work_done_persists_multiple_spare_parts(client: AsyncClient) -> None:
@@ -746,7 +747,9 @@ async def test_work_done_persists_multiple_spare_parts(client: AsyncClient) -> N
     ).json()
     part_b = (
         await client.post(
-            "/sites/MBMT/spare-parts", json={"part_no": "SP-3002", "name": "Brake pad"}, headers=h
+            "/sites/MBMT/spare-parts",
+            json={"part_no": "SP-3002", "name": "Brake pad"},
+            headers=h,
         )
     ).json()
 
@@ -831,7 +834,9 @@ async def test_coolant_day_entry_creates_one_row_per_vehicle(client: AsyncClient
     assert len(r.json()["items"]) == 2
 
 
-async def test_coolant_day_entry_rolls_back_on_one_bad_vehicle(client: AsyncClient) -> None:
+async def test_coolant_day_entry_rolls_back_on_one_bad_vehicle(
+    client: AsyncClient,
+) -> None:
     h = await auth_headers(client)
     r = await client.post(
         "/entries/coolant/day",
@@ -905,7 +910,9 @@ async def test_origin_filter_matches_only_imported(client: AsyncClient) -> None:
 
 async def test_has_open_ticket_true_matches_only_open(client: AsyncClient) -> None:
     h = await auth_headers(client)
-    open_entry = (await client.post("/entries", json=breakdown(bus="MH40LY1894"), headers=h)).json()
+    open_entry = (
+        await client.post("/entries", json=breakdown(bus="MH40LY1894"), headers=h)
+    ).json()
     completed_source = (
         await client.post("/entries", json=breakdown(bus="MH40LY1895"), headers=h)
     ).json()
@@ -1036,7 +1043,8 @@ async def test_attended_time_is_used_when_provided(client: AsyncClient) -> None:
     bd = await client.post("/entries", json=breakdown(), headers=h)
     bd_id = bd.json()["id"]
     found = await client.get(
-        "/tickets/search", params={"site": "MBMT", "q": bd.json()["display_id"]},
+        "/tickets/search",
+        params={"site": "MBMT", "q": bd.json()["display_id"]},
         headers=h,
     )
     ticket_id = found.json()[0]["ticket_id"]
@@ -1073,3 +1081,255 @@ async def test_driver_complaint_location_round_trips(client: AsyncClient) -> Non
     assert r.status_code == 201, r.text
     assert r.json()["data"]["location_source"] == "manual"
     assert r.json()["data"]["longitude"] == 73.0297
+
+
+# --- Breakdown odometer capture (AC-3 / AC-3b) -----------------------------
+#
+# The odometer plumbing already exists and is used by inspections
+# (services/odometer.record_reading, wired from services/checklists) -- a
+# breakdown is just another moment someone stands at the bus and reads the
+# dash, so it feeds the same forward-only reading history.
+
+
+async def _vehicle_row(reg: str) -> Vehicle:
+    async with SessionLocal() as session:
+        return await session.scalar(select(Vehicle).where(Vehicle.registration_no == reg))
+
+
+async def _readings(reg: str) -> list[OdometerReading]:
+    async with SessionLocal() as session:
+        vehicle = await session.scalar(
+            select(Vehicle).where(Vehicle.registration_no == reg)
+        )
+        rows = await session.scalars(
+            select(OdometerReading).where(OdometerReading.vehicle_id == vehicle.id)
+        )
+        return list(rows)
+
+
+async def test_ac3_breakdown_persists_its_odometer_reading(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()
+    payload["data"]["odometer_km"] = 121000
+    created = await client.post("/entries", json=payload, headers=h)
+    assert created.status_code == 201, created.text
+    assert created.json()["data"]["odometer_km"] == 121000
+
+    # It is a column on the breakdown detail row, not a loose blob key.
+    async with SessionLocal() as session:
+        detail = await session.scalar(
+            select(BreakdownEntry).where(BreakdownEntry.entry_id == created.json()["id"])
+        )
+    assert detail.odometer_km == 121000
+
+    fetched = await client.get(f"/entries/{created.json()['id']}", headers=h)
+    assert fetched.json()["data"]["odometer_km"] == 121000
+
+
+async def test_ac3_breakdown_odometer_moves_the_vehicle_forward(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    payload = breakdown()  # MH40LY1895
+    payload["data"]["odometer_km"] = 121000
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    bus = next(v for v in fleet if v["registration_no"] == "MH40LY1895")
+    assert bus["odometer_km"] == 121000
+    assert bus["odometer_updated_at"] is not None
+
+    # …and it lands in the append-only history, attributed to the breakdown.
+    readings = await _readings("MH40LY1895")
+    assert [x.odometer_km for x in readings] == [121000]
+    assert "breakdown" in readings[0].source
+
+
+async def test_ac3b_breakdown_odometer_never_moves_the_vehicle_backward(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bus = await _vehicle_row("MH40LY1895")
+    ahead = await client.put(
+        f"/vehicles/{bus.id}/odometer", json={"odometer_km": 200000}, headers=h
+    )
+    assert ahead.status_code == 200, ahead.text
+
+    payload = breakdown()
+    payload["data"]["odometer_km"] = 150000
+    r = await client.post("/entries", json=payload, headers=h)
+    # A point-in-time report is still worth keeping…
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["odometer_km"] == 150000
+
+    # …but the vehicle's own reading is forward-only, same contract every
+    # other record_reading caller holds to.
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    after = next(v for v in fleet if v["registration_no"] == "MH40LY1895")
+    assert after["odometer_km"] == 200000
+    assert [x.odometer_km for x in await _readings("MH40LY1895")] == [200000]
+
+
+async def test_ac3_breakdown_without_an_odometer_writes_no_reading(
+    client: AsyncClient,
+) -> None:
+    """A missing reading is unknown, never zero."""
+    h = await auth_headers(client)
+    r = await client.post("/entries", json=breakdown(), headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["data"]["odometer_km"] is None
+
+    fleet = (await client.get("/sites/MBMT/vehicles", headers=h)).json()["items"]
+    bus = next(v for v in fleet if v["registration_no"] == "MH40LY1895")
+    assert bus["odometer_updated_at"] is None
+    assert await _readings("MH40LY1895") == []
+
+
+async def test_ac3_breakdown_rejects_a_negative_odometer(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    ok = breakdown()
+    ok["data"]["odometer_km"] = 5
+    accepted = await client.post("/entries", json=ok, headers=h)
+    assert accepted.status_code == 201, accepted.text
+
+    bad = breakdown()
+    bad["data"]["odometer_km"] = -5
+    r = await client.post("/entries", json=bad, headers=h)
+    assert r.status_code == 400, r.text
+    assert "odometer_km" in r.json()["error"]["fields"]
+    # Rejected for being negative, not for being an unknown key.
+    assert "Extra inputs" not in r.json()["error"]["fields"]["odometer_km"]
+
+
+# --- Ticket status on the entry list (AC-8) --------------------------------
+#
+# The CSV export the client ships is built from the *list* fetch, which never
+# carries linked_sessions -- so the lifecycle has to ride along on EntryOut
+# itself, from one bulk query per page.
+
+
+async def test_ac8_list_carries_an_open_ticket_status(client: AsyncClient) -> None:
+    h = await auth_headers(client)
+    await client.post("/entries", json=breakdown(), headers=h)
+
+    listed = await client.get(
+        "/entries", params={"site": "MBMT", "register": "breakdown"}, headers=h
+    )
+    assert listed.status_code == 200, listed.text
+    row = listed.json()["items"][0]
+    assert row["ticket_status"] == "open"
+    assert row["ticket_completed_at"] is None
+
+
+async def test_ac8_list_carries_a_completed_ticket_and_its_date(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = (await client.post("/entries", json=breakdown(), headers=h)).json()
+    await resolve_via_work_done(client, h, bd["id"])
+
+    listed = await client.get(
+        "/entries", params={"site": "MBMT", "register": "breakdown"}, headers=h
+    )
+    row = next(r for r in listed.json()["items"] if r["id"] == bd["id"])
+    assert row["ticket_status"] == "completed"
+    assert row["ticket_completed_at"] == TODAY
+
+
+async def test_ac8_driver_complaint_list_carries_its_ticket_status(
+    client: AsyncClient,
+) -> None:
+    """Driver Complaint stays `done` even while its ticket is open, which is
+    exactly why `status` can't stand in for the ticket lifecycle."""
+    h = await auth_headers(client)
+    dc = (await client.post("/entries", json=driver_complaint(), headers=h)).json()
+
+    listed = await client.get(
+        "/entries", params={"site": "MBMT", "register": "driver_complaint"}, headers=h
+    )
+    row = next(r for r in listed.json()["items"] if r["id"] == dc["id"])
+    assert row["ticket_status"] == "open"
+
+
+async def test_ac8_get_entry_carries_the_same_ticket_status(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = (await client.post("/entries", json=breakdown(), headers=h)).json()
+
+    fetched = await client.get(f"/entries/{bd['id']}", headers=h)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["ticket_status"] == "open"
+    assert fetched.json()["ticket_completed_at"] is None
+
+
+async def test_ac8_a_work_done_entry_reports_no_ticket_status(
+    client: AsyncClient,
+) -> None:
+    """work_done can never be a ticket's source -- null, not a made-up state
+    (same convention linked_sessions already holds to)."""
+    h = await auth_headers(client)
+    await client.post("/entries", json=work_done(), headers=h)
+
+    listed = await client.get(
+        "/entries", params={"site": "MBMT", "register": "work_done"}, headers=h
+    )
+    row = listed.json()["items"][0]
+    assert row["ticket_status"] is None
+    assert row["ticket_completed_at"] is None
+
+
+async def test_ac8_a_ticketable_entry_with_no_ticket_yet_reports_null(
+    client: AsyncClient,
+) -> None:
+    """Coolant can carry a ticket but doesn't raise one on save."""
+    h = await auth_headers(client)
+    await client.post("/entries", json=coolant(), headers=h)
+
+    listed = await client.get(
+        "/entries", params={"site": "MBMT", "register": "coolant"}, headers=h
+    )
+    row = listed.json()["items"][0]
+    assert row["ticket_status"] is None
+    assert row["ticket_completed_at"] is None
+
+
+async def test_ac8_ticket_status_costs_one_bulk_query_not_one_per_row(
+    client: AsyncClient,
+) -> None:
+    """The Registers list is paginated and hot; this must mirror the existing
+    has_open_ticket exists-subquery, not a per-row detail fetch."""
+    from sqlalchemy import event
+
+    h = await auth_headers(client)
+    for bus in ("MH40LY1894", "MH40LY1895", "MH40LY1894", "MH40LY1895"):
+        payload = breakdown(bus)
+        r = await client.post("/entries", json=payload, headers=h)
+        assert r.status_code == 201, r.text
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", _record)
+    try:
+        listed = await client.get(
+            "/entries", params={"site": "MBMT", "register": "breakdown"}, headers=h
+        )
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", _record)
+
+    items = listed.json()["items"]
+    assert len(items) == 4
+    assert all(i["ticket_status"] == "open" for i in items)
+
+    ticket_queries = [s for s in statements if "FROM tickets" in s]
+    # One joined/bulk lookup for the whole page (two, if the page query and
+    # the status lookup are separate statements) -- never one per row.
+    assert len(ticket_queries) <= 2, ticket_queries

@@ -119,6 +119,28 @@ void main() {
     }
   });
 
+  test('test_ac3_breakdown_asks_for_the_odometer_reading', () {
+    // The bus is standing still with someone next to it — that is the one
+    // moment the dash is readable, and the odometer drives PM scheduling.
+    final field = requireRegister('breakdown').field('odo');
+    expect(field, isNotNull);
+    expect(field!.label, 'Odometer Reading');
+    expect(field.type, FieldType.number);
+    expect(field.unit, 'km');
+    // Optional: a reading nobody took is unknown, never zero.
+    expect(field.required, isFalse);
+  });
+
+  test('test_ac3_breakdown_odometer_posts_under_odometer_km', () {
+    final wire = RegisterFieldMap.toWire(
+      'breakdown',
+      <String, String>{'odo': '121000'},
+    );
+    // A number on the wire, not a string -- same convention as loss_km/
+    // bcs_litres (_numericWireKeys), matching the backend's `odometer_km: int`.
+    expect(wire['odometer_km'], 121000);
+  });
+
   test('driver field posts under driver_id for both registers', () {
     for (final registerId in <String>['breakdown', 'complaint']) {
       final wire = RegisterFieldMap.toWire(registerId, <String, String>{'driver': 'DRV-1001'});

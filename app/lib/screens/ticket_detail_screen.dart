@@ -109,6 +109,8 @@ class _Loaded extends StatelessWidget {
                   _row('Driver', data['driver']!),
                 if ((data['route'] ?? '').isNotEmpty)
                   _row('Route', data['route']!),
+                if ((data['loc'] ?? '').isNotEmpty)
+                  _row('Location', data['loc']!),
                 if ((data['defectType'] ?? '').isNotEmpty)
                   _row('Defect Type', data['defectType']!),
                 if ((data['complaint'] ?? '').isNotEmpty)
@@ -116,6 +118,8 @@ class _Loaded extends StatelessWidget {
                 // Breakdown-only.
                 if ((data['loss'] ?? '').isNotEmpty)
                   _row('Loss (km)', data['loss']!),
+                if ((data['odo'] ?? '').isNotEmpty)
+                  _row('Odometer (km)', data['odo']!),
                 if ((data['remarks'] ?? '').isNotEmpty)
                   _row('Remarks', data['remarks']!),
                 // Driver Complaint-only.

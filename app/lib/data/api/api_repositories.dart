@@ -798,6 +798,8 @@ RegisterEntry _entryFromWire(Map<String, dynamic> json) {
     linkedSessions: (json['linked_sessions'] as List<dynamic>? ?? <dynamic>[])
         .map((s) => s as Map<String, dynamic>)
         .toList(),
+    ticketStatus: json['ticket_status'] as String?,
+    ticketCompletedAt: json['ticket_completed_at'] as String?,
   );
 }
 
