@@ -488,9 +488,21 @@ class AppMultiSelect extends StatefulWidget {
 
 class _AppMultiSelectState extends State<AppMultiSelect> {
   final TextEditingController _query = TextEditingController();
+  final LayerLink _link = LayerLink();
+  final FocusNode _focus = FocusNode();
+  final OverlayPortalController _portal = OverlayPortalController();
+  final GlobalKey _fieldKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
 
   @override
   void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
     _query.dispose();
     super.dispose();
   }
@@ -516,10 +528,36 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
     widget.onChanged(next);
   }
 
+  void _onFocusChange() {
+    if (_focus.hasFocus) {
+      _open();
+    } else {
+      // Let an option's onTapDown land before we tear the overlay down.
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || _focus.hasFocus) return;
+        _close();
+      });
+    }
+  }
+
+  void _open() {
+    if (widget.options.isEmpty) return;
+    if (!_portal.isShowing) _portal.show();
+    setState(() {});
+  }
+
+  void _close() {
+    if (_portal.isShowing) _portal.hide();
+  }
+
+  Size _fieldSize() {
+    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? const Size(240, T.minTouchTarget);
+  }
+
   @override
   Widget build(BuildContext context) {
     final empty = widget.options.isEmpty;
-    final filtered = _filtered;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -542,72 +580,101 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
             ),
           ),
         FocusRing(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: T.minTouchTarget),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-            decoration: BoxDecoration(
-              color: T.card,
-              borderRadius: T.controlShape,
-              border: Border.all(color: T.inputBorder, width: 1.5),
-            ),
-            child: TextField(
-              controller: _query,
-              enabled: !empty,
-              style: AppText.input,
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                hintText: empty ? widget.emptyHint : widget.placeholder,
-                hintStyle: AppText.sans(size: 16, color: T.muted),
-                suffixIcon: const Icon(Icons.search, color: T.secondary, size: 20),
+          child: CompositedTransformTarget(
+            link: _link,
+            child: Container(
+              key: _fieldKey,
+              constraints: const BoxConstraints(minHeight: T.minTouchTarget),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(
+                color: T.card,
+                borderRadius: T.controlShape,
+                border: Border.all(color: T.inputBorder, width: 1.5),
               ),
-              onChanged: (_) => setState(() {}),
+              child: OverlayPortal(
+                controller: _portal,
+                overlayChildBuilder: (context) {
+                  final size = _fieldSize();
+                  final filtered = _filtered;
+                  return CompositedTransformFollower(
+                    link: _link,
+                    showWhenUnlinked: false,
+                    offset: Offset(0, size.height + 4),
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 6,
+                        color: T.card,
+                        borderRadius: T.controlShape,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: 240,
+                            minWidth: size.width.clamp(200, 480),
+                            maxWidth: size.width.clamp(200, 480),
+                          ),
+                          child: filtered.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Text(
+                                    'No matches',
+                                    style:
+                                        AppText.sans(size: 14, color: T.muted),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: EdgeInsets.zero,
+                                  shrinkWrap: true,
+                                  itemCount: filtered.length.clamp(0, 40),
+                                  itemBuilder: (_, i) {
+                                    final o = filtered[i];
+                                    return InkWell(
+                                      onTapDown: (_) {
+                                        _toggle(o);
+                                        _query.clear();
+                                        setState(() {});
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 12,
+                                        ),
+                                        child: Text(
+                                          _label(o),
+                                          style: AppText.input,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: TextField(
+                  controller: _query,
+                  focusNode: _focus,
+                  enabled: !empty,
+                  style: AppText.input,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: empty ? widget.emptyHint : widget.placeholder,
+                    hintStyle: AppText.sans(size: 16, color: T.muted),
+                    suffixIcon:
+                        const Icon(Icons.search, color: T.secondary, size: 20),
+                  ),
+                  onTap: _open,
+                  onChanged: (_) {
+                    _open();
+                    setState(() {});
+                  },
+                ),
+              ),
             ),
           ),
         ),
-        if (_query.text.isNotEmpty || filtered.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 6),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 180),
-            decoration: BoxDecoration(
-              color: T.card,
-              borderRadius: T.controlShape,
-              border: Border.all(color: T.inputBorder, width: 1),
-            ),
-            child: filtered.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      'No matches',
-                      style: AppText.sans(size: 14, color: T.muted),
-                    ),
-                  )
-                : Material(
-                    // ListTile paints its selection background/ink splashes
-                    // on the *nearest* Material ancestor, which without this
-                    // wrapper is the Scaffold several widgets up -- behind
-                    // this list's own bordered/backgrounded Container, so
-                    // taps here never visibly ink at all.
-                    color: Colors.transparent,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: filtered.length.clamp(0, 40),
-                      itemBuilder: (_, i) {
-                        final o = filtered[i];
-                        return ListTile(
-                          dense: true,
-                          title: Text(_label(o), style: AppText.input),
-                          onTap: () {
-                            _toggle(o);
-                            _query.clear();
-                            setState(() {});
-                          },
-                        );
-                      },
-                    ),
-                  ),
-          ),
-        ],
       ],
     );
   }
