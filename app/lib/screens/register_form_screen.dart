@@ -820,10 +820,53 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
   /// new one -- a pick is fully authoritative, blank included.
   final Set<String> _autoFilledKeys = <String>{};
 
+  // Floats the results list instead of rendering it inline -- an empty
+  // query matches every open ticket at the site (search_tickets's own `q`
+  // handling), so an unfocused, unfiltered field would otherwise show the
+  // site's entire open-ticket list on every render of this form.
+  final LayerLink _link = LayerLink();
+  final FocusNode _focus = FocusNode();
+  final OverlayPortalController _portal = OverlayPortalController();
+  final GlobalKey _fieldKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
+
   @override
   void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
     _queryController.dispose();
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (_focus.hasFocus) {
+      _open();
+    } else {
+      // Let an option's onTapDown land before we tear the overlay down.
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || _focus.hasFocus) return;
+        _close();
+      });
+    }
+  }
+
+  void _open() {
+    if (!_portal.isShowing) _portal.show();
+    setState(() {});
+  }
+
+  void _close() {
+    if (_portal.isShowing) _portal.hide();
+  }
+
+  Size _fieldSize() {
+    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? const Size(240, T.minTouchTarget);
   }
 
   /// The entry's own echo of every selected attendee's name (`user_id|name`,
@@ -914,51 +957,139 @@ class _TicketLinkSectionState extends ConsumerState<_TicketLinkSection> {
               _LinkedTicketContext(ticket: _picked!),
             ],
           ] else ...<Widget>[
-            AppTextField(
-              controller: _queryController,
-              placeholder: 'Search by title or ID (e.g. BD-2026-000123)…',
-              onChanged: (v) => setState(() => _query = v),
-            ),
-            if (results.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              for (final r in results)
-                InkWell(
-                  onTap: () => setState(() {
-                    widget.onSet('ticketId', r.ticketId);
-                    // Carry the linked ticket's own data forward so the
-                    // mechanic doesn't re-type what's already on the
-                    // record it's linked to. A pick is fully authoritative
-                    // for these three fields: a value overwrites, and a
-                    // blank clears -- but only a field *this* section
-                    // auto-filled; a mechanic's own typing is never
-                    // touched. This widget only renders inside the Work
-                    // Done form, so the target keys are fixed.
-                    for (final MapEntry<String, String?> field
-                        in <String, String?>{
-                      'bus': r.busNo,
-                      'defects': r.defectText,
-                      'defectType': r.defectType,
-                    }.entries) {
-                      final value = field.value ?? '';
-                      if (value.isNotEmpty) {
-                        widget.onSet(field.key, value);
-                        _autoFilledKeys.add(field.key);
-                      } else if (_autoFilledKeys.contains(field.key)) {
-                        widget.onSet(field.key, '');
-                        _autoFilledKeys.remove(field.key);
-                      }
-                    }
-                    _pickedTitle = r.title;
-                    _picked = r;
-                    _query = '';
-                    _queryController.clear();
-                  }),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Text(r.title, style: AppText.sans(size: 13.5)),
+            CompositedTransformTarget(
+              link: _link,
+              child: FocusRing(
+                child: Container(
+                  key: _fieldKey,
+                  constraints: const BoxConstraints(minHeight: T.minTouchTarget),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: T.card,
+                    borderRadius: T.controlShape,
+                    border: Border.all(color: T.inputBorder, width: 1.5),
+                  ),
+                  child: OverlayPortal(
+                    controller: _portal,
+                    overlayChildBuilder: (context) {
+                      final size = _fieldSize();
+                      return CompositedTransformFollower(
+                        link: _link,
+                        showWhenUnlinked: false,
+                        offset: Offset(0, size.height + 4),
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 6,
+                            color: T.card,
+                            borderRadius: T.controlShape,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: 240,
+                                minWidth: size.width.clamp(200, 480),
+                                maxWidth: size.width.clamp(200, 480),
+                              ),
+                              child: results.isEmpty
+                                  ? Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Text(
+                                        'No matches',
+                                        style: AppText.sans(
+                                          size: 14,
+                                          color: T.muted,
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      padding: EdgeInsets.zero,
+                                      shrinkWrap: true,
+                                      itemCount: results.length,
+                                      itemBuilder: (_, i) {
+                                        final r = results[i];
+                                        return InkWell(
+                                          onTapDown: (_) {
+                                            widget.onSet('ticketId', r.ticketId);
+                                            // Carry the linked ticket's own
+                                            // data forward so the mechanic
+                                            // doesn't re-type what's
+                                            // already on the record it's
+                                            // linked to. A pick is fully
+                                            // authoritative for these
+                                            // three fields: a value
+                                            // overwrites, and a blank
+                                            // clears -- but only a field
+                                            // *this* section auto-filled;
+                                            // a mechanic's own typing is
+                                            // never touched. This widget
+                                            // only renders inside the
+                                            // Work Done form, so the
+                                            // target keys are fixed.
+                                            for (final MapEntry<String,
+                                                    String?> field
+                                                in <String, String?>{
+                                              'bus': r.busNo,
+                                              'defects': r.defectText,
+                                              'defectType': r.defectType,
+                                            }.entries) {
+                                              final value = field.value ?? '';
+                                              if (value.isNotEmpty) {
+                                                widget.onSet(field.key, value);
+                                                _autoFilledKeys.add(field.key);
+                                              } else if (_autoFilledKeys
+                                                  .contains(field.key)) {
+                                                widget.onSet(field.key, '');
+                                                _autoFilledKeys
+                                                    .remove(field.key);
+                                              }
+                                            }
+                                            setState(() {
+                                              _pickedTitle = r.title;
+                                              _picked = r;
+                                              _query = '';
+                                              _queryController.clear();
+                                            });
+                                            _focus.unfocus();
+                                            _close();
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 12,
+                                            ),
+                                            child: Text(
+                                              r.title,
+                                              style: AppText.sans(size: 13.5),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: TextField(
+                      controller: _queryController,
+                      focusNode: _focus,
+                      style: AppText.input,
+                      onTap: _open,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        hintText: 'Search by title or ID (e.g. BD-2026-000123)…',
+                        hintStyle: AppText.sans(size: 16, color: T.muted),
+                      ),
+                      onChanged: (v) {
+                        _open();
+                        setState(() => _query = v);
+                      },
+                    ),
                   ),
                 ),
-            ],
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           const FieldLabel(label: 'Attending mechanic(s)'),

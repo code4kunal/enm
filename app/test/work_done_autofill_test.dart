@@ -153,7 +153,20 @@ Finder _fieldHolding(String text) => find.byWidgetPredicate(
       description: 'form field holding "$text"',
     );
 
+/// The ticket-link search box, distinguished from every other [TextField]
+/// on this form (Attendees' own among them) by its hint text.
+final Finder _ticketSearchField = find.byWidgetPredicate(
+  (w) => w is TextField && w.decoration?.hintText?.startsWith('Search by title or ID') == true,
+  description: 'ticket search field',
+);
+
 Future<void> _pickTicket(WidgetTester tester, TicketSearchResult ticket) async {
+  // Floats as an overlay, like every other dropdown on this form -- shown
+  // only while focused (an empty query otherwise matches every open ticket
+  // at the site, so an unfocused field would show them all, unprompted).
+  await tester.tap(_ticketSearchField);
+  await _settle(tester);
+
   final option = find.text(ticket.title);
   expect(option, findsOneWidget, reason: 'the picker should list the ticket');
   await tester.ensureVisible(option);
