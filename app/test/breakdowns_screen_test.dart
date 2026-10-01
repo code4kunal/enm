@@ -8,10 +8,10 @@ import 'package:transvolt_em/state/providers.dart';
 
 /// One open breakdown, as the list fetch delivers it.
 ///
-/// `driver` carries what the register stored (the site's driver code, which
-/// is the only driver identity the client ever holds — the drivers master
-/// list is a list of codes, and Ticket Detail already renders this value
-/// verbatim as "Driver").
+/// `driver` is the site's driver code (the form's own FK value); `driverName`
+/// is the server-resolved display name the card now reads -- the card
+/// falls back to the code only for an entry whose driver has since been
+/// removed from the master list.
 RegisterEntry _breakdown([Map<String, String> extra = const <String, String>{}]) {
   return RegisterEntry(
     id: 'bd1',
@@ -62,12 +62,23 @@ void main() {
     (tester) async {
       // Captured on the Breakdown form and shown on Ticket Detail, but never
       // on the tracker — which is the screen a supervisor scans to find out
-      // who was behind the wheel.
-      await _pump(tester, _breakdown(<String, String>{'driver': 'DRV221'}));
+      // who was behind the wheel. The name, not the bare code: that's what
+      // a supervisor scanning the tracker can actually recognise.
+      await _pump(
+        tester,
+        _breakdown(<String, String>{
+          'driver': 'DRV221',
+          'driverName': 'Rakesh Pawar',
+        }),
+      );
 
       expect(
-        find.textContaining('DRV221', findRichText: true),
+        find.textContaining('Rakesh Pawar', findRichText: true),
         findsWidgets,
+      );
+      expect(
+        find.textContaining('DRV221', findRichText: true),
+        findsNothing,
       );
 
       // …without displacing what the tracker already shows — these are the
@@ -80,6 +91,35 @@ void main() {
       expect(find.textContaining('18.5', findRichText: true), findsWidgets);
       expect(
         find.textContaining('HV contactor tripped', findRichText: true),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets(
+    'test_ac2_breakdown_card_falls_back_to_the_driver_code_without_a_name',
+    (tester) async {
+      // An entry fetched before the server resolved driver_name, or whose
+      // driver has since been removed from the master list -- the card
+      // must still show *something* identifying, not a blank.
+      await _pump(tester, _breakdown(<String, String>{'driver': 'DRV221'}));
+
+      expect(
+        find.textContaining('DRV221', findRichText: true),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets(
+    'test_item5_breakdown_card_shows_the_entrys_display_id',
+    (tester) async {
+      // Mechanics quote this id over the phone/radio -- it was only ever
+      // shown on Ticket Detail, never on the tracker itself.
+      await _pump(tester, _breakdown());
+
+      expect(
+        find.textContaining('BD-2026-000002', findRichText: true),
         findsWidgets,
       );
     },

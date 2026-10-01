@@ -100,13 +100,22 @@ async def get_ticket(
     # ticket regardless of source kind).
     linked_sessions = await entries_svc.sessions_for_ticket(session, ticket.id)
     display_id = (
-        ticket.source_entry.display_id if ticket.source_entry is not None else ticket.display_id
+        ticket.source_entry.display_id
+        if ticket.source_entry is not None
+        else ticket.display_id
     )
     bus_no = (
         entry_out.data.get("bus_no", "")
         if entry_out is not None
         else ticket.source_inspection_result.inspection.vehicle.registration_no
     )
+    # "Full history" (per the 2026-09-28 spec's Ticket Detail bullet) means
+    # every photo anyone attached while working this ticket, not just the
+    # original report -- a mechanic's own session photos are as much part
+    # of the record as the reporter's.
+    photos = list(entry_out.photos) if entry_out is not None else []
+    for linked in linked_sessions:
+        photos.extend(EntryPhotoOut(**p) for p in linked["photos"])
     return TicketDetailOut(
         ticket_id=ticket.id,
         display_id=display_id,
@@ -115,7 +124,7 @@ async def get_ticket(
         bus_no=bus_no,
         source_entry=entry_out,
         linked_sessions=linked_sessions,
-        photos=entry_out.photos if entry_out is not None else [],
+        photos=photos,
         attended_at=_hhmm(ticket.attended_at),
         completed_at=_hhmm(ticket.completed_at),
     )

@@ -178,16 +178,36 @@ class EntriesController extends AsyncNotifier<List<RegisterEntry>> {
     // A Work Done session that completes a ticket resolves whatever raised
     // it (a breakdown, most visibly) as a side effect on the server -- but
     // the response above is this new session, not that other entry. Without
-    // re-fetching it, the cached list here (and anything reading it, like
+    // refreshing it, the cached list here (and anything reading it, like
     // the Breakdowns screen's open-count) would keep showing it as open
     // until the next full reload.
+    //
+    // `ticketId` is a Ticket's own id, not an Entry id -- Ticket and Entry
+    // are separate tables with separate primary keys on the server, so
+    // `entryRepository.fetchEntry(ticketId)` (the previous approach here)
+    // 404s on every real ticket id it was ever given. The ticket detail
+    // response already carries the fully updated source entry, so read
+    // that instead of guessing at an entry id.
+    //
+    // Best-effort: the entry itself is already saved and in the list above
+    // by this point, so a failure refreshing its *linked ticket's* cached
+    // status must not read as the save having failed.
     if (normalised['completesTicket'] == 'true') {
       final ticketId = normalised['ticketId'];
       if (ticketId != null && ticketId.isNotEmpty) {
-        final resolved = await ref.read(entryRepositoryProvider).fetchEntry(ticketId);
-        _replaceAll(
-          (list) => list.map((e) => e.id == resolved.id ? resolved : e).toList(),
-        );
+        try {
+          final ticket = await ref.read(ticketRepositoryProvider).get(ticketId);
+          final resolved = ticket.sourceEntry;
+          if (resolved != null) {
+            _replaceAll(
+              (list) => list.map((e) => e.id == resolved.id ? resolved : e).toList(),
+            );
+          }
+        } catch (_) {
+          // The save already committed; a stale list entry self-corrects
+          // on the next full reload, or the ticketDetailProvider
+          // invalidation below for anyone looking at that ticket directly.
+        }
       }
     }
 

@@ -561,6 +561,11 @@ class _ResultRow extends ConsumerWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
                     CodeTag(code: register.code, color: register.color),
+                    if (entry.displayId.isNotEmpty)
+                      Text(
+                        entry.displayId,
+                        style: AppText.mono(size: 13, color: T.secondary),
+                      ),
                     Text(
                       busName,
                       style: AppText.mono(size: 14.5, weight: FontWeight.w600),

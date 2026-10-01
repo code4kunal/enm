@@ -489,7 +489,17 @@ async def _daily_inspection_result(
         select(WorkType).where(WorkType.code == work_type_code)
     )
     if work_type is None:
-        work_type = WorkType(code=work_type_code, name=work_type_code, is_inspection=True)
+        source_kind = {
+            "D.I": TicketSourceKind.daily_inspection,
+            "10 DAYS SERVICE": TicketSourceKind.ten_day_inspection,
+            "P.M": TicketSourceKind.pm_docking,
+        }.get(work_type_code)
+        work_type = WorkType(
+            code=work_type_code,
+            name=work_type_code,
+            is_inspection=True,
+            ticket_source_kind=source_kind,
+        )
         session.add(work_type)
         await session.flush()
     template = await session.scalar(
@@ -896,6 +906,43 @@ async def test_get_ticket_detail_exposes_the_attended_and_completed_timeline(
     session = body["linked_sessions"][0]
     assert session["attended_time"] == "11:05"
     assert session["completion_time"] == "12:30"
+
+
+async def test_get_ticket_detail_aggregates_photos_from_linked_work_done_sessions(
+    client: AsyncClient,
+) -> None:
+    """Per the 2026-09-28 spec's Ticket Detail bullet ("every Work Done
+    session ever logged against the ticket... photos"), a mechanic's photo
+    from the *session that fixed it* must show up here too, not just
+    whatever the original reporter attached to the breakdown itself."""
+    from tests.test_entries import PNG
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    display_id = bd.json()["display_id"]
+    await client.post(
+        f"/entries/{bd_id}/photos",
+        files={"photo": ("reported.png", PNG, "image/png")},
+        headers=h,
+    )
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+    payload = work_done()
+    payload["data"]["ticket_id"] = ticket_id
+    wd = await client.post("/entries", json=payload, headers=h)
+    wd_id = wd.json()["id"]
+    await client.post(
+        f"/entries/{wd_id}/photos",
+        files={"photo": ("fixed.png", PNG, "image/png")},
+        headers=h,
+    )
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    photo_urls = {p["url"] for p in detail.json()["photos"]}
+    assert len(photo_urls) == 2, detail.json()["photos"]
 
 
 async def test_get_ticket_detail_linked_sessions_include_spare_parts(

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/fake_repositories.dart' show FakeTicketRepository;
 import 'support/harness.dart';
 import 'support/seed.dart';
 import 'package:transvolt_em/data/registers.dart';
@@ -240,12 +241,15 @@ void main() {
       final open = container.read(openBreakdownsProvider);
       expect(open, isNotEmpty);
 
+      // Real ticket ids are never the source entry's own id -- Ticket and
+      // Entry are separate tables with separate primary keys on the real
+      // API (see FakeTicketRepository.ticketIdFor's own note).
       await container.read(entriesProvider.notifier).create(
         registerId: 'work',
         data: <String, String>{
           'bus': 'MH40LY1721',
           'date': Dates.today(),
-          'ticketId': open.first.id,
+          'ticketId': FakeTicketRepository.ticketIdFor(open.first.id),
           'completesTicket': 'true',
         },
       );
@@ -268,7 +272,7 @@ void main() {
         // first read.
         final container = await signedInContainer();
         final open = container.read(openBreakdownsProvider);
-        final ticketId = open.first.id;
+        final ticketId = FakeTicketRepository.ticketIdFor(open.first.id);
 
         final before = await container.read(ticketDetailProvider(ticketId).future);
         expect(before.status, 'open');
@@ -459,7 +463,7 @@ void main() {
         data: <String, String>{
           'bus': 'MH40LY1721',
           'date': Dates.today(),
-          'ticketId': openId,
+          'ticketId': FakeTicketRepository.ticketIdFor(openId),
           'completesTicket': 'true',
         },
       );

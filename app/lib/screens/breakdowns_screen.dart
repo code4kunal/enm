@@ -106,6 +106,11 @@ class _BreakdownCard extends ConsumerWidget {
                       busName,
                       style: AppText.mono(size: 15.5, weight: FontWeight.w600),
                     ),
+                    if (entry.displayId.isNotEmpty)
+                      Text(
+                        entry.displayId,
+                        style: AppText.mono(size: 13, color: T.secondary),
+                      ),
                     StatusPill(open: open),
                     Text(
                       '${entry.date} · ${(d['loc'] ?? '').isEmpty ? '—' : d['loc']}',
@@ -150,7 +155,15 @@ class _BreakdownCard extends ConsumerWidget {
                 value: Dates.elapsed(d['t_reported'], d['t_att']),
               ),
               _Metric(label: 'Loss KM', value: '${d['loss'] ?? '0'} km'),
-              _Metric(label: 'Driver', value: d['driver'] ?? '—'),
+              _Metric(
+                label: 'Driver',
+                // The server resolves the name from driver_id for display;
+                // fall back to the raw code for an entry fetched before
+                // this existed, or whose driver has since been removed.
+                value: (d['driverName'] ?? '').isNotEmpty
+                    ? d['driverName']!
+                    : (d['driver'] ?? '—'),
+              ),
               _Metric(
                 label: 'Odometer',
                 value: (d['odo'] ?? '').isEmpty ? '—' : '${d['odo']} km',

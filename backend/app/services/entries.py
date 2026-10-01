@@ -142,6 +142,29 @@ async def _resolve_ticket(
     return ticket
 
 
+async def _ticket_vehicle_id(
+    session: AsyncSession, register: Register, raw_data: dict[str, Any], *, site_code: str
+) -> str | None:
+    """The vehicle id a Work Done submission's linked ticket points at, if
+    any -- the one retired bus `resolve_vehicle` should still accept for
+    this submission, not a general exemption. Silent on anything that isn't
+    a clean, same-site, entry-sourced ticket id: real validation of the
+    ticket itself happens later (`_resolve_ticket`, inside `_build_detail`),
+    this is purely "which vehicle, if any, gets the pass".
+    """
+    if register is not Register.work_done:
+        return None
+    ticket_id = raw_data.get("ticket_id")
+    if not ticket_id:
+        return None
+    ticket = await session.get(Ticket, ticket_id)
+    if ticket is None or ticket.source_entry_id is None:
+        return None
+    if ticket.source_entry.site_code != site_code:
+        return None
+    return ticket.source_entry.bus_id
+
+
 async def _resolve_attendees(
     session: AsyncSession, user_ids: list[str], *, site_code: str
 ) -> list[User]:
@@ -466,8 +489,14 @@ async def create_entry(
     work_type_id: int | None = None,
 ) -> Entry:
     data = validate_data(register, raw_data)
+    allow_inactive_id = await _ticket_vehicle_id(
+        session, register, raw_data, site_code=site_code
+    )
     vehicle = await resolve_vehicle(
-        session, registration_no=data.bus_no, site_code=site_code
+        session,
+        registration_no=data.bus_no,
+        site_code=site_code,
+        allow_inactive_id=allow_inactive_id,
     )
 
     entry = Entry(
@@ -592,8 +621,14 @@ async def update_entry(
 ) -> Entry:
     """Replace the register payload wholesale (the UI submits the full form)."""
     data = validate_data(entry.register, raw_data)
+    allow_inactive_id = await _ticket_vehicle_id(
+        session, entry.register, raw_data, site_code=entry.site_code
+    )
     vehicle = await resolve_vehicle(
-        session, registration_no=data.bus_no, site_code=entry.site_code
+        session,
+        registration_no=data.bus_no,
+        site_code=entry.site_code,
+        allow_inactive_id=allow_inactive_id,
     )
 
     if entry_date is not None:
@@ -726,6 +761,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "mechanic": d.mechanic,
             "supervisor": d.supervisor,
             "driver_id": d.driver.driver_code if d.driver else None,
+            "driver_name": d.driver.name if d.driver else None,
             "latitude": _num(d.latitude),
             "longitude": _num(d.longitude),
             "location_source": d.location_source.value if d.location_source else None,
@@ -735,6 +771,7 @@ def serialize_data(entry: Entry) -> dict[str, Any]:
             "bus_no": bus_no,
             "defect_type": d.defect_type.name if d.defect_type else None,
             "driver_id": d.driver.driver_code if d.driver else None,
+            "driver_name": d.driver.name if d.driver else None,
             "route": d.route,
             "location": d.location,
             "complaint": d.complaint,
@@ -926,6 +963,10 @@ async def sessions_for_ticket(
                         "name": sp.spare_part.name,
                     }
                     for sp in wd.spare_parts
+                ],
+                "photos": [
+                    {"id": p.id, "url": p.url, "caption": p.caption}
+                    for p in wd_entry.photos
                 ],
             }
         )

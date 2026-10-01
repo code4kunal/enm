@@ -204,6 +204,21 @@ void main() {
   // catches it reliably. Disabling runtime fetching removes the network
   // attempt entirely; `_pumpForm` below drains the synchronous "asset not
   // found" fallback exception that replaces it.
+  //
+  // Investigated further (two attempts, both reverted): `tester
+  // .takeException()` only drains FlutterError-routed errors, not this raw
+  // unhandled Future rejection, so it does not actually catch the case
+  // above -- test_ac4 below still fails intermittently with it. Explicitly
+  // awaiting google_fonts' own `pendingFontFutures` (its `@visibleForTesting`
+  // in-flight-loads set, from package:google_fonts/src/google_fonts_base
+  // .dart) looked promising -- every widget rebuild that touches the bold
+  // header re-triggers a fresh attempt, since failures are never cached --
+  // but blocking on it outside a pump loop hung flutter_test's fake-time
+  // zone for the full 10-minute test timeout, cascading failures through
+  // the rest of this file. A real fix needs fixture font bytes plus a
+  // mocked `flutter/assets` channel so google_fonts resolves locally
+  // instead of attempting a load at all; left as a known flaky gate rather
+  // than carry that version-pinned-internals risk for a cosmetic exception.
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });

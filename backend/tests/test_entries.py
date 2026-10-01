@@ -796,6 +796,33 @@ async def test_driver_complaint_persists_driver_id(client: AsyncClient) -> None:
         )
     ).json()
     assert created["data"]["driver_id"] == driver["driver_code"]
+    assert created["data"]["driver_name"] == "Rakesh Yadav"
+
+
+async def test_breakdown_echoes_the_drivers_name_alongside_its_code(
+    client: AsyncClient,
+) -> None:
+    """The Breakdowns tracker and Ticket Detail read driver_name for
+    display; driver_id stays the FK the form writes and the select-dropdown
+    still needs."""
+    h = await auth_headers(client)
+    driver = (
+        await client.post(
+            "/sites/MBMT/drivers",
+            json={"driver_code": "DRV-9002", "name": "Suresh Kamble"},
+            headers=h,
+        )
+    ).json()
+
+    payload = breakdown()
+    payload["data"]["driver_id"] = driver["driver_code"]
+    created = await client.post("/entries", json=payload, headers=h)
+    assert created.status_code == 201, created.text
+    assert created.json()["data"]["driver_id"] == driver["driver_code"]
+    assert created.json()["data"]["driver_name"] == "Suresh Kamble"
+
+    fetched = await client.get(f"/entries/{created.json()['id']}", headers=h)
+    assert fetched.json()["data"]["driver_name"] == "Suresh Kamble"
 
 
 async def test_breakdown_rejects_unknown_driver_id(client: AsyncClient) -> None:
@@ -1333,3 +1360,52 @@ async def test_ac8_ticket_status_costs_one_bulk_query_not_one_per_row(
     # One joined/bulk lookup for the whole page (two, if the page query and
     # the status lookup are separate statements) -- never one per row.
     assert len(ticket_queries) <= 2, ticket_queries
+
+
+# --- Work Done against a retired bus, when linked to that bus's own
+# ticket (item 2) -------------------------------------------------------
+#
+# A bus can be retired while its breakdown ticket is still open -- the
+# fleet moving on shouldn't orphan a ticket that was legitimately open
+# against it. The exception is narrow: only the ticket's own vehicle is
+# exempt from the active-fleet check, not retired buses in general.
+
+
+async def test_work_done_linked_to_a_ticket_accepts_that_tickets_retired_bus(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(bus="MH40LY1894"), headers=h)
+    assert bd.status_code == 201, bd.text
+
+    vehicle_id = await _vehicle_id("MH40LY1894")
+    deactivated = await client.post(f"/vehicles/{vehicle_id}/deactivate", headers=h)
+    assert deactivated.status_code == 200, deactivated.text
+
+    found = await client.get(
+        "/tickets/search",
+        params={"site": "MBMT", "q": bd.json()["display_id"]},
+        headers=h,
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    payload = work_done(bus="MH40LY1894")
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "16:00"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text
+
+
+async def test_unlinked_work_done_still_rejects_a_retired_bus(
+    client: AsyncClient,
+) -> None:
+    h = await auth_headers(client)
+    vehicle_id = await _vehicle_id("MH40LY1895")
+    deactivated = await client.post(f"/vehicles/{vehicle_id}/deactivate", headers=h)
+    assert deactivated.status_code == 200, deactivated.text
+
+    payload = work_done(bus="MH40LY1895")
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 400, r.text
+    assert "retired" in r.json()["error"]["fields"]["bus_no"]

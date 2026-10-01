@@ -257,13 +257,17 @@ class FakeEntryRepository implements EntryRepository {
     _store.entries.insert(0, created);
     // A Work Done session that completes a ticket is the only way a
     // breakdown resolves now (see EntriesController -- there is no direct
-    // "mark resolved" path any more). FakeTicketRepository.search sets
-    // ticketId to the source entry's own id, so that's the join key here.
+    // "mark resolved" path any more). The ticket id here is
+    // FakeTicketRepository.ticketIdFor's derived id, not the source
+    // entry's own -- unwind it the same way the real join key differs
+    // on the server (Ticket.source_entry_id, not Ticket.id itself).
     if (entry.registerId == 'work' &&
         entry.data['completesTicket'] == 'true' &&
         (entry.data['ticketId'] ?? '').isNotEmpty) {
-      final sourceId = entry.data['ticketId']!;
-      final i = _store.entries.indexWhere((e) => e.id == sourceId);
+      final sourceId = FakeTicketRepository.entryIdForTicket(entry.data['ticketId']!);
+      final i = sourceId == null
+          ? -1
+          : _store.entries.indexWhere((e) => e.id == sourceId);
       if (i != -1) {
         _store.entries[i] =
             _store.entries[i].copyWith(status: EntryStatus.resolved);
@@ -348,14 +352,25 @@ class FakeEntryRepository implements EntryRepository {
 
 // ─── Tickets ──────────────────────────────────────────────────────────────
 
-/// A simplification: the fake store has no separate ticket concept, so the
-/// source entry's own id stands in for the ticket id. Good enough for
-/// widget/provider tests that only need a plausible round trip, not real
-/// ticket semantics.
+/// A simplification: the fake store has no separate ticket concept, so a
+/// ticket id is derived from its source entry's id rather than reusing it
+/// outright -- `Ticket.id` and `Entry.id` are genuinely different UUID
+/// spaces on the real API (separate tables, separate primary keys), and a
+/// fake where they coincide hides any bug that conflates the two (e.g.
+/// calling `fetchEntry(ticketId)` and getting a false-negative 404 only in
+/// production).
 class FakeTicketRepository implements TicketRepository {
   FakeTicketRepository(this._store);
 
   final FakeStore _store;
+
+  /// Public so tests can derive a real ticket id for a known source entry
+  /// without a round trip through [search] -- same derivation [search] and
+  /// [get] themselves use, so it stays honest.
+  static String ticketIdFor(String entryId) => 'tkt-$entryId';
+
+  static String? entryIdForTicket(String ticketId) =>
+      ticketId.startsWith('tkt-') ? ticketId.substring(4) : null;
 
   @override
   Future<List<TicketSearchResult>> search({
@@ -393,7 +408,7 @@ class FakeTicketRepository implements TicketRepository {
         )
         .map(
           (e) => TicketSearchResult(
-            ticketId: e.id,
+            ticketId: ticketIdFor(e.id),
             displayId: e.displayId,
             title: '${entrySummary(e)} · ${e.busNumber}',
             entryDate: e.date,
@@ -421,10 +436,13 @@ class FakeTicketRepository implements TicketRepository {
   @override
   Future<TicketDetail> get(String ticketId) async {
     await Future<void>.delayed(_latency);
-    final entry = _store.entries.where((e) => e.id == ticketId).firstOrNull;
+    final entryId = entryIdForTicket(ticketId);
+    final entry = entryId == null
+        ? null
+        : _store.entries.where((e) => e.id == entryId).firstOrNull;
     if (entry == null) throw ApiException('Ticket $ticketId not found');
     return TicketDetail(
-      ticketId: entry.id,
+      ticketId: ticketIdFor(entry.id),
       displayId: entry.displayId,
       status: entry.status == EntryStatus.resolved ? 'completed' : 'open',
       title: entry.data['complaint'] ?? entry.data['defects'] ?? '',

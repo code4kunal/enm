@@ -39,14 +39,18 @@ _REGISTER_SOURCE_KIND: dict[Register, TicketSourceKind] = {
     Register.driver_complaint: TicketSourceKind.driver_complaint,
 }
 
-#: work_type.code -> the ticket source kind an inspection failure raises.
-#: Matches the same literal codes `docking_km.py`'s DOCKING_WORK_TYPE and the
-#: seeded catalogue already use ("D.I", "10 DAYS SERVICE", "P.M").
-_INSPECTION_WORK_TYPE_SOURCE_KIND: dict[str, TicketSourceKind] = {
-    "D.I": TicketSourceKind.daily_inspection,
-    "10 DAYS SERVICE": TicketSourceKind.ten_day_inspection,
-    "P.M": TicketSourceKind.pm_docking,
-}
+#: The three TicketSourceKind values an inspection (rather than a register
+#: entry) can ever source a ticket from. Membership-only now -- which code
+#: routes to which kind is `WorkType.ticket_source_kind`'s job
+#: (create_ticket_for_inspection_result), not this dict's; it survives here
+#: only for search_tickets' "is this an inspection-sourced kind at all" check.
+_INSPECTION_SOURCE_KINDS = frozenset(
+    {
+        TicketSourceKind.daily_inspection,
+        TicketSourceKind.ten_day_inspection,
+        TicketSourceKind.pm_docking,
+    }
+)
 
 
 async def create_ticket_for_entry(
@@ -85,20 +89,19 @@ async def create_ticket_for_inspection_result(
     """Automatic — called for every `not_ok` result when an inspection is
     recorded. One ticket per failed check line, not per inspection.
 
-    Returns `None`, rather than raising, when the work type's code isn't one
-    of the fixed ticketable ones (D.I / 10 DAYS SERVICE / P.M) — a master-data
-    rename can move a code out of that set at any time (`is_inspection` stays
-    true), and the recorded failure is real regardless; it just can't be
-    turned into a ticket automatically. The caller (`record_inspection`) must
-    not let one unmapped code abort the whole inspection.
+    Returns `None`, rather than raising, when the work type carries no
+    `ticket_source_kind` (an inspection type that doesn't mint tickets, or
+    one not yet backfilled) — `is_inspection` can stay true regardless, and
+    the recorded failure is real either way; it just can't be turned into a
+    ticket automatically. The caller (`record_inspection`) must not let one
+    unrouted work type abort the whole inspection.
     """
     existing = await session.scalar(
         select(Ticket).where(Ticket.source_inspection_result_id == result.id)
     )
     if existing is not None:
         raise Conflict("This inspection result already has a ticket")
-    work_type_code = result.inspection.work_type.code
-    source_kind = _INSPECTION_WORK_TYPE_SOURCE_KIND.get(work_type_code)
+    source_kind = result.inspection.work_type.ticket_source_kind
     if source_kind is None:
         return None
     ticket = Ticket(
@@ -222,8 +225,7 @@ async def search_tickets(
     entry_tickets = (await session.scalars(entry_stmt)).unique().all()
     inspection_tickets = (
         []
-        if source_kind is not None
-        and source_kind not in _INSPECTION_WORK_TYPE_SOURCE_KIND.values()
+        if source_kind is not None and source_kind not in _INSPECTION_SOURCE_KINDS
         else (await session.scalars(inspection_stmt)).unique().all()
     )
     combined = [*entry_tickets, *inspection_tickets]
