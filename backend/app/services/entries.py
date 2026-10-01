@@ -8,9 +8,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.config import settings
@@ -25,6 +26,7 @@ from app.models.entry import (
     WorkDoneEntry,
     WorkDoneSparePart,
 )
+from app.models.entry_photo import EntryPhoto
 from app.models.enums import EntryStatus, LocationSource, Register, TicketStatus
 from app.models.master import Vehicle
 from app.models.ticket import Ticket
@@ -861,7 +863,13 @@ def reporter_name(entry: Entry) -> str:
     return entry.created_by.name
 
 
-def serialize_entry(entry: Entry) -> dict[str, Any]:
+def serialize_entry(entry: Entry, *, include_photos: bool = True) -> dict[str, Any]:
+    # Ticket detail passes include_photos=False. Entry.photos is selectin,
+    # so merely reading it (or loading the entry without noload) pulls every
+    # photo row; the capped list is queried on its own.
+    photos: list[dict[str, Any]] = []
+    if include_photos:
+        photos = [{"id": p.id, "url": p.url, "caption": p.caption} for p in entry.photos]
     return {
         "id": entry.id,
         "display_id": entry.display_id,
@@ -878,9 +886,7 @@ def serialize_entry(entry: Entry) -> dict[str, Any]:
         "created_at": entry.created_at,
         "updated_at": entry.updated_at,
         "status": entry.status,
-        "photos": [
-            {"id": p.id, "url": p.url, "caption": p.caption} for p in entry.photos
-        ],
+        "photos": photos,
         "data": serialize_data(entry),
     }
 
@@ -926,7 +932,10 @@ async def load_linked_sessions(
 
 
 async def sessions_for_ticket(
-    session: AsyncSession, ticket_id: str
+    session: AsyncSession,
+    ticket_id: str,
+    *,
+    include_photos: bool = True,
 ) -> list[dict[str, Any]]:
     """Every Work Done session logged against a ticket, oldest first.
 
@@ -934,22 +943,44 @@ async def sessions_for_ticket(
     a Work Done session can link to any ticket regardless of source kind
     (including an inspection-sourced one, which has no `Entry` at all), so
     this is the version `GET /tickets/{id}` uses for every ticket.
+
+    `include_photos=False` leaves each session's `photos` empty and does
+    not selectin-load them. Ticket detail uses that, then
+    `capped_ticket_photos` for the one list the screen reads. Entry detail
+    keeps the default, so `GET /entries/{id}` still returns every photo.
     """
-    rows = (
-        (
-            await session.scalars(
-                select(WorkDoneEntry)
-                .join(Entry, Entry.id == WorkDoneEntry.entry_id)
-                .where(WorkDoneEntry.ticket_id == ticket_id)
-                .order_by(Entry.entry_date, Entry.created_at)
-            )
-        )
-        .unique()
-        .all()
+    stmt = (
+        select(WorkDoneEntry)
+        .join(Entry, Entry.id == WorkDoneEntry.entry_id)
+        .where(WorkDoneEntry.ticket_id == ticket_id)
+        .order_by(Entry.entry_date, Entry.created_at)
     )
+    # WorkDoneEntry.ticket is joined, and that pulls Ticket.source_entry,
+    # whose photos selectin-load in full. Ticket detail never reads the
+    # ticket off the session row.
+    if not include_photos:
+        stmt = stmt.options(noload(WorkDoneEntry.ticket))
+    rows = (await session.scalars(stmt)).unique().all()
     out = []
     for wd in rows:
-        wd_entry = await session.get(Entry, wd.entry_id)
+        if include_photos:
+            wd_entry = await session.get(Entry, wd.entry_id)
+            photos = [
+                {"id": p.id, "url": p.url, "caption": p.caption} for p in wd_entry.photos
+            ]
+        else:
+            # Entry.photos is selectin, and Entry.work_done joins back to
+            # the ticket (and therefore the source entry's photos). Neither
+            # collection is read on this path.
+            wd_entry = await session.get(
+                Entry,
+                wd.entry_id,
+                options=[
+                    noload(Entry.photos),
+                    noload(Entry.work_done, WorkDoneEntry.ticket),
+                ],
+            )
+            photos = []
         out.append(
             {
                 "entry_id": wd.entry_id,
@@ -975,13 +1006,61 @@ async def sessions_for_ticket(
                     }
                     for sp in wd.spare_parts
                 ],
-                "photos": [
-                    {"id": p.id, "url": p.url, "caption": p.caption}
-                    for p in wd_entry.photos
-                ],
+                "photos": photos,
             }
         )
     return out
+
+
+async def capped_ticket_photos(
+    session: AsyncSession,
+    *,
+    ticket_id: str,
+    source_entry_id: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """At most `limit` photos for a ticket, newest Work Done session first.
+
+    Same order the in-memory aggregate used to build after the fact:
+    sessions newest `entry_date`/`created_at` first, photos within a
+    session in `created_at` order (what `Entry.photos` already uses), and
+    the source entry's own photos after every session. The LIMIT is in the
+    query, so a long-lived ticket does not materialize every photo row
+    just to discard the tail.
+    """
+    if limit <= 0:
+        return []
+
+    # Source photos sort after every session regardless of the source
+    # entry's own date -- they are the oldest thing on the ticket, not
+    # the newest attendance.
+    if source_entry_id is None:
+        where = WorkDoneEntry.ticket_id == ticket_id
+        source_rank = literal(0)
+    else:
+        where = or_(
+            WorkDoneEntry.ticket_id == ticket_id,
+            EntryPhoto.entry_id == source_entry_id,
+        )
+        source_rank = case((EntryPhoto.entry_id == source_entry_id, 1), else_=0)
+
+    rows = (
+        await session.scalars(
+            select(EntryPhoto)
+            .join(Entry, Entry.id == EntryPhoto.entry_id)
+            .outerjoin(WorkDoneEntry, WorkDoneEntry.entry_id == Entry.id)
+            .where(where)
+            .order_by(
+                source_rank.asc(),
+                Entry.entry_date.desc(),
+                Entry.created_at.desc(),
+                Entry.id.desc(),
+                EntryPhoto.created_at.asc(),
+            )
+            .limit(limit)
+        )
+    ).all()
+    return [{"id": p.id, "url": p.url, "caption": p.caption} for p in rows]
 
 
 DETAIL_COLUMNS = {

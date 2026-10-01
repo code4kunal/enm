@@ -4,9 +4,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import defaultload
 
 from app.deps import CurrentUser, EntrySite, SessionDep, assert_site_permission
 from app.errors import NotFound
+from app.models.entry import Entry
 from app.models.enums import TicketSourceKind
 from app.models.ticket import Ticket
 from app.schemas.entry import EntryOut, EntryPhotoOut
@@ -85,7 +87,13 @@ def _hhmm(dt: object) -> str | None:
 async def get_ticket(
     ticket_id: str, user: CurrentUser, session: SessionDep
 ) -> TicketDetailOut:
-    ticket = await session.get(Ticket, ticket_id)
+    # Entry.photos is selectin. Loading the source entry without this
+    # option materializes every photo on it before the cap below can run.
+    ticket = await session.get(
+        Ticket,
+        ticket_id,
+        options=[defaultload(Ticket.source_entry).noload(Entry.photos)],
+    )
     if ticket is None:
         raise NotFound("Ticket not found")
     site_code = (
@@ -99,12 +107,17 @@ async def get_ticket(
     assert_site_permission(user, site_code, "em_entry:read")
     entry_out = None
     if ticket.source_entry is not None:
-        entry_out = EntryOut(**entries_svc.serialize_entry(ticket.source_entry))
+        entry_out = EntryOut(
+            **entries_svc.serialize_entry(ticket.source_entry, include_photos=False)
+        )
     # sessions_for_ticket works off the ticket id directly -- unlike
     # load_linked_sessions, it doesn't need a source Entry, so this is one
     # call for both source shapes (a Work Done session can link to any
-    # ticket regardless of source kind).
-    linked_sessions = await entries_svc.sessions_for_ticket(session, ticket.id)
+    # ticket regardless of source kind). Photos stay off this call; the
+    # capped query below is the only photo read.
+    linked_sessions = await entries_svc.sessions_for_ticket(
+        session, ticket.id, include_photos=False
+    )
     display_id = (
         ticket.source_entry.display_id
         if ticket.source_entry is not None
@@ -118,18 +131,20 @@ async def get_ticket(
     # "Full history" (per the 2026-09-28 spec's Ticket Detail bullet) means
     # every photo anyone attached while working this ticket, not just the
     # original report -- a mechanic's own session photos are as much part
-    # of the record as the reporter's. `linked_sessions` is oldest-first
-    # (sessions_for_ticket's own order); reversed here so the newest
-    # session's photos lead, with the original report's (the oldest thing
-    # on the ticket) trailing -- a long-lived ticket's MAX_TICKET_PHOTOS cap
-    # then favors what a depot user re-opening it actually wants to see
-    # first, instead of truncating an unbounded, unordered pile.
-    photos: list[EntryPhotoOut] = []
-    for linked in reversed(linked_sessions):
-        photos.extend(EntryPhotoOut(**p) for p in linked["photos"])
-    if entry_out is not None:
-        photos.extend(entry_out.photos)
-    photos = photos[:MAX_TICKET_PHOTOS]
+    # of the record as the reporter's. Newest session first, source entry
+    # last, and only MAX_TICKET_PHOTOS rows come back from the database:
+    # slicing a list that was already fully loaded still costs the whole
+    # pile. A depot user re-opening an old ticket sees the latest
+    # attendance first.
+    photos = [
+        EntryPhotoOut(**p)
+        for p in await entries_svc.capped_ticket_photos(
+            session,
+            ticket_id=ticket.id,
+            source_entry_id=ticket.source_entry_id,
+            limit=MAX_TICKET_PHOTOS,
+        )
+    ]
     # The capped, ordered aggregate above is the only photos list this
     # endpoint's Flutter client reads (TicketDetailScreen renders
     # `ticket.photos`, nothing else) -- the per-source and per-session

@@ -348,13 +348,20 @@ class _AppSelectState extends State<AppSelect> {
             borderRadius: T.controlShape,
             border: Border.all(color: T.inputBorder, width: 1.5),
           ),
+          // An empty options list still has to show a value the field
+          // already holds -- same case `_selected` documents (retired bus
+          // autofilled from a ticket, kept out of the active picker). The
+          // hint is only for a field that is actually blank. `_open` still
+          // refuses to drop the menu when there is nothing to pick.
           child: empty
               ? Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
                   child: Text(
-                    widget.emptyHint,
-                    style: AppText.sans(size: 16, color: T.muted),
+                    _selected ?? widget.emptyHint,
+                    style: _selected == null
+                        ? AppText.sans(size: 16, color: T.muted)
+                        : style,
                   ),
                 )
               : OverlayPortal(
