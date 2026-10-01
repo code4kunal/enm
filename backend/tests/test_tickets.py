@@ -941,8 +941,69 @@ async def test_get_ticket_detail_aggregates_photos_from_linked_work_done_session
     )
 
     detail = await client.get(f"/tickets/{ticket_id}", headers=h)
-    photo_urls = {p["url"] for p in detail.json()["photos"]}
-    assert len(photo_urls) == 2, detail.json()["photos"]
+    body = detail.json()
+    photo_urls = {p["url"] for p in body["photos"]}
+    assert len(photo_urls) == 2, body["photos"]
+    # The same photos, duplicated into the nested source_entry/session
+    # copies, is an unbounded payload nothing on the client reads --
+    # emptied here, not just left to grow unchecked.
+    assert body["source_entry"]["photos"] == []
+    assert body["linked_sessions"][0]["photos"] == []
+
+
+async def test_get_ticket_detail_photos_are_newest_session_first(
+    client: AsyncClient,
+) -> None:
+    """The capped top-level `photos` list has to actually prioritise what a
+    depot user re-opening a long-lived ticket wants to see first -- proving
+    only the *count* survives a cap says nothing about which photos got
+    kept. Two Work Done sessions, attended (not completed, so both can link
+    to the one still-open ticket) a day apart, each with one photo: the
+    later session's photo must lead."""
+    from tests.test_entries import PNG
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    display_id = bd.json()["display_id"]
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    earlier = work_done()
+    earlier["date"] = "2026-01-01"
+    earlier["data"]["ticket_id"] = ticket_id
+    earlier["data"]["attended_time"] = "09:00"
+    earlier_wd = await client.post("/entries", json=earlier, headers=h)
+    assert earlier_wd.status_code == 201, earlier_wd.text
+    earlier_entry_id = earlier_wd.json()["id"]
+    await client.post(
+        f"/entries/{earlier_entry_id}/photos",
+        files={"photo": ("earlier.png", PNG, "image/png")},
+        headers=h,
+    )
+
+    later = work_done()
+    later["date"] = "2026-01-02"
+    later["data"]["ticket_id"] = ticket_id
+    later["data"]["attended_time"] = "09:00"
+    later_wd = await client.post("/entries", json=later, headers=h)
+    assert later_wd.status_code == 201, later_wd.text
+    later_entry_id = later_wd.json()["id"]
+    await client.post(
+        f"/entries/{later_entry_id}/photos",
+        files={"photo": ("later.png", PNG, "image/png")},
+        headers=h,
+    )
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    urls = [p["url"] for p in detail.json()["photos"]]
+    # storage.save_photo keys each photo as entries/{entry_id}/<random>.ext
+    # -- the original upload filename isn't preserved, the owning entry id
+    # is, and that's enough to tell the two sessions' photos apart.
+    later_index = next(i for i, u in enumerate(urls) if later_entry_id in u)
+    earlier_index = next(i for i, u in enumerate(urls) if earlier_entry_id in u)
+    assert later_index < earlier_index, urls
 
 
 async def test_get_ticket_detail_caps_aggregated_photos(
@@ -1038,6 +1099,30 @@ async def test_get_ticket_detail_404s_for_a_site_the_user_cant_reach(
     # Matches GET /entries/{id}'s existing convention (assert_site_access
     # raises Forbidden, not NotFound) -- not the 404 my plan assumed.
     assert r.status_code == 403
+
+
+async def test_search_result_includes_prefill_context_for_an_inspection_ticket(
+    client: AsyncClient,
+) -> None:
+    """A Work Done session can link to any ticket regardless of source kind
+    (services/entries.py's ticket_id lookup has no register/source_kind
+    restriction) -- picking an inspection-sourced ticket must still
+    autofill the form's (required) Bus field, the same way an entry-sourced
+    one does, or the picker silently leaves it blank."""
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        admin = await session.get(User, await _admin_id(session))
+        await tickets.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        await session.commit()
+
+    h = await auth_headers(client)
+    r = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": "MH40LY1894"}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()[0]["bus_no"] == "MH40LY1894"
 
 
 async def test_search_result_includes_prefill_context(client: AsyncClient) -> None:

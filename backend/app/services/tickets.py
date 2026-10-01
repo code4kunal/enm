@@ -146,14 +146,20 @@ def ticket_title(ticket: Ticket) -> str:
 def ticket_context(ticket: Ticket) -> dict[str, str | None]:
     """The handful of source-entry fields the Work Done form's linked-ticket
     picker prefills so a mechanic doesn't re-type what's already on the
-    linked record. Empty strings for an inspection-sourced ticket (no
-    register entry to read from) -- not surfaced by that picker anyway."""
+    linked record. An inspection-sourced ticket has no register entry, so
+    driver/route/defect_type genuinely don't apply and stay null -- but
+    `bus_no` does exist (the inspection's own vehicle) and is load-bearing:
+    a Work Done session can link to any ticket regardless of source kind,
+    and without it the form's Bus field (required) never autofills, and the
+    active-fleet dropdown has nothing to pre-select for a retired bus the
+    backend would otherwise accept."""
     if ticket.source_entry_id is None:
+        result = ticket.source_inspection_result
         return {
-            "bus_no": None,
+            "bus_no": result.inspection.vehicle.registration_no,
             "driver_name": None,
             "route": None,
-            "defect_text": None,
+            "defect_text": result.item.label,
             "defect_type": None,
         }
     entry = ticket.source_entry

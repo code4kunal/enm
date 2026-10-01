@@ -240,10 +240,17 @@ class _AppSelectState extends State<AppSelect> {
   late final TextEditingController _controller;
   final GlobalKey _fieldKey = GlobalKey();
 
+  // Deliberately not `options.contains(v)` -- a value the field already
+  // holds can be legitimately absent from the current options list (a
+  // retired bus autofilled from a linked ticket, kept out of the active
+  // fleet picker on purpose; an edited entry whose bus was retired after
+  // the fact). Either way, the field must still show what it actually
+  // holds, not blank out a value that is going to save correctly -- the
+  // picker's own options list is what stays restricted, not this.
   String? get _selected {
     final v = widget.value;
     if (v == null || v.isEmpty) return null;
-    return widget.options.contains(v) ? v : null;
+    return v;
   }
 
   List<String> get _filtered {
