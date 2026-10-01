@@ -34,11 +34,16 @@ async def _work_types() -> dict[str, int]:
     """D.I and the 10-day service, as inspection codes rather than registers."""
     async with SessionLocal() as session:
         ids: dict[str, int] = {}
-        for code, name in (
-            ("D.I", "Daily inspection"),
-            ("10 DAYS SERVICE", "10 day inspection"),
+        for code, name, source_kind in (
+            ("D.I", "Daily inspection", TicketSourceKind.daily_inspection),
+            ("10 DAYS SERVICE", "10 day inspection", TicketSourceKind.ten_day_inspection),
         ):
-            work_type = WorkType(code=code, name=name, is_inspection=True)
+            work_type = WorkType(
+                code=code,
+                name=name,
+                is_inspection=True,
+                ticket_source_kind=source_kind,
+            )
             session.add(work_type)
             await session.flush()
             ids[code] = work_type.id
@@ -114,9 +119,7 @@ async def test_writing_a_checklist_is_manager_only(client: AsyncClient) -> None:
     sup = await auth_headers(client, "TV4102")
     assert (await _save_checklist(client, sup, ids["D.I"])).status_code == 403
     # A supervisor still reads it — they are the one filling it in.
-    assert (
-        await client.get("/sites/MBMT/checklists", headers=sup)
-    ).status_code == 200
+    assert (await client.get("/sites/MBMT/checklists", headers=sup)).status_code == 200
 
 
 async def test_an_inspection_records_a_result_per_line(
@@ -161,14 +164,16 @@ async def test_an_inspection_records_a_result_per_line(
     assert failed["remark"] == "RHS blade worn"
 
 
-async def test_not_ok_on_a_renamed_inspection_type_still_records(
+async def test_not_ok_on_a_renamed_inspection_type_still_mints_a_ticket(
     client: AsyncClient,
 ) -> None:
     """A manager can rename a work type's code via PUT /master/work-types/{id}
-    while is_inspection stays true. create_ticket_for_inspection_result maps
-    tickets by a fixed code whitelist (D.I / 10 DAYS SERVICE / P.M), so a
-    renamed code falls outside it -- recording a failed check on one must
-    still succeed (no ticket, degrade rather than 500 the whole inspection)."""
+    while is_inspection stays true. Ticket routing is bound to
+    WorkType.ticket_source_kind -- a stable identity the rename never
+    touches (update_work_type only writes code/name/register/is_active/
+    sort_order) -- not to the code string itself, so a renamed D.I must
+    still mint a daily_inspection ticket on a failed check exactly as it
+    would have under the old code."""
     ids = await _work_types()
     h = await auth_headers(client)
     saved = await _save_checklist(client, h, ids["D.I"])
@@ -198,8 +203,70 @@ async def test_not_ok_on_a_renamed_inspection_type_still_records(
     )
     assert r.status_code == 201, r.text
     failed = next(x for x in r.json()["results"] if x["result"] == "not_ok")
-    assert failed["ticket_id"] is None
-    assert failed["ticket_status"] is None
+    assert failed["ticket_id"] is not None
+    assert failed["ticket_status"] == "open"
+
+    async with SessionLocal() as session:
+        ticket = await session.get(Ticket, failed["ticket_id"])
+        assert ticket.source_kind == TicketSourceKind.daily_inspection
+
+
+async def test_migration_0043_recovers_a_work_type_renamed_before_it_ran(
+    client: AsyncClient,
+) -> None:
+    """migration 0043's code-match backfill only sees a work type still
+    carrying the code it matched on. A work type renamed *before* that
+    migration ran stays NULL from the code match alone -- its own second
+    pass, backfill_from_ticket_history, has to recover it off a ticket it
+    already minted (stamped with the right source_kind back when the code
+    still matched), not off the code at all."""
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "migration_0043",
+        Path(__file__).parent.parent
+        / "alembic/versions/0043_work_type_ticket_source_kind.py",
+    )
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    ids = await _work_types()
+    h = await auth_headers(client)
+    saved = await _save_checklist(client, h, ids["D.I"])
+    items = saved.json()["items"]
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {"item_id": items[0]["id"], "result": "ok"},
+                {"item_id": items[1]["id"], "result": "not_ok", "remark": "worn"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+
+    async with SessionLocal() as session:
+        # The rename a manager made, and the column state a fresh
+        # migration finds -- both happening *before* this migration's own
+        # code-match pass gets a chance to see "D.I" at all.
+        work_type = await session.get(WorkType, ids["D.I"])
+        work_type.code = "D.I-RENAMED-PRE-MIGRATION"
+        work_type.ticket_source_kind = None
+        await session.commit()
+
+        conn = await session.connection()
+        await conn.run_sync(
+            lambda sync_conn: migration.backfill_from_ticket_history(sync_conn)
+        )
+        await session.commit()
+
+        await session.refresh(work_type)
+        assert work_type.ticket_source_kind == TicketSourceKind.daily_inspection
 
 
 async def test_every_required_line_must_be_answered(client: AsyncClient) -> None:
@@ -324,9 +391,7 @@ async def test_a_register_code_cannot_be_recorded_as_an_inspection(
     await _work_types()
     h = await auth_headers(client)
     async with SessionLocal() as session:
-        breakdown = await session.scalar(
-            select(WorkType).where(WorkType.code == "B.D")
-        )
+        breakdown = await session.scalar(select(WorkType).where(WorkType.code == "B.D"))
         breakdown_id = breakdown.id
 
     r = await client.post(
@@ -497,20 +562,16 @@ async def test_a_new_site_is_onboarded_with_the_standard_checklists(
     assert listed.status_code == 200, listed.text
     templates = listed.json()["items"]
 
-    by_key = {
-        (t["work_type_code"], t["variant"]): len(t["items"]) for t in templates
-    }
+    by_key = {(t["work_type_code"], t["variant"]): len(t["items"]) for t in templates}
     # D.I 14/12/14 by bus model, ten-day 57 each — the depot's own sheets.
     assert by_key.get(("D.I", "9M")) == 14, by_key
     assert by_key.get(("D.I", "12M AC")) == 14, by_key
     assert by_key.get(("D.I", "12M Non-AC")) == 12, by_key
     assert by_key.get(("10 DAYS SERVICE", "9M")) == 57, by_key
 
-    assert all(
-        (item["label"] or "").strip()
-        for t in templates
-        for item in t["items"]
-    ), "a checklist line arrived blank"
+    assert all((item["label"] or "").strip() for t in templates for item in t["items"]), (
+        "a checklist line arrived blank"
+    )
 
 
 async def test_onboarding_never_overwrites_a_depots_own_checklist(
@@ -543,9 +604,7 @@ async def test_onboarding_never_overwrites_a_depots_own_checklist(
 
     again = (await client.get("/sites/OWNDEP/checklists", headers=h)).json()["items"]
     mine = next(
-        t
-        for t in again
-        if t["work_type_code"] == "D.I" and t["variant"] == di["variant"]
+        t for t in again if t["work_type_code"] == "D.I" and t["variant"] == di["variant"]
     )
     assert [i["label"] for i in mine["items"]] == ["Only line this depot wants"]
 
@@ -563,7 +622,9 @@ async def test_sync_catalogue_backfills_a_site_missing_its_checklists(
     async with SessionLocal() as session:
         session.add(Site(code="GHOST", name="Ghost site"))
         session.add(
-            WorkType(code="P.M", name="Preventive maintenance docking", is_inspection=True)
+            WorkType(
+                code="P.M", name="Preventive maintenance docking", is_inspection=True
+            )
         )
         await session.commit()
     await _work_types()
@@ -587,9 +648,7 @@ async def test_sync_catalogue_backfills_a_site_missing_its_checklists(
 
 async def test_sync_catalogue_is_manager_only(client: AsyncClient) -> None:
     supervisor = await auth_headers(client, "TV4102")
-    r = await client.post(
-        "/sites/MBMT/checklists/sync-catalogue", headers=supervisor
-    )
+    r = await client.post("/sites/MBMT/checklists/sync-catalogue", headers=supervisor)
     assert r.status_code == 403
 
 
@@ -659,7 +718,11 @@ async def test_failed_check_raises_one_ticket_per_failure(client: AsyncClient) -
             "work_type_id": ids["D.I"],
             "inspected_on": TODAY.isoformat(),
             "results": [
-                {"item_id": items[0]["id"], "result": "not_ok", "remark": "brake pad worn"},
+                {
+                    "item_id": items[0]["id"],
+                    "result": "not_ok",
+                    "remark": "brake pad worn",
+                },
                 {"item_id": items[1]["id"], "result": "not_ok", "remark": "headlamp dim"},
                 {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
             ],
@@ -673,12 +736,100 @@ async def test_failed_check_raises_one_ticket_per_failure(client: AsyncClient) -
         tickets_raised = (
             await session.scalars(
                 select(Ticket)
-                .join(InspectionResult, InspectionResult.id == Ticket.source_inspection_result_id)
+                .join(
+                    InspectionResult,
+                    InspectionResult.id == Ticket.source_inspection_result_id,
+                )
                 .where(InspectionResult.inspection_id == inspection_id)
             )
         ).all()
         assert len(tickets_raised) == 2
-        assert {t.source_kind for t in tickets_raised} == {TicketSourceKind.daily_inspection}
+        assert {t.source_kind for t in tickets_raised} == {
+            TicketSourceKind.daily_inspection
+        }
+
+
+async def test_failed_ten_day_check_mints_a_ten_day_inspection_ticket(
+    client: AsyncClient,
+) -> None:
+    """Same path as the daily-inspection case, the other inspection kind --
+    only D.I had a real ticket-minting assertion before this."""
+    ids = await _work_types()
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, ids["10 DAYS SERVICE"])).json()["items"]
+
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["10 DAYS SERVICE"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {
+                    "item_id": items[0]["id"],
+                    "result": "not_ok",
+                    "remark": "brake pad worn",
+                },
+                {"item_id": items[1]["id"], "result": "ok"},
+                {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    failed = next(x for x in r.json()["results"] if x["result"] == "not_ok")
+    assert failed["ticket_id"] is not None
+
+    async with SessionLocal() as session:
+        ticket = await session.get(Ticket, failed["ticket_id"])
+        assert ticket.source_kind == TicketSourceKind.ten_day_inspection
+
+
+async def test_failed_docking_check_mints_a_pm_docking_ticket(
+    client: AsyncClient,
+) -> None:
+    """P.M is the third and last ticketable inspection kind -- untested
+    for ticket minting before this, only for its own variant/km checklist
+    resolution (test_docking_checklist_resolves_by_bus_type_and_km)."""
+    async with SessionLocal() as session:
+        pm = WorkType(
+            code="P.M",
+            name="Docking",
+            is_inspection=True,
+            ticket_source_kind=TicketSourceKind.pm_docking,
+        )
+        session.add(pm)
+        await session.commit()
+        pm_id = pm.id
+
+    h = await auth_headers(client)
+    items = (await _save_checklist(client, h, pm_id)).json()["items"]
+
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": pm_id,
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {
+                    "item_id": items[0]["id"],
+                    "result": "not_ok",
+                    "remark": "brake pad worn",
+                },
+                {"item_id": items[1]["id"], "result": "ok"},
+                {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    failed = next(x for x in r.json()["results"] if x["result"] == "not_ok")
+    assert failed["ticket_id"] is not None
+
+    async with SessionLocal() as session:
+        ticket = await session.get(Ticket, failed["ticket_id"])
+        assert ticket.source_kind == TicketSourceKind.pm_docking
 
 
 async def test_passing_inspection_raises_no_tickets(client: AsyncClient) -> None:
@@ -707,13 +858,18 @@ async def test_passing_inspection_raises_no_tickets(client: AsyncClient) -> None
         count = await session.scalar(
             select(func.count())
             .select_from(Ticket)
-            .join(InspectionResult, InspectionResult.id == Ticket.source_inspection_result_id)
+            .join(
+                InspectionResult,
+                InspectionResult.id == Ticket.source_inspection_result_id,
+            )
             .where(InspectionResult.inspection_id == inspection_id)
         )
         assert count == 0
 
 
-async def test_inspection_get_shows_ticket_status_on_failed_result(client: AsyncClient) -> None:
+async def test_inspection_get_shows_ticket_status_on_failed_result(
+    client: AsyncClient,
+) -> None:
     ids = await _work_types()
     h = await auth_headers(client)
     items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
@@ -726,7 +882,11 @@ async def test_inspection_get_shows_ticket_status_on_failed_result(client: Async
                 "work_type_id": ids["D.I"],
                 "inspected_on": TODAY.isoformat(),
                 "results": [
-                    {"item_id": items[0]["id"], "result": "not_ok", "remark": "brake pad worn"},
+                    {
+                        "item_id": items[0]["id"],
+                        "result": "not_ok",
+                        "remark": "brake pad worn",
+                    },
                     {"item_id": items[1]["id"], "result": "ok"},
                     {"item_id": items[2]["id"], "result": "ok", "value": "8.2 bar"},
                 ],
@@ -747,7 +907,9 @@ def _all_ok(items: list[dict]) -> list[dict]:
     return [{"item_id": i["id"], "result": "ok"} for i in items]
 
 
-async def test_batch_inspection_creates_one_entry_per_vehicle(client: AsyncClient) -> None:
+async def test_batch_inspection_creates_one_entry_per_vehicle(
+    client: AsyncClient,
+) -> None:
     ids = await _work_types()
     h = await auth_headers(client)
     items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]
@@ -772,7 +934,9 @@ async def test_batch_inspection_creates_one_entry_per_vehicle(client: AsyncClien
     assert body["items"][1]["failed_count"] == 1
 
 
-async def test_batch_inspection_rolls_back_entirely_on_one_bad_vehicle(client: AsyncClient) -> None:
+async def test_batch_inspection_rolls_back_entirely_on_one_bad_vehicle(
+    client: AsyncClient,
+) -> None:
     ids = await _work_types()
     h = await auth_headers(client)
     items = (await _save_checklist(client, h, ids["D.I"])).json()["items"]

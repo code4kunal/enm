@@ -50,6 +50,7 @@ back to its source."
 | Complete/Pending filter | New filter chip pair in Registers and a new "Pending work" tab, backed by a straightforward `has_open_ticket: bool` query param — `true` returns entries whose `Entry` is a ticket source with `status=open`; `false`/omitted is today's behavior. Pure additive query, no new backend state. |
 | Permissions for the new endpoints | No new permission resources. E&M's permissions are registered with the live siteops-platform (`app/permissions.py` → `POST /access-control/permissions/sync`), which is prod-only (no local/sandbox tier) — minting a new resource would need a platform administrator to grant it on a role before anyone could use the feature, outside this codebase's control. Spare Parts and Drivers CRUD/typeahead gate under the existing `em_master:read`/`em_master:write` (same as `DefectSource`/`DefectType`/staff); the Coolant bulk endpoint and inspection batch endpoint gate under the existing `em_entry:write` and `em_inspection:write` respectively. |
 | Rollout | Local only, same as the prior spec, until tested locally end-to-end. |
+| Import vs interactive resolve | **Intentional, documented exception — no new provenance mechanism.** `services/imports.py` can mark a Breakdown `resolved` (both the generic per-register commit path and the snag-report path's own `"CLOSE"` status column) without ever creating a `Ticket` or a Work Done session — imports represent **historical closure**: a legacy spreadsheet row saying a defect was already fixed before this system existed, not a live defect a depot user is expected to attend. Auto-opening a ticket at import time (matching the interactive create-entry path) would strand an unattendable, unclosable ticket for every already-closed historical row. The two paths are already distinguishable without new schema: every imported `Entry` carries a non-null `source_fingerprint` (`services/imports.py`'s `fingerprint()`), the same column `entry_origin` (above) already reads for Work Done — `source_fingerprint is not None` on a resolved Breakdown/Driver Complaint means "closed by import," `is None` means "closed by completing its ticket's Work Done session." |
 
 ## Data model
 
@@ -240,3 +241,43 @@ actually update downstream" verifies.
   log a Driver Complaint against a real driver — and confirm each one's
   effect is visible in Registers, the Pending list, and the relevant report
   (DMR / bus history / PDF) before reporting the work complete.
+
+## 2026-10-01 addendum — LLM-judge gap closure
+
+A post-merge review found REJECT/HOLD-worthy gaps against this spec and the
+prior breakdown/Work Done linkage one. Closed, in order:
+
+- **P0 — production broken**: the Work Done "complete ticket" post-save false
+  failure (`app/lib/state/entries.dart`'s `fetchEntry(ticketId)` 404ing on a
+  ticket id that was never an entry id — fixed to read the ticket detail's
+  own `source_entry` instead); Work Done on a ticket whose bus was later retired
+  (`resolve_vehicle` now accepts the ticket's own vehicle even if retired,
+  unlinked Work Done still active-only); silent inspection-ticket minting
+  failure on a renamed `WorkType.code` (ticketability now keyed on the new
+  stable `ticket_source_kind` column, not the editable display code).
+- **P1 — AC vs SPEC**: AC-2 Breakdowns card now shows the driver's name
+  (`driver_name`, echoed alongside the existing `driver_id`/code); BD/DC/WD
+  surfaces now render `displayId`; AC-4's Flutter gate investigated in depth
+  (see `app/test/work_done_autofill_test.dart`'s `setUpAll` comment) but
+  left as a known pre-existing flaky gate rather than carry a version-pinned
+  google_fonts-internals mocking risk for a cosmetic exception — not fixed.
+- **P2**: `FakeTicketRepository` no longer collapses ticket id and source
+  entry id (was the thing hiding the P0 #1 bug from its own tests); the
+  import-vs-interactive resolve path is now a documented decision (see
+  "Import vs interactive resolve" in Decisions, above) rather than an
+  unexplained second path; Ticket Detail's `photos` now aggregates every
+  linked Work Done session's own photos, not just the source entry's.
+- **Definition of done**: `make check` has no target in this repo — ran the
+  equivalent directly instead. Backend: `pytest tests/` → 441 passed, 3
+  skipped, 0 failed. Flutter: `flutter test` → single known failure (AC-4,
+  above), no other regressions.
+
+**Non-goals, unchanged from this spec and not reopened**: DMR as row-level
+ticket history; auto-selecting which ticket a Work Done session links to;
+seeding driver master data; the multiselect overlay layout.
+
+**Still open**: AC-4's google_fonts test flakiness (documented, not fixed —
+see above). A live, browser-driven behavioral pass (Breakdown → ticket →
+Work Done complete → UI reflects success, source breakdown no longer "open"
+without a full reload) has not yet been run against the running app for
+this round of fixes.

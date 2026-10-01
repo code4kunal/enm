@@ -461,7 +461,8 @@ class _RegisterFormScreenState extends ConsumerState<RegisterFormScreen> {
                           ),
                         ),
                         Text(
-                          '$siteLabel ($site) · '
+                          '$siteLabel ($site)'
+                          '${(existing?.displayId ?? '').isNotEmpty ? ' · ${existing!.displayId}' : ''} · '
                           '${widget.readOnly ? 'Viewing entry' : (existing == null ? 'New entry' : 'Editing entry')}',
                           style: AppText.sans(size: 13, color: T.secondary),
                         ),

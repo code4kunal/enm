@@ -101,6 +101,12 @@ class DriverComplaintData(_DataBase):
     mechanic: OptText = None
     supervisor: OptText = None
     driver_id: OptText = None
+    # Read-only: the driver's name, resolved server-side from driver_id for
+    # display -- the form still writes/reads driver_id (the FK the master
+    # list is keyed by). Accepted here (and ignored) purely so a
+    # GET-then-PUT-the-whole-form-back round trip doesn't 400 on a key the
+    # client never set but the server always echoes.
+    driver_name: OptText = None
     latitude: Decimal | None = None
     longitude: Decimal | None = None
     location_source: Literal["gps", "map", "manual"] | None = None
@@ -110,6 +116,8 @@ class BreakdownData(_DataBase):
     bus_no: BusNo
     defect_type: OptText = None
     driver_id: OptText = None
+    # Read-only, same contract as DriverComplaintData.driver_name above.
+    driver_name: OptText = None
     route: OptText = None
     location: OptText = None
     complaint: Req = Field(min_length=1)

@@ -105,8 +105,8 @@ class _Loaded extends StatelessWidget {
                 _row('Date', entry.date),
                 if (data['shift'] != null) _row('Shift', data['shift']!),
                 _row('Bus', entry.busNumber),
-                if ((data['driver'] ?? '').isNotEmpty)
-                  _row('Driver', data['driver']!),
+                if ((data['driverName'] ?? data['driver'] ?? '').isNotEmpty)
+                  _row('Driver', data['driverName'] ?? data['driver']!),
                 if ((data['route'] ?? '').isNotEmpty)
                   _row('Route', data['route']!),
                 if ((data['loc'] ?? '').isNotEmpty)

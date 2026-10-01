@@ -22,8 +22,10 @@ from app.models.base import Base, TZDateTime, created_at_col, new_uuid
 from app.models.enums import (
     DEFECT_CATEGORY_ENUM,
     REGISTER_ENUM,
+    TICKET_SOURCE_KIND_ENUM,
     DefectCategory,
     Register,
+    TicketSourceKind,
 )
 
 
@@ -226,6 +228,25 @@ class WorkType(Base):
     is_inspection: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # The stable identity an inspection failure's ticket routes on -- not
+    # `code`, which a manager can rename at any time without this row ever
+    # stopping being "the daily inspection type". Null for every non-
+    # ticketable work type (every register-routed one, and any inspection
+    # type that doesn't mint tickets); set once, for the three inspection
+    # kinds that do, and never re-derived from `code` again.
+    ticket_source_kind: Mapped[TicketSourceKind | None] = mapped_column(
+        Enum(
+            TicketSourceKind,
+            name=TICKET_SOURCE_KIND_ENUM,
+            # The type already exists (Ticket.source_kind creates it) --
+            # this column must never try to CREATE/DROP it itself, or
+            # create_all()/drop_all() race the two columns' DDL for the
+            # same named type against each other.
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=True,
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
@@ -260,7 +281,9 @@ class Driver(Base):
 
     __tablename__ = "drivers"
     __table_args__ = (
-        UniqueConstraint("site_code", "driver_code", name="uq_drivers_site_code_driver_code"),
+        UniqueConstraint(
+            "site_code", "driver_code", name="uq_drivers_site_code_driver_code"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_uuid)

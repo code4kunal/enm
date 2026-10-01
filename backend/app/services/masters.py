@@ -82,6 +82,7 @@ class FleetSyncResult:
             "skipped_no_registration": self.skipped_no_registration,
         }
 
+
 async def sync_vehicles_from_siteops(
     session: AsyncSession, site_code: str, siteops_site_id: str
 ) -> FleetSyncResult:
@@ -107,9 +108,7 @@ async def sync_vehicles_from_siteops(
     existing = {
         v.registration_no: v
         for v in (
-            await session.scalars(
-                select(Vehicle).where(Vehicle.site_code == site_code)
-            )
+            await session.scalars(select(Vehicle).where(Vehicle.site_code == site_code))
         )
         .unique()
         .all()
@@ -117,13 +116,17 @@ async def sync_vehicles_from_siteops(
     # Also need cross-site ownership checks for SiteOps regs not on this site.
     if siteops_regs:
         for v in (
-            await session.scalars(
-                select(Vehicle).where(
-                    Vehicle.registration_no.in_(siteops_regs),
-                    Vehicle.site_code != site_code,
+            (
+                await session.scalars(
+                    select(Vehicle).where(
+                        Vehicle.registration_no.in_(siteops_regs),
+                        Vehicle.site_code != site_code,
+                    )
                 )
             )
-        ).unique().all():
+            .unique()
+            .all()
+        ):
             existing.setdefault(v.registration_no, v)
 
     result = FleetSyncResult()
@@ -257,7 +260,11 @@ async def sync_all_linked_sites() -> list[dict]:
 
 
 async def resolve_vehicle(
-    session: AsyncSession, *, registration_no: str, site_code: str
+    session: AsyncSession,
+    *,
+    registration_no: str,
+    site_code: str,
+    allow_inactive_id: str | None = None,
 ) -> Vehicle:
     """The vehicle must be on this site's fleet. Server normalizes case/spaces.
 
@@ -266,6 +273,13 @@ async def resolve_vehicle(
     across the whole fleet, so a bus already owned elsewhere would 500 rather
     than fail cleanly). A bus joins the fleet through Vehicle Master or an
     import, not by being typed into a register.
+
+    `allow_inactive_id` is the one exception to the active-only rule: a Work
+    Done session completing a ticket whose own vehicle has since been
+    retired must still be attendable/completable -- the fleet moving on
+    shouldn't orphan a ticket that was open when the bus was still active.
+    Only that specific vehicle id is exempted; an unrelated retired bus
+    typed into the same field is still rejected.
     """
     normalized = normalize_registration_no(registration_no)
     vehicle = await session.scalar(
@@ -278,7 +292,7 @@ async def resolve_vehicle(
             f"{normalized} is not on the {site_code} fleet",
             {"bus_no": "unknown vehicle"},
         )
-    if not vehicle.is_active:
+    if not vehicle.is_active and vehicle.id != allow_inactive_id:
         raise ValidationError(
             f"{normalized} is retired", {"bus_no": "vehicle is retired"}
         )
@@ -296,9 +310,7 @@ async def resolve_defect_source(
     if not name:
         return None
     row = await session.scalar(
-        select(DefectSource).where(
-            func.lower(DefectSource.name) == name.strip().lower()
-        )
+        select(DefectSource).where(func.lower(DefectSource.name) == name.strip().lower())
     )
     if row is None:
         raise ValidationError(
@@ -330,12 +342,16 @@ async def resolve_spare_parts(
     if not spare_part_ids:
         return []
     rows = (
-        await session.scalars(
-            select(SparePart).where(
-                SparePart.id.in_(spare_part_ids), SparePart.site_code == site_code
+        (
+            await session.scalars(
+                select(SparePart).where(
+                    SparePart.id.in_(spare_part_ids), SparePart.site_code == site_code
+                )
             )
         )
-    ).unique().all()
+        .unique()
+        .all()
+    )
     by_id = {p.id: p for p in rows}
     missing = [pid for pid in spare_part_ids if pid not in by_id]
     if missing:

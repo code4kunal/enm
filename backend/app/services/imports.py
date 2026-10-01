@@ -4,6 +4,7 @@
 `commit` applies exactly what was previewed rather than re-parsing, so what the
 user approved is what lands.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -208,9 +209,7 @@ def parse_time(raw: str) -> time_t | None:
 # --- mapping ---------------------------------------------------------------
 
 
-def apply_mappings(
-    row: SourceRow, mappings: list[ColumnMappingIO]
-) -> dict[str, str]:
+def apply_mappings(row: SourceRow, mappings: list[ColumnMappingIO]) -> dict[str, str]:
     """Read one source row into target-field terms."""
     out: dict[str, str] = {}
     for mapping in mappings:
@@ -318,9 +317,7 @@ def _validate_row(
             return result
         # A register, service or odometer row must name a vehicle that is
         # already on this site's fleet.
-        needs_fleet = (
-            target is ImportTarget.odometers or register is not None or is_snag
-        )
+        needs_fleet = target is ImportTarget.odometers or register is not None or is_snag
         if needs_fleet and reg not in fleet:
             result.errors.append(
                 RowErrorOut(
@@ -362,8 +359,8 @@ def _validate_row(
                 RowErrorOut(
                     row_number=row_number,
                     field="Date",
-                    message=f"Could not read \"{raw}\" as a date"
-                    + (f' — expected {fmt}' if fmt else " — expected yyyy-MM-dd"),
+                    message=f'Could not read "{raw}" as a date'
+                    + (f" — expected {fmt}" if fmt else " — expected yyyy-MM-dd"),
                 )
             )
 
@@ -386,9 +383,10 @@ def _validate_row(
                 )
             )
 
-    if target is ImportTarget.service_schedule and not result.values.get(
-        "code", ""
-    ).strip():
+    if (
+        target is ImportTarget.service_schedule
+        and not result.values.get("code", "").strip()
+    ):
         result.errors.append(
             RowErrorOut(
                 row_number=row_number,
@@ -401,16 +399,12 @@ def _validate_row(
 
 
 async def _fleet(session: AsyncSession, site_code: str) -> dict[str, Vehicle]:
-    rows = await session.scalars(
-        select(Vehicle).where(Vehicle.site_code == site_code)
-    )
+    rows = await session.scalars(select(Vehicle).where(Vehicle.site_code == site_code))
     return {v.registration_no: v for v in rows}
 
 
 async def _drivers(session: AsyncSession, site_code: str) -> dict[str, Driver]:
-    rows = await session.scalars(
-        select(Driver).where(Driver.site_code == site_code)
-    )
+    rows = await session.scalars(select(Driver).where(Driver.site_code == site_code))
     return {d.driver_code.strip().lower(): d for d in rows}
 
 
@@ -468,12 +462,10 @@ async def _master_names(
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Comparable key -> the master's own spelling, per list."""
     sources = {
-        master_key(n): n
-        for n in (await session.scalars(select(DefectSource.name))).all()
+        master_key(n): n for n in (await session.scalars(select(DefectSource.name))).all()
     }
     types = {
-        master_key(n): n
-        for n in (await session.scalars(select(DefectType.name))).all()
+        master_key(n): n for n in (await session.scalars(select(DefectType.name))).all()
     }
     return sources, types
 
@@ -490,11 +482,7 @@ async def build_preview(
 ) -> StagedPreview:
     fleet = await _fleet(session, site_code)
     sources, types = await _master_names(session)
-    work_types = (
-        await _work_types(session)
-        if target is ImportTarget.snag_report
-        else {}
-    )
+    work_types = await _work_types(session) if target is ImportTarget.snag_report else {}
 
     # Snag sheets are the depot's source of truth — never drop a written row
     # because a code, group or bus is new. Vivify masters/fleet first, then
@@ -509,7 +497,7 @@ async def build_preview(
             types=types,
             work_types=work_types,
             drivers=await _drivers(session, site_code),
-        spare_parts=await _spare_parts(session, site_code),
+            spare_parts=await _spare_parts(session, site_code),
         )
         fleet = await _fleet(session, site_code)
         sources, types = await _master_names(session)
@@ -716,9 +704,7 @@ async def _existing_keys(
             n.lower() for n in (await session.scalars(select(DefectSource.name))).all()
         }
     if target is ImportTarget.defect_types:
-        return {
-            n.lower() for n in (await session.scalars(select(DefectType.name))).all()
-        }
+        return {n.lower() for n in (await session.scalars(select(DefectType.name))).all()}
     if target is ImportTarget.service_schedule:
         return {
             c.upper()
@@ -788,9 +774,7 @@ async def _commit_vehicles(
         if "model" in values:
             vehicle.model = values["model"][:64]
         if "battery_capacity_kwh" in values:
-            vehicle.battery_capacity_kwh = parse_decimal(
-                values["battery_capacity_kwh"]
-            )
+            vehicle.battery_capacity_kwh = parse_decimal(values["battery_capacity_kwh"])
         if "is_active" in values:
             vehicle.is_active = parse_bool(values["is_active"])
     await session.flush()
@@ -799,9 +783,7 @@ async def _commit_vehicles(
 async def _commit_master(
     session: AsyncSession, target: ImportTarget, rows: list[dict[str, str]]
 ) -> None:
-    model = (
-        DefectSource if target is ImportTarget.defect_sources else DefectType
-    )
+    model = DefectSource if target is ImportTarget.defect_sources else DefectType
     for values in rows:
         name = values["name"].strip()
         row = await session.scalar(
@@ -836,7 +818,10 @@ async def _commit_service_plans(
             session.add(plan)
         if values.get("name", "").strip():
             plan.name = values["name"].strip()[:120]
-        for key, attr in (("interval_km", "interval_km"), ("interval_days", "interval_days")):
+        for key, attr in (
+            ("interval_km", "interval_km"),
+            ("interval_days", "interval_days"),
+        ):
             if key in values:
                 parsed = parse_int(values[key])
                 if parsed is not None:
@@ -945,7 +930,12 @@ async def _commit_register(
         # banner -- both registers now auto-open a ticket at creation
         # (services/tickets.create_ticket_for_entry), which imports never
         # calls, so leaving status=open here would strand a ticket-shaped
-        # entry with no actual ticket.
+        # entry with no actual ticket. This is the "historical closure"
+        # resolve path -- intentionally separate from the interactive
+        # ticket/Work Done flow, documented as a deliberate exception in
+        # docs/superpowers/specs/2026-09-25-ticket-coverage-completion-design.md
+        # ("Import vs interactive resolve"). `source_fingerprint` (set right
+        # above) is the provenance marker distinguishing the two paths.
         if register in (Register.breakdown, Register.driver_complaint):
             entry.status = EntryStatus.resolved
             if register is Register.breakdown and entry.breakdown is not None:
@@ -1031,9 +1021,7 @@ async def _commit_snag_report(
 
     # Everything this sheet would write, checked against what the site already
     # has, in one query rather than one per row.
-    marks = {
-        id(values): fingerprint(site_code, "snagReport", values) for values in rows
-    }
+    marks = {id(values): fingerprint(site_code, "snagReport", values) for values in rows}
     already = await _seen_fingerprints(session, site_code, set(marks.values()))
 
     unchanged = 0
@@ -1108,7 +1096,9 @@ async def _commit_snag_report(
         already.add(mark)
 
         # "CLOSE" on the sheet means the job is finished. Only the breakdown
-        # register has an open/resolved lifecycle to reflect it in.
+        # register has an open/resolved lifecycle to reflect it in. Same
+        # historical-closure exception as the generic import path above --
+        # no ticket, no Work Done session; see that path's comment.
         if register is Register.breakdown:
             closed = values.get("status", "").strip().upper().startswith("CLOSE")
             entry.status = EntryStatus.resolved if closed else EntryStatus.open
@@ -1118,20 +1108,23 @@ async def _commit_snag_report(
         # The sheet's KMS column is an odometer reading taken that day.
         vehicle = vehicle_for_row
         reading = parse_int(values.get("odometer_km", ""))
-        fresh = vehicle is not None and reading is not None and (
-            vehicle.odometer_updated_at is None or reading >= vehicle.odometer_km
+        fresh = (
+            vehicle is not None
+            and reading is not None
+            and (vehicle.odometer_updated_at is None or reading >= vehicle.odometer_km)
         )
         if fresh:
             odometer_service.record_reading(
-                    session,
-                    vehicle,
-                    odometer_km=reading,
-                    recorded_at=datetime.combine(entry_date, time_t(0, 0), tzinfo=UTC),
-                    source="snag report",
-                )
+                session,
+                vehicle,
+                odometer_km=reading,
+                recorded_at=datetime.combine(entry_date, time_t(0, 0), tzinfo=UTC),
+                source="snag report",
+            )
         await session.flush()
 
     return unchanged
+
 
 async def _commit_inspection_row(
     session: AsyncSession,
@@ -1210,9 +1203,7 @@ def _to_register_data(register: Register, values: dict[str, str]) -> dict[str, o
     return data
 
 
-def require_mappings(
-    target: ImportTarget, mappings: list[ColumnMappingIO]
-) -> None:
+def require_mappings(target: ImportTarget, mappings: list[ColumnMappingIO]) -> None:
     bound = {
         m.target_key
         for m in mappings
