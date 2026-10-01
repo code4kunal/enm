@@ -17,6 +17,12 @@ from app.services.common import IST
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
+# A long-lived ticket can accumulate photos across many Work Done sessions
+# on top of the source entry's own -- newest-first so a cap still favors the
+# most recent attendance, matching what a depot user re-opening an old
+# ticket actually wants to see first.
+MAX_TICKET_PHOTOS = 50
+
 
 @router.get("/search", response_model=list[TicketSearchResult])
 async def search(
@@ -112,10 +118,18 @@ async def get_ticket(
     # "Full history" (per the 2026-09-28 spec's Ticket Detail bullet) means
     # every photo anyone attached while working this ticket, not just the
     # original report -- a mechanic's own session photos are as much part
-    # of the record as the reporter's.
-    photos = list(entry_out.photos) if entry_out is not None else []
-    for linked in linked_sessions:
+    # of the record as the reporter's. `linked_sessions` is oldest-first
+    # (sessions_for_ticket's own order); reversed here so the newest
+    # session's photos lead, with the original report's (the oldest thing
+    # on the ticket) trailing -- a long-lived ticket's MAX_TICKET_PHOTOS cap
+    # then favors what a depot user re-opening it actually wants to see
+    # first, instead of truncating an unbounded, unordered pile.
+    photos: list[EntryPhotoOut] = []
+    for linked in reversed(linked_sessions):
         photos.extend(EntryPhotoOut(**p) for p in linked["photos"])
+    if entry_out is not None:
+        photos.extend(entry_out.photos)
+    photos = photos[:MAX_TICKET_PHOTOS]
     return TicketDetailOut(
         ticket_id=ticket.id,
         display_id=display_id,

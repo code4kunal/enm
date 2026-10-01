@@ -1409,3 +1409,40 @@ async def test_unlinked_work_done_still_rejects_a_retired_bus(
     r = await client.post("/entries", json=payload, headers=h)
     assert r.status_code == 400, r.text
     assert "retired" in r.json()["error"]["fields"]["bus_no"]
+
+
+async def test_work_done_on_an_inspection_sourced_ticket_accepts_its_retired_bus(
+    client: AsyncClient,
+) -> None:
+    """Same exemption as test_work_done_linked_to_a_ticket_accepts_that_tickets
+    _retired_bus, but the ticket's source is a failed inspection result, not a
+    register entry -- _ticket_vehicle_id must resolve the vehicle off
+    `source_inspection_result.inspection`, not assume every ticket has a
+    `source_entry`."""
+    from app.db import SessionLocal
+    from app.services import tickets as tickets_service
+    from tests.test_tickets import _daily_inspection_result
+
+    async with SessionLocal() as session:
+        result = await _daily_inspection_result(session)
+        from app.models.user import User
+        from tests.conftest import SUPER_ADMIN
+
+        admin = await session.scalar(select(User).where(User.user_id == SUPER_ADMIN))
+        ticket = await tickets_service.create_ticket_for_inspection_result(
+            session, result=result, creator=admin
+        )
+        ticket_id = ticket.id
+        await session.commit()
+
+    h = await auth_headers(client)
+    vehicle_id = await _vehicle_id("MH40LY1894")
+    deactivated = await client.post(f"/vehicles/{vehicle_id}/deactivate", headers=h)
+    assert deactivated.status_code == 200, deactivated.text
+
+    payload = work_done(bus="MH40LY1894")
+    payload["data"]["ticket_id"] = ticket_id
+    payload["data"]["completes_ticket"] = True
+    payload["data"]["completion_time"] = "11:30"
+    r = await client.post("/entries", json=payload, headers=h)
+    assert r.status_code == 201, r.text

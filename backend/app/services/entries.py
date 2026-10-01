@@ -148,9 +148,13 @@ async def _ticket_vehicle_id(
     """The vehicle id a Work Done submission's linked ticket points at, if
     any -- the one retired bus `resolve_vehicle` should still accept for
     this submission, not a general exemption. Silent on anything that isn't
-    a clean, same-site, entry-sourced ticket id: real validation of the
-    ticket itself happens later (`_resolve_ticket`, inside `_build_detail`),
-    this is purely "which vehicle, if any, gets the pass".
+    a clean, same-site ticket id: real validation of the ticket itself
+    happens later (`_resolve_ticket`, inside `_build_detail`), this is
+    purely "which vehicle, if any, gets the pass". A ticket's source is
+    either a register entry or an inspection result (never both, never
+    neither -- see `Ticket`'s own check constraint), so both shapes need
+    their own vehicle lookup; an inspection-sourced ticket has no
+    `source_entry` at all.
     """
     if register is not Register.work_done:
         return None
@@ -158,11 +162,18 @@ async def _ticket_vehicle_id(
     if not ticket_id:
         return None
     ticket = await session.get(Ticket, ticket_id)
-    if ticket is None or ticket.source_entry_id is None:
+    if ticket is None:
         return None
-    if ticket.source_entry.site_code != site_code:
-        return None
-    return ticket.source_entry.bus_id
+    if ticket.source_entry_id is not None:
+        if ticket.source_entry.site_code != site_code:
+            return None
+        return ticket.source_entry.bus_id
+    if ticket.source_inspection_result is not None:
+        inspection = ticket.source_inspection_result.inspection
+        if inspection.site_code != site_code:
+            return None
+        return inspection.vehicle_id
+    return None
 
 
 async def _resolve_attendees(

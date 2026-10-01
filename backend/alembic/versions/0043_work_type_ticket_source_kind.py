@@ -47,6 +47,47 @@ _BACKFILL = {
 }
 
 
+def backfill_from_ticket_history(conn: sa.engine.Connection) -> None:
+    """Recover a work type whose code was already renamed *before* this
+    migration runs -- by then the code match in `upgrade()` can't see it,
+    but it already minted a ticket of the kind in question, and every
+    ticket's own `source_kind` was stamped at creation time off the code
+    match that existed back then. A historical ticket is still real
+    evidence, independent of what the code says now.
+
+    `WHERE ticket_source_kind IS NULL` so this never overwrites a row the
+    code match already handled (or an already-correct existing value).
+    This still can't recover a work type renamed before it ever minted a
+    single ticket -- no record anywhere says what it used to be -- but that
+    gap is unrecoverable by any backfill, not specific to this one.
+
+    Pulled out of `upgrade()` so a test can exercise this exact SQL against
+    a crafted pre-rename fixture without needing a full alembic upgrade
+    cycle -- this repo's test schema is built from the current models, not
+    replayed migration-by-migration.
+    """
+    for kind in _BACKFILL.values():
+        conn.execute(
+            sa.text(
+                """
+                UPDATE work_types
+                SET ticket_source_kind = :kind
+                WHERE ticket_source_kind IS NULL
+                  AND id IN (
+                      SELECT ie.work_type_id
+                      FROM tickets t
+                      JOIN inspection_results ir
+                          ON ir.id = t.source_inspection_result_id
+                      JOIN inspection_entries ie
+                          ON ie.id = ir.inspection_id
+                      WHERE t.source_kind = :kind
+                  )
+                """
+            ),
+            {"kind": kind},
+        )
+
+
 def upgrade() -> None:
     op.add_column(
         "work_types",
@@ -61,6 +102,7 @@ def upgrade() -> None:
             ),
             {"kind": kind, "code": code},
         )
+    backfill_from_ticket_history(conn)
 
 
 def downgrade() -> None:

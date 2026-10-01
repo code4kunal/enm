@@ -945,6 +945,42 @@ async def test_get_ticket_detail_aggregates_photos_from_linked_work_done_session
     assert len(photo_urls) == 2, detail.json()["photos"]
 
 
+async def test_get_ticket_detail_caps_aggregated_photos(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ticket re-opened across enough Work Done sessions could otherwise
+    aggregate an unbounded pile of photos onto one response -- cap it, the
+    same way every other list endpoint in this API bounds its page size."""
+    from app.api import tickets as tickets_api
+    from tests.test_entries import PNG
+
+    monkeypatch.setattr(tickets_api, "MAX_TICKET_PHOTOS", 2)
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    display_id = bd.json()["display_id"]
+    for name in ("reported-1.png", "reported-2.png", "reported-3.png"):
+        r = await client.post(
+            f"/entries/{bd_id}/photos",
+            files={"photo": (name, PNG, "image/png")},
+            headers=h,
+        )
+        assert r.status_code == 201, r.text
+
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    assert len(detail.json()["photos"]) == 2, detail.json()["photos"]
+    # The cap only trims the aggregated response -- the source entry itself
+    # still holds every photo that was actually uploaded to it.
+    source_photos = (await client.get(f"/entries/{bd_id}", headers=h)).json()["photos"]
+    assert len(source_photos) == 3
+
+
 async def test_get_ticket_detail_linked_sessions_include_spare_parts(
     client: AsyncClient,
 ) -> None:

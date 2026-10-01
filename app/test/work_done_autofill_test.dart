@@ -1,7 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+// Not exported by the public barrel, but `assetManifest` is explicitly
+// `@visibleForTesting` -- the package's own sanctioned hook for a test to
+// seed the local-asset lookup `loadFontIfNecessary` checks before ever
+// attempting a network fetch. Pinned to google_fonts 6.x's internal layout.
+import 'package:google_fonts/src/google_fonts_base.dart' as google_fonts_base;
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/entry.dart';
 import 'package:transvolt_em/models/ticket.dart';
@@ -137,11 +146,6 @@ Future<void> _pumpForm(WidgetTester tester, _Harness h) async {
     ),
   );
   await _settle(tester);
-  // With runtime fetching disabled (see setUpAll), resolving this form's
-  // bold-weight text throws an "asset not found" fallback exception --
-  // drain it here so it doesn't fail the test. No-op once already drained
-  // for an earlier pumpForm in the same test.
-  tester.takeException();
 }
 
 /// A form control currently holding [text] — an [AppTextField]'s or an
@@ -193,34 +197,81 @@ Future<void> _save(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 2700));
 }
 
+const _fontFixtureDir = 'test/fixtures/fonts';
+const _fontFixtureFile = '$_fontFixtureDir/placeholder.ttf';
+
+/// google_fonts derives an asset lookup key as `<Family>-<Weight>[Italic]`
+/// (`GoogleFontsVariant.toApiFilenamePart`'s own weight-name table) for
+/// whichever of this app's two families and whatever weight a widget asks
+/// for -- normal style only, this app never requests italic. Rather than
+/// discover each one by a failing test, list every weight for both: the
+/// real font file behind each of these virtual paths is the same one
+/// `placeholder.ttf`, served by the mock message handler in `setUpAll`.
+const _fontFamilies = <String>['IBMPlexMono', 'IBMPlexSans'];
+const _fontWeightNames = <String>[
+  'Thin',
+  'ExtraLight',
+  'Light',
+  'Regular',
+  'Medium',
+  'SemiBold',
+  'Bold',
+  'ExtraBold',
+  'Black',
+];
+
+/// Points google_fonts at local "assets" for every weight of this app's two
+/// font families, so its lookup always finds a match without ever touching
+/// the app's real, unrelated pubspec assets or a network fetch.
+class _FixtureAssetManifest implements AssetManifest {
+  @override
+  List<String> listAssets() => <String>[
+        for (final family in _fontFamilies)
+          for (final weight in _fontWeightNames)
+            '$_fontFixtureDir/$family-$weight.ttf',
+      ];
+
+  @override
+  List<AssetMetadata>? getAssetVariants(String key) => null;
+}
+
 void main() {
   // This is the first widget test file in the suite to render this form's
   // bold-weight text (`_TicketLinkSection`'s "Link to" header). Left at its
   // default, google_fonts kicks off a real, unawaited network fetch for
   // that weight, which flutter_test's mocked HttpClient always rejects --
   // and that rejection surfaces asynchronously, detached from whichever
-  // test triggered it (observed landing on the *next* test, not the one
-  // that built the text), so no amount of in-test draining or waiting
-  // catches it reliably. Disabling runtime fetching removes the network
-  // attempt entirely; `_pumpForm` below drains the synchronous "asset not
-  // found" fallback exception that replaces it.
+  // test triggered it (observed landing on an unrelated test, or after the
+  // whole file had already finished), uncatchable by
+  // `tester.takeException()` (which only drains FlutterError-routed errors,
+  // not this raw unhandled Future rejection) and, it turns out, by a
+  // suite-wide `flutter_test_config.dart` error-zone wrapper either --
+  // flutter_test's own per-test zone sits closer to where the error
+  // originates and claims it first, before any outer zone ever sees it.
+  // Draining google_fonts' own `pendingFontFutures` set explicitly looked
+  // promising but hangs flutter_test's fake-time zone outside a pump loop.
   //
-  // Investigated further (two attempts, both reverted): `tester
-  // .takeException()` only drains FlutterError-routed errors, not this raw
-  // unhandled Future rejection, so it does not actually catch the case
-  // above -- test_ac4 below still fails intermittently with it. Explicitly
-  // awaiting google_fonts' own `pendingFontFutures` (its `@visibleForTesting`
-  // in-flight-loads set, from package:google_fonts/src/google_fonts_base
-  // .dart) looked promising -- every widget rebuild that touches the bold
-  // header re-triggers a fresh attempt, since failures are never cached --
-  // but blocking on it outside a pump loop hung flutter_test's fake-time
-  // zone for the full 10-minute test timeout, cascading failures through
-  // the rest of this file. A real fix needs fixture font bytes plus a
-  // mocked `flutter/assets` channel so google_fonts resolves locally
-  // instead of attempting a load at all; left as a known flaky gate rather
-  // than carry that version-pinned-internals risk for a cosmetic exception.
-  setUpAll(() {
+  // The actual fix is to stop the load from ever failing: disable runtime
+  // fetching (so there's no real network attempt) and pre-seed
+  // google_fonts' local-asset lookup with a real, valid font so the bold
+  // weight resolves successfully on its first attempt -- a load that
+  // succeeds is cached permanently (google_fonts only retries on failure),
+  // so no amount of later rebuilding can re-trigger the exception. The
+  // actual bytes don't matter (nothing here asserts on rendered glyphs) --
+  // `test/fixtures/fonts/placeholder.ttf` is Ahem, the W3C's public-domain
+  // test font, already vendored by the Flutter SDK itself for exactly this
+  // purpose (`flutter_tools/static/Ahem.ttf`); the same bytes serve every
+  // virtual path `_FixtureAssetManifest` lists.
+  setUpAll(() async {
     GoogleFonts.config.allowRuntimeFetching = false;
+    final fixtureBytes = await File(_fontFixtureFile).readAsBytes();
+    google_fonts_base.assetManifest = _FixtureAssetManifest();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', (message) async {
+      final key = utf8.decode(message!.buffer.asUint8List());
+      if (!key.startsWith('$_fontFixtureDir/')) return null;
+      return ByteData.sublistView(Uint8List.fromList(fixtureBytes));
+    });
   });
 
   testWidgets(

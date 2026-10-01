@@ -211,6 +211,64 @@ async def test_not_ok_on_a_renamed_inspection_type_still_mints_a_ticket(
         assert ticket.source_kind == TicketSourceKind.daily_inspection
 
 
+async def test_migration_0043_recovers_a_work_type_renamed_before_it_ran(
+    client: AsyncClient,
+) -> None:
+    """migration 0043's code-match backfill only sees a work type still
+    carrying the code it matched on. A work type renamed *before* that
+    migration ran stays NULL from the code match alone -- its own second
+    pass, backfill_from_ticket_history, has to recover it off a ticket it
+    already minted (stamped with the right source_kind back when the code
+    still matched), not off the code at all."""
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "migration_0043",
+        Path(__file__).parent.parent
+        / "alembic/versions/0043_work_type_ticket_source_kind.py",
+    )
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    ids = await _work_types()
+    h = await auth_headers(client)
+    saved = await _save_checklist(client, h, ids["D.I"])
+    items = saved.json()["items"]
+    r = await client.post(
+        "/sites/MBMT/inspections",
+        json={
+            "vehicle_id": await _vehicle(),
+            "work_type_id": ids["D.I"],
+            "inspected_on": TODAY.isoformat(),
+            "results": [
+                {"item_id": items[0]["id"], "result": "ok"},
+                {"item_id": items[1]["id"], "result": "not_ok", "remark": "worn"},
+            ],
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+
+    async with SessionLocal() as session:
+        # The rename a manager made, and the column state a fresh
+        # migration finds -- both happening *before* this migration's own
+        # code-match pass gets a chance to see "D.I" at all.
+        work_type = await session.get(WorkType, ids["D.I"])
+        work_type.code = "D.I-RENAMED-PRE-MIGRATION"
+        work_type.ticket_source_kind = None
+        await session.commit()
+
+        conn = await session.connection()
+        await conn.run_sync(
+            lambda sync_conn: migration.backfill_from_ticket_history(sync_conn)
+        )
+        await session.commit()
+
+        await session.refresh(work_type)
+        assert work_type.ticket_source_kind == TicketSourceKind.daily_inspection
+
+
 async def test_every_required_line_must_be_answered(client: AsyncClient) -> None:
     ids = await _work_types()
     h = await auth_headers(client)

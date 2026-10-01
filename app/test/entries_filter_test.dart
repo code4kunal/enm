@@ -1,12 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/fake_repositories.dart' show FakeTicketRepository;
+import 'support/fake_store.dart';
 import 'support/harness.dart';
 import 'support/seed.dart';
 import 'package:transvolt_em/data/registers.dart';
 import 'package:transvolt_em/data/repositories.dart';
 import 'package:transvolt_em/models/checklist.dart';
 import 'package:transvolt_em/models/entry.dart';
+import 'package:transvolt_em/models/ticket.dart';
+import 'package:transvolt_em/models/ticket_detail.dart';
 import 'package:transvolt_em/state/entries.dart';
 import 'package:transvolt_em/state/inspections.dart';
 import 'package:transvolt_em/state/providers.dart';
@@ -72,6 +75,46 @@ class _StubChecklistRepository implements ChecklistRepository {
 /// the seed entries live.
 Future<ProviderContainer> signedInContainer() async {
   final container = fakeContainer();
+  addTearDown(container.dispose);
+
+  await container
+      .read(sessionProvider.notifier)
+      .signInWithCredentials('TV4021', kSeedPassword);
+  container.read(sessionProvider.notifier).enterApp();
+  await container.read(entriesProvider.future);
+
+  return container;
+}
+
+/// Stands in for a down ticket service -- every method throws. Used to prove
+/// `EntriesController.create()`'s post-save ticket refresh is genuinely
+/// best-effort, not just commented as such.
+class _ThrowingTicketRepository implements TicketRepository {
+  @override
+  Future<TicketDetail> get(String ticketId) => throw Exception('network down');
+
+  @override
+  Future<List<TicketSearchResult>> search({
+    required String site,
+    String? register,
+    String? q,
+    String status = 'open',
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<RegisterEntry> raiseTicket(String entryId) => throw UnimplementedError();
+}
+
+/// Same shape as [signedInContainer], but with [ticketRepositoryProvider]
+/// swapped for one that always throws.
+Future<ProviderContainer> signedInContainerWithThrowingTicketGet() async {
+  final container = ProviderContainer(
+    overrides: <Override>[
+      ...fakeOverrides(FakeStore()),
+      ticketRepositoryProvider.overrideWithValue(_ThrowingTicketRepository()),
+    ],
+  );
   addTearDown(container.dispose);
 
   await container
@@ -289,6 +332,33 @@ void main() {
 
         final after = await container.read(ticketDetailProvider(ticketId).future);
         expect(after.status, 'completed');
+      },
+    );
+
+    test(
+      'a failure refreshing the linked ticket does not fail the save',
+      () async {
+        // entries.dart's own note calls this best-effort: the entry is
+        // already saved and in the list by the time this refresh runs, so
+        // a failure fetching its *ticket's* now-stale status must not
+        // surface as the save having failed. Prove it, rather than just
+        // trust the comment -- a bare `catch (_) {}` with no test backing
+        // it is exactly the kind of thing a later edit silently breaks.
+        final container = await signedInContainerWithThrowingTicketGet();
+        final open = container.read(openBreakdownsProvider);
+        expect(open, isNotEmpty);
+
+        final created = await container.read(entriesProvider.notifier).create(
+          registerId: 'work',
+          data: <String, String>{
+            'bus': 'MH40LY1721',
+            'date': Dates.today(),
+            'ticketId': FakeTicketRepository.ticketIdFor(open.first.id),
+            'completesTicket': 'true',
+          },
+        );
+
+        expect(created.registerId, 'work');
       },
     );
   });
@@ -654,6 +724,24 @@ void main() {
         ),
         throwsA(isA<ApiException>()),
       );
+    });
+
+    test('Work Done rows never come back as open tickets', () async {
+      // A Work Done session can only ever *complete* a ticket (its own
+      // ticketId/completesTicket fields point at one) -- it is never itself
+      // a ticket source, on the real API or here. An unfiltered search
+      // whose query matches a seeded Work Done entry's own defect text must
+      // not surface it, the same way the real backend's ticket search never
+      // would -- there is no Ticket row to find.
+      final container = await signedInContainer();
+
+      final results = await container.read(
+        ticketSearchProvider(
+          (site: 'MBMT', register: null, q: 'AC not cooling', status: 'open'),
+        ).future,
+      );
+
+      expect(results, isEmpty);
     });
   });
 }

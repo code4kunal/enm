@@ -392,6 +392,12 @@ class FakeTicketRepository implements TicketRepository {
     }
     return _store.entries
         .where((e) => e.site == site)
+        // A Work Done session only ever *completes* a ticket (its own
+        // ticketId/completesTicket fields point at one) -- it is never
+        // itself a ticket source, on the real API or here. Excluded before
+        // the status switch below so it can't leak back in under 'all'
+        // either, not just 'open'.
+        .where((e) => e.registerId != 'work')
         .where(
           (e) => switch (status) {
             'all' => true,
