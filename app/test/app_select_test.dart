@@ -55,4 +55,58 @@ void main() {
       expect(find.text('MH04LY1894'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'shows a held bus registration when the options list is empty',
+    (tester) async {
+      // Options can be empty while a value is already on the field (the
+      // fleet list hasn't loaded, or every active bus was filtered out).
+      // That must not swap the registration for the empty hint.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppSelect(
+              value: 'MH04LY1894',
+              options: const <String>[],
+              emptyHint: 'No buses loaded',
+              mono: true,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('MH04LY1894'), findsOneWidget);
+      expect(find.text('No buses loaded'), findsNothing);
+
+      final shown = tester.widget<Text>(find.text('MH04LY1894'));
+      expect(shown.style?.fontWeight, FontWeight.w600);
+      expect(shown.style?.fontSize, 16);
+
+      await tester.tap(find.byType(AppSelect));
+      await tester.pump();
+      expect(find.text('No matches'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'shows emptyHint when options are empty and nothing is held',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppSelect(
+              value: null,
+              options: const <String>[],
+              emptyHint: 'No buses loaded',
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('No buses loaded'), findsOneWidget);
+    },
+  );
 }

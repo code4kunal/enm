@@ -1042,6 +1042,96 @@ async def test_get_ticket_detail_caps_aggregated_photos(
     assert len(source_photos) == 3
 
 
+async def test_get_ticket_detail_loads_only_capped_photos(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Response length == cap is not evidence the server stopped early --
+    the old path selectin-loaded every photo, then sliced. With more photos
+    than the cap across two sessions, the newest session still leads, and
+    every entry_photos SELECT issued for the ticket read is LIMITed."""
+    from sqlalchemy import event
+
+    from app.api import tickets as tickets_api
+    from app.db import engine
+    from tests.test_entries import PNG
+
+    monkeypatch.setattr(tickets_api, "MAX_TICKET_PHOTOS", 2)
+
+    h = await auth_headers(client)
+    bd = await client.post("/entries", json=breakdown(), headers=h)
+    bd_id = bd.json()["id"]
+    display_id = bd.json()["display_id"]
+    for name in ("reported-1.png", "reported-2.png"):
+        r = await client.post(
+            f"/entries/{bd_id}/photos",
+            files={"photo": (name, PNG, "image/png")},
+            headers=h,
+        )
+        assert r.status_code == 201, r.text
+
+    found = await client.get(
+        "/tickets/search", params={"site": "MBMT", "q": display_id}, headers=h
+    )
+    ticket_id = found.json()[0]["ticket_id"]
+
+    async def _session(date: str, filename: str) -> str:
+        payload = work_done()
+        payload["date"] = date
+        payload["data"]["ticket_id"] = ticket_id
+        payload["data"]["attended_time"] = "09:00"
+        created = await client.post("/entries", json=payload, headers=h)
+        assert created.status_code == 201, created.text
+        entry_id = created.json()["id"]
+        for i in range(3):
+            uploaded = await client.post(
+                f"/entries/{entry_id}/photos",
+                files={"photo": (f"{filename}-{i}.png", PNG, "image/png")},
+                headers=h,
+            )
+            assert uploaded.status_code == 201, uploaded.text
+        return entry_id
+
+    earlier_entry_id = await _session("2026-01-01", "earlier")
+    later_entry_id = await _session("2026-01-02", "later")
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", _record)
+    try:
+        detail = await client.get(f"/tickets/{ticket_id}", headers=h)
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", _record)
+
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    urls = [p["url"] for p in body["photos"]]
+    assert len(urls) == 2, urls
+    assert all(later_entry_id in u for u in urls), urls
+    assert all(earlier_entry_id not in u for u in urls), urls
+    assert all(bd_id not in u for u in urls), urls
+    assert body["source_entry"]["photos"] == []
+    assert body["linked_sessions"]
+    assert all(s["photos"] == [] for s in body["linked_sessions"])
+
+    photo_selects = [
+        s
+        for s in statements
+        if "entry_photos" in s and s.lstrip().lower().startswith("select")
+    ]
+    assert photo_selects, statements
+    assert all("limit" in s.lower() for s in photo_selects), photo_selects
+
+    # The cap is only on the ticket aggregate. The session itself still
+    # returns every photo that was uploaded to it.
+    later_photos = (await client.get(f"/entries/{later_entry_id}", headers=h)).json()[
+        "photos"
+    ]
+    assert len(later_photos) == 3
+
+
 async def test_get_ticket_detail_linked_sessions_include_spare_parts(
     client: AsyncClient,
 ) -> None:
