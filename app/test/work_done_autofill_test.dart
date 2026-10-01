@@ -410,9 +410,10 @@ void main() {
     'test_ac4_a_bus_that_left_the_active_fleet_still_carries_through',
     (tester) async {
       // The ticket was raised before the bus was deactivated, so its
-      // registration is no longer in the Bus No dropdown's options. The
-      // select renders blank (see AppSelect._selected) — it must not throw,
-      // and the value must still reach the submission.
+      // registration is no longer in the Bus No dropdown's own options —
+      // AppSelect._selected still shows it (it reflects what the field
+      // holds, not just what the picker currently offers); either way it
+      // must not throw, and the value must still reach the submission.
       const gone = TicketSearchResult(
         ticketId: 'tkt-bd-2',
         displayId: 'BD-2026-000009',
@@ -429,12 +430,44 @@ void main() {
       await _pickTicket(tester, gone);
 
       expect(tester.takeException(), isNull);
+      expect(_fieldHolding('MH04LQ5736'), findsOneWidget);
       await _save(tester);
       expect(h.lastCreated.data['bus'], 'MH04LQ5736');
       expect(
         h.lastCreated.data['defects'],
         'HV contactor tripped, bus immobile',
       );
+    },
+  );
+
+  testWidgets(
+    'test_an_inspection_sourced_tickets_retired_bus_carries_through_and_saves',
+    (tester) async {
+      // Same shape as the breakdown-sourced case above, but the ticket's
+      // source is a failed inspection check, not a register entry --
+      // ticket_context's bus_no used to be unconditionally null for this
+      // source kind, so autofill never touched Bus at all regardless of
+      // whether the bus was retired. Proves the full round trip: picked,
+      // shown, and saved.
+      const inspectionTicket = TicketSearchResult(
+        ticketId: 'tkt-insp-1',
+        displayId: 'WD-2026-000011',
+        title: 'Brakes · MH04LQ5736',
+        entryDate: '2026-09-29',
+        status: 'open',
+        sourceKind: 'daily_inspection',
+        busNo: 'MH04LQ5736',
+        defectText: 'Brakes',
+      );
+      final h =
+          await _signedIn(tester, <TicketSearchResult>[inspectionTicket]);
+      await _pumpForm(tester, h);
+      await _pickTicket(tester, inspectionTicket);
+
+      expect(tester.takeException(), isNull);
+      expect(_fieldHolding('MH04LQ5736'), findsOneWidget);
+      await _save(tester);
+      expect(h.lastCreated.data['bus'], 'MH04LQ5736');
     },
   );
 

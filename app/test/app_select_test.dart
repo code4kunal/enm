@@ -31,4 +31,28 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'shows a value the field already holds even when the options list '
+    'does not offer it',
+    (tester) async {
+      // A retired bus autofilled from a linked ticket (kept out of the
+      // active fleet picker on purpose) must still show, or it reads to a
+      // mechanic as the autofill having silently failed -- even though the
+      // value saves correctly underneath.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppSelect(
+              value: 'MH04LY1894',
+              options: const <String>['MH04LQ5736', 'MH04LQ5737'],
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('MH04LY1894'), findsOneWidget);
+    },
+  );
 }

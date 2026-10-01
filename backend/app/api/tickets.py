@@ -130,6 +130,16 @@ async def get_ticket(
     if entry_out is not None:
         photos.extend(entry_out.photos)
     photos = photos[:MAX_TICKET_PHOTOS]
+    # The capped, ordered aggregate above is the only photos list this
+    # endpoint's Flutter client reads (TicketDetailScreen renders
+    # `ticket.photos`, nothing else) -- the per-source and per-session
+    # copies below are otherwise the same unbounded pile duplicated two
+    # more times over. Emptied, not just capped: nothing consumes them, so
+    # there is no "nested cap" worth maintaining in three places over one.
+    if entry_out is not None:
+        entry_out = entry_out.model_copy(update={"photos": []})
+    for linked in linked_sessions:
+        linked["photos"] = []
     return TicketDetailOut(
         ticket_id=ticket.id,
         display_id=display_id,
